@@ -8,6 +8,7 @@ import type {
   PublicInvitation,
   RsvpResponse,
   SubmitRsvpInput,
+  UpdateProfileInput,
   WeddingSummary,
 } from "@lovechapter/contracts";
 import {
@@ -31,6 +32,7 @@ import {
   buildListWeddingsQuery,
   buildPublicInvitationQuery,
   buildSyncUserQuery,
+  buildUpdateUserProfileQuery,
   buildUpsertRsvpQuery,
 } from "./queries";
 
@@ -57,9 +59,19 @@ export class PostgresLoveChapterRepository implements LoveChapterRepository {
       }),
     );
     const row = requiredRow(result.rows, "Identity synchronization failed");
-    return row.email
-      ? { id: row.id, displayName: row.display_name, email: row.email }
-      : { id: row.id, displayName: row.display_name };
+    return toAuthenticatedUser(row, principal.provider === "development");
+  }
+
+  async updateUserProfile(
+    userId: string,
+    input: UpdateProfileInput,
+  ): Promise<AuthenticatedUser> {
+    const result = await this.executor.execute<UserRow>(
+      buildUpdateUserProfileQuery({ userId, displayName: input.displayName }),
+    );
+    return toAuthenticatedUser(
+      requiredRow(result.rows, "Profile update failed"),
+    );
   }
 
   async listWeddings(
@@ -318,6 +330,19 @@ function requiredRow<T>(rows: T[], message: string): T {
   return row;
 }
 
+function toAuthenticatedUser(
+  row: UserRow,
+  developmentIdentity = false,
+): AuthenticatedUser {
+  const user = {
+    id: row.id,
+    displayName: row.display_name,
+    onboardingComplete:
+      developmentIdentity || row.onboarding_completed_at !== null,
+  };
+  return row.email ? { ...user, email: row.email } : user;
+}
+
 function asTimestamp(value: string | Date): string {
   return value instanceof Date ? value.toISOString() : value;
 }
@@ -335,6 +360,7 @@ type UserRow = {
   id: string;
   display_name: string;
   email: string | null;
+  onboarding_completed_at: string | Date | null;
 };
 
 type WeddingRow = {

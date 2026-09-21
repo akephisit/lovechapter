@@ -17,6 +17,11 @@ export type AuthenticatedUser = {
   id: string;
   displayName: string;
   email?: string;
+  onboardingComplete: boolean;
+};
+
+export type UpdateProfileInput = {
+  displayName: string;
 };
 
 export type CreateWeddingInput = {

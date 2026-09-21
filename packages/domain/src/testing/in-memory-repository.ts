@@ -8,6 +8,7 @@ import type {
   PublicInvitation,
   RsvpResponse,
   SubmitRsvpInput,
+  UpdateProfileInput,
   WeddingSummary,
 } from "@lovechapter/contracts";
 
@@ -50,16 +51,47 @@ export class InMemoryLoveChapterRepository implements LoveChapterRepository {
   async syncUser(principal: Principal): Promise<AuthenticatedUser> {
     const key = `${principal.provider}:${principal.subject}`;
     const existing = this.usersByIdentity.get(key);
-    if (existing) return existing;
+    if (existing) {
+      if (!principal.email || principal.email === existing.email) {
+        return existing;
+      }
+      const updated = { ...existing, email: principal.email };
+      this.usersByIdentity.set(key, updated);
+      return updated;
+    }
+    const onboardingComplete = principal.provider === "development";
     const user: AuthenticatedUser = principal.email
       ? {
           id: crypto.randomUUID(),
           displayName: principal.displayName,
           email: principal.email,
+          onboardingComplete,
         }
-      : { id: crypto.randomUUID(), displayName: principal.displayName };
+      : {
+          id: crypto.randomUUID(),
+          displayName: principal.displayName,
+          onboardingComplete,
+        };
     this.usersByIdentity.set(key, user);
     return user;
+  }
+
+  async updateUserProfile(
+    userId: string,
+    input: UpdateProfileInput,
+  ): Promise<AuthenticatedUser> {
+    const entry = [...this.usersByIdentity.entries()].find(
+      ([, user]) => user.id === userId,
+    );
+    if (!entry) throw new NotFoundError("User not found");
+    const [key, user] = entry;
+    const updated = {
+      ...user,
+      displayName: input.displayName,
+      onboardingComplete: true,
+    };
+    this.usersByIdentity.set(key, updated);
+    return updated;
   }
 
   async listWeddings(

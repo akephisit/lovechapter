@@ -43,6 +43,10 @@ export const users = pgTable(
     authSubject: varchar("auth_subject", { length: 255 }).notNull(),
     displayName: varchar("display_name", { length: 120 }).notNull(),
     email: varchar("email", { length: 320 }),
+    onboardingCompletedAt: timestamp("onboarding_completed_at", {
+      withTimezone: true,
+      mode: "string",
+    }),
     ...timestamps,
   },
   (table) => [

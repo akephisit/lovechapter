@@ -6,6 +6,8 @@ import {
   buildListGuestsQuery,
   buildListWeddingsQuery,
   buildPublicInvitationQuery,
+  buildSyncUserQuery,
+  buildUpdateUserProfileQuery,
   buildUpsertRsvpQuery,
 } from "./queries";
 
@@ -15,6 +17,31 @@ const weddingId = "018f0000-0000-7000-8000-000000000002";
 const guestId = "018f0000-0000-7000-8000-000000000003";
 
 describe("PostgreSQL query contracts", () => {
+  it("preserves a local profile during identity sync", () => {
+    const query = dialect.sqlToQuery(
+      buildSyncUserQuery({
+        id: userId,
+        provider: "clerk",
+        subject: "user_clerk",
+        displayName: "couple@example.test",
+        email: "couple@example.test",
+      }),
+    );
+
+    expect(query.sql).toMatch(/do update set\s+"email" = excluded\."email"/i);
+    expect(query.sql).not.toMatch(/do update set[\s\S]*"display_name" =/i);
+  });
+
+  it("updates onboarding by the resolved local primary key", () => {
+    const query = dialect.sqlToQuery(
+      buildUpdateUserProfileQuery({ userId, displayName: "คู่รัก" }),
+    );
+
+    expect(query.sql).toMatch(/where "users"\."id" = \$\d+/i);
+    expect(query.sql).toMatch(/"onboarding_completed_at" = now\(\)/i);
+    expect(query.params).toEqual(expect.arrayContaining([userId, "คู่รัก"]));
+  });
+
   it("lists weddings using the indexed membership keyset", () => {
     const query = dialect.sqlToQuery(
       buildListWeddingsQuery({

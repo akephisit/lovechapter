@@ -40,6 +40,7 @@ describe("PostgresLoveChapterRepository", () => {
         id: "00000000-0000-7000-8000-000000000010",
         display_name: "Mali & Arun",
         email: "couple@example.test",
+        onboarding_completed_at: null,
       },
     ]);
     const repository = new PostgresLoveChapterRepository(executor);
@@ -55,7 +56,53 @@ describe("PostgresLoveChapterRepository", () => {
       id: "00000000-0000-7000-8000-000000000010",
       displayName: "Mali & Arun",
       email: "couple@example.test",
+      onboardingComplete: true,
     });
+  });
+
+  it("requires onboarding for a newly synchronized Clerk identity", async () => {
+    const executor = new FakeExecutor([
+      {
+        id: "00000000-0000-7000-8000-000000000011",
+        display_name: "couple@example.test",
+        email: "couple@example.test",
+        onboarding_completed_at: null,
+      },
+    ]);
+    const repository = new PostgresLoveChapterRepository(executor);
+
+    await expect(
+      repository.syncUser({
+        provider: "clerk",
+        subject: "user_clerk",
+        displayName: "couple@example.test",
+        email: "couple@example.test",
+      }),
+    ).resolves.toMatchObject({ onboardingComplete: false });
+  });
+
+  it("updates a resolved user profile in one statement", async () => {
+    const executor = new FakeExecutor([
+      {
+        id: "00000000-0000-7000-8000-000000000011",
+        display_name: "คู่รัก",
+        email: "couple@example.test",
+        onboarding_completed_at: "2026-09-21T10:00:00.000Z",
+      },
+    ]);
+    const repository = new PostgresLoveChapterRepository(executor);
+
+    await expect(
+      repository.updateUserProfile("00000000-0000-7000-8000-000000000011", {
+        displayName: "คู่รัก",
+      }),
+    ).resolves.toEqual({
+      id: "00000000-0000-7000-8000-000000000011",
+      displayName: "คู่รัก",
+      email: "couple@example.test",
+      onboardingComplete: true,
+    });
+    expect(executor.executeCount).toBe(1);
   });
 
   it("creates the wedding and owner membership atomically", async () => {

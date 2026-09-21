@@ -22,13 +22,29 @@ export function buildSyncUserQuery(input: {
       (${users.id}, ${users.authProvider}, ${users.authSubject}, ${users.displayName}, ${users.email})
     values (${input.id}, ${input.provider}, ${input.subject}, ${input.displayName}, ${input.email})
     on conflict ("auth_provider","auth_subject") do update set
-      "display_name" = excluded."display_name",
       "email" = excluded."email",
       "updated_at" = now()
     returning
       ${users.id} as "id",
       ${users.displayName} as "display_name",
-      ${users.email} as "email"`;
+      ${users.email} as "email",
+      ${users.onboardingCompletedAt} as "onboarding_completed_at"`;
+}
+
+export function buildUpdateUserProfileQuery(input: {
+  userId: string;
+  displayName: string;
+}): SQL {
+  return sql`update ${users}
+    set ${users.displayName} = ${input.displayName},
+        ${users.onboardingCompletedAt} = now(),
+        ${users.updatedAt} = now()
+    where ${users.id} = ${input.userId}
+    returning
+      ${users.id} as "id",
+      ${users.displayName} as "display_name",
+      ${users.email} as "email",
+      ${users.onboardingCompletedAt} as "onboarding_completed_at"`;
 }
 
 export function buildCreateWeddingQuery(input: {

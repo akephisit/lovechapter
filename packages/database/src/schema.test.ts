@@ -27,9 +27,8 @@ describe("MVP PostgreSQL schema", () => {
   });
 
   it("enforces unique external identities and membership access order", () => {
-    const userIndexes = getTableConfig(users).indexes.map(
-      (index) => index.config,
-    );
+    const userConfig = getTableConfig(users);
+    const userIndexes = userConfig.indexes.map((index) => index.config);
     const memberIndexes = getTableConfig(weddingMembers).indexes.map(
       (index) => index.config,
     );
@@ -49,6 +48,14 @@ describe("MVP PostgreSQL schema", () => {
           unique: false,
         }),
       ]),
+    );
+    expect(
+      userConfig.columns.find(
+        (column) => column.name === "onboarding_completed_at",
+      )?.notNull,
+    ).toBe(false);
+    expect(userConfig.indexes.map((index) => index.config.name)).not.toContain(
+      "users_onboarding_completed_idx",
     );
   });
 

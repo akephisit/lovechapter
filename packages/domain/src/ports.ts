@@ -8,6 +8,7 @@ import type {
   PublicInvitation,
   RsvpResponse,
   SubmitRsvpInput,
+  UpdateProfileInput,
   WeddingSummary,
 } from "@lovechapter/contracts";
 
@@ -35,6 +36,10 @@ export type RsvpWriteResult =
 
 export interface LoveChapterRepository {
   syncUser(principal: Principal): Promise<AuthenticatedUser>;
+  updateUserProfile(
+    userId: string,
+    input: UpdateProfileInput,
+  ): Promise<AuthenticatedUser>;
   listWeddings(
     userId: string,
     page: RepositoryPageInput,
