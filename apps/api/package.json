@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@clerk/backend": "3.18.1",
     "@lovechapter/contracts": "0.1.0",
     "@lovechapter/database": "0.1.0",
     "@lovechapter/domain": "0.1.0",
