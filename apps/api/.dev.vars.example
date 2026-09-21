@@ -1,0 +1,5 @@
+AUTH_MODE=development
+DEV_AUTH_SUBJECT=local-couple
+DEV_AUTH_DISPLAY_NAME=Local Couple
+DEV_AUTH_EMAIL=couple@example.test
+PUBLIC_WEB_ORIGIN=http://localhost:3000

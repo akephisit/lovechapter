@@ -1,0 +1,7 @@
+node_modules
+.next
+.vinext
+dist
+coverage
+package-lock.json
+packages/database/drizzle/meta

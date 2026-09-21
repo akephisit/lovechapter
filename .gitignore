@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+.next/
+.vinext/
+.wrangler/
+.superpowers/
+.env
+.env.*
+!.env.example
+!.env.local.example
+.dev.vars
+!.dev.vars.example
+*.tsbuildinfo
