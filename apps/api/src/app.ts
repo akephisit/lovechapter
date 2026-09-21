@@ -3,6 +3,7 @@ import {
   ConflictError,
   DomainValidationError,
   NotFoundError,
+  OnboardingRequiredError,
   type LoveChapterService,
 } from "@lovechapter/domain";
 import {
@@ -37,6 +38,10 @@ const pageQuery = t.Object({
   limit: t.Optional(t.Numeric({ minimum: 1, maximum: 100, default: 20 })),
   cursor: t.Optional(t.String({ minLength: 1, maxLength: 500 })),
 });
+const profileInput = t.Object(
+  { displayName: t.String({ minLength: 1, maxLength: 120 }) },
+  { additionalProperties: false },
+);
 const weddingInput = t.Object(
   {
     name: t.String({ minLength: 1, maxLength: 120 }),
@@ -82,6 +87,12 @@ export function createApiApp(dependencies: ApiDependencies) {
           errorBody("authentication_required", "Authentication required"),
         );
       }
+      if (error instanceof OnboardingRequiredError) {
+        return status(
+          403,
+          errorBody("onboarding_required", "Profile setup required"),
+        );
+      }
       if (error instanceof NotFoundError) {
         return status(404, errorBody("not_found", "Resource not found"));
       }
@@ -97,6 +108,9 @@ export function createApiApp(dependencies: ApiDependencies) {
     .get("/health", () => ({ status: "ok" as const }))
     .get("/v1/me", ({ request }) =>
       dependencies.run(request, (service) => service.getMe()),
+    )
+    .patch("/v1/me", { body: profileInput }, ({ body, request }) =>
+      dependencies.run(request, (service) => service.updateMyProfile(body)),
     )
     .get("/v1/weddings", { query: pageQuery }, ({ query, request }) =>
       dependencies.run(request, (service) =>
@@ -177,13 +191,13 @@ function applyCors(
   if (request.headers.get("origin") !== publicWebOrigin) return;
   if (headers instanceof Headers) {
     headers.set("Access-Control-Allow-Origin", publicWebOrigin);
-    headers.set("Access-Control-Allow-Headers", "Content-Type");
-    headers.set("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS");
+    headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    headers.set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,OPTIONS");
     headers.set("Vary", "Origin");
     return;
   }
   headers["Access-Control-Allow-Origin"] = publicWebOrigin;
-  headers["Access-Control-Allow-Headers"] = "Content-Type";
-  headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,OPTIONS";
+  headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
+  headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,PATCH,OPTIONS";
   headers.Vary = "Origin";
 }

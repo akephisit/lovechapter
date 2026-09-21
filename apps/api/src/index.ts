@@ -1,26 +1,26 @@
 import { env } from "cloudflare:workers";
 
 import { withPostgresRepository } from "@lovechapter/database";
-import {
-  createConfiguredIdentityProvider,
-  LoveChapterService,
-} from "@lovechapter/domain";
+import { LoveChapterService } from "@lovechapter/domain";
 
+import {
+  createApiIdentityProvider,
+  parsePublicWebOrigin,
+} from "./api-identity";
 import { createApiApp } from "./app";
 
-const identity = createConfiguredIdentityProvider(env);
+const publicWebOrigin = parsePublicWebOrigin(env.PUBLIC_WEB_ORIGIN);
+const identity = createApiIdentityProvider({
+  ...env,
+  PUBLIC_WEB_ORIGIN: publicWebOrigin,
+});
 
 const app = createApiApp({
-  publicWebOrigin: env.PUBLIC_WEB_ORIGIN,
+  publicWebOrigin,
   run: (request, operation) =>
     withPostgresRepository(env.HYPERDRIVE.connectionString, (repository) =>
       operation(
-        new LoveChapterService(
-          identity,
-          repository,
-          env.PUBLIC_WEB_ORIGIN,
-          request,
-        ),
+        new LoveChapterService(identity, repository, publicWebOrigin, request),
       ),
     ),
 });

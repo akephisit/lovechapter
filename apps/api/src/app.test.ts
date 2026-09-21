@@ -1,17 +1,46 @@
 import {
   createConfiguredIdentityProvider,
+  type IdentityProvider,
   LoveChapterService,
   type Principal,
 } from "@lovechapter/domain";
 import { InMemoryLoveChapterRepository } from "@lovechapter/domain/testing";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createApiApp } from "./app";
+import { createClerkIdentityProvider } from "./clerk-identity";
 
 const apiOrigin = "https://api.example.test";
 const webOrigin = "https://web.example.test";
 
 describe("LoveChapter API", () => {
+  it.each(["missing", "malformed", "expired", "wrong-party", "missing-email"])(
+    "returns 401 without synchronizing a %s Clerk session",
+    async (sessionCase) => {
+      const repository = new InMemoryLoveChapterRepository();
+      const synchronize = vi.spyOn(repository, "syncUser");
+      const identity = createClerkIdentityProvider(
+        clerkConfig,
+        async () => null,
+      );
+      const app = appWithIdentity(repository, identity);
+      const headers =
+        sessionCase === "missing"
+          ? { origin: webOrigin }
+          : {
+              origin: webOrigin,
+              authorization: `Bearer ${sessionCase}`,
+            };
+
+      const response = await app.handle(
+        new Request(`${apiOrigin}/v1/me`, { headers }),
+      );
+
+      expect(response.status).toBe(401);
+      expect(synchronize).not.toHaveBeenCalled();
+    },
+  );
+
   it("fails closed when auth is disabled even if identity headers are spoofed", async () => {
     const repository = new InMemoryLoveChapterRepository();
     const app = testApp(repository, null);
@@ -52,6 +81,45 @@ describe("LoveChapter API", () => {
     expect(response.headers.get("access-control-allow-origin")).toBe(webOrigin);
     await expect(response.json()).resolves.toMatchObject({
       error: { code: "validation_error" },
+    });
+  });
+
+  it("allows an incomplete Clerk user to finish profile onboarding", async () => {
+    const repository = new InMemoryLoveChapterRepository();
+    const identity = validClerkIdentity();
+    const app = appWithIdentity(repository, identity);
+
+    const response = await app.handle(
+      jsonRequest("/v1/me", "PATCH", { displayName: "คู่รัก" }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      displayName: "คู่รัก",
+      onboardingComplete: true,
+    });
+  });
+
+  it("blocks an incomplete Clerk user from workspace operations", async () => {
+    const app = appWithIdentity(
+      new InMemoryLoveChapterRepository(),
+      validClerkIdentity(),
+    );
+
+    const response = await app.handle(
+      jsonRequest("/v1/weddings", "POST", {
+        name: "Mali & Arun",
+        timeZone: "UTC",
+        locale: "en",
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "onboarding_required",
+        message: "Profile setup required",
+      },
     });
   });
 
@@ -159,7 +227,32 @@ describe("LoveChapter API", () => {
     expect(allowed.headers.get("access-control-allow-origin")).toBe(webOrigin);
     expect(rejected.headers.get("access-control-allow-origin")).toBeNull();
   });
+
+  it("allows bearer-token profile updates in CORS preflight", async () => {
+    const app = testApp(new InMemoryLoveChapterRepository(), couple("one"));
+
+    const response = await app.handle(
+      new Request(`${apiOrigin}/v1/me`, {
+        method: "OPTIONS",
+        headers: { origin: webOrigin },
+      }),
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-headers")).toBe(
+      "Content-Type, Authorization",
+    );
+    expect(response.headers.get("access-control-allow-methods")).toBe(
+      "GET,POST,PUT,PATCH,OPTIONS",
+    );
+  });
 });
+
+const clerkConfig = {
+  publishableKey: "pk_test_example",
+  jwtKey: "test-public-key",
+  publicWebOrigin: webOrigin,
+};
 
 function testApp(
   repository: InMemoryLoveChapterRepository,
@@ -173,6 +266,13 @@ function testApp(
         ...(principal.email ? { DEV_AUTH_EMAIL: principal.email } : {}),
       })
     : createConfiguredIdentityProvider({ AUTH_MODE: "disabled" });
+  return appWithIdentity(repository, identity);
+}
+
+function appWithIdentity(
+  repository: InMemoryLoveChapterRepository,
+  identity: IdentityProvider,
+) {
   return createApiApp({
     publicWebOrigin: webOrigin,
     run: (request, operation) =>
@@ -180,6 +280,13 @@ function testApp(
         new LoveChapterService(identity, repository, webOrigin, request),
       ),
   }).compile();
+}
+
+function validClerkIdentity(): IdentityProvider {
+  return createClerkIdentityProvider(clerkConfig, async () => ({
+    subject: "user_clerk",
+    primaryEmail: "couple@example.test",
+  }));
 }
 
 function couple(subject: string): Principal {
