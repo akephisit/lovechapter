@@ -19,8 +19,8 @@ describe("CoupleWorkspace", () => {
   it("creates a wedding and guest, then reveals the one-time invitation URL", async () => {
     const wedding = weddingFixture();
     const guest = guestFixture();
+    const onSignOut = vi.fn();
     const api: CoupleWorkspaceApi = {
-      getMe: vi.fn(async () => userFixture()),
       listWeddings: vi.fn(async () => page([])),
       createWedding: vi.fn(async (_input: CreateWeddingInput) => wedding),
       listGuests: vi.fn(async () => page([])),
@@ -31,15 +31,21 @@ describe("CoupleWorkspace", () => {
     };
     const user = userEvent.setup();
 
-    render(<CoupleWorkspace api={api} />);
+    render(
+      <CoupleWorkspace
+        identity={userFixture()}
+        api={api}
+        onSignOut={onSignOut}
+      />,
+    );
 
     expect(
       await screen.findByRole("heading", { name: /plan the chapter/i }),
     ).toBeVisible();
     expect(screen.getByText("Couple one")).toBeVisible();
-    expect(
-      screen.getByText(/production authentication is not connected/i),
-    ).toBeVisible();
+    expect(screen.queryByText(/development identity/i)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /sign out/i }));
+    expect(onSignOut).toHaveBeenCalledOnce();
     await user.type(screen.getByLabelText(/wedding name/i), "Mali & Arun");
     await user.click(screen.getByRole("button", { name: /create wedding/i }));
 
@@ -93,7 +99,6 @@ describe("CoupleWorkspace", () => {
       },
     );
     const api: CoupleWorkspaceApi = {
-      getMe: vi.fn(async () => userFixture()),
       listWeddings: vi.fn(async () => page([wedding])),
       createWedding: vi.fn(),
       listGuests,
@@ -102,7 +107,13 @@ describe("CoupleWorkspace", () => {
     };
     const user = userEvent.setup();
 
-    render(<CoupleWorkspace api={api} />);
+    render(
+      <CoupleWorkspace
+        identity={userFixture()}
+        api={api}
+        onSignOut={vi.fn()}
+      />,
+    );
 
     expect(await screen.findByText("Nok")).toBeVisible();
     await user.click(screen.getByRole("button", { name: /load more guests/i }));
@@ -137,7 +148,6 @@ describe("CoupleWorkspace", () => {
     const firstReload = deferred<Page<GuestSummary>>();
     let firstWeddingReads = 0;
     const api: CoupleWorkspaceApi = {
-      getMe: vi.fn(async () => userFixture()),
       listWeddings: vi.fn(async () => page([firstWedding, secondWedding])),
       createWedding: vi.fn(),
       listGuests: vi.fn((weddingId: string) => {
@@ -152,7 +162,13 @@ describe("CoupleWorkspace", () => {
     };
     const user = userEvent.setup();
 
-    render(<CoupleWorkspace api={api} />);
+    render(
+      <CoupleWorkspace
+        identity={userFixture()}
+        api={api}
+        onSignOut={vi.fn()}
+      />,
+    );
 
     expect(await screen.findByText("Nok")).toBeVisible();
     await user.click(

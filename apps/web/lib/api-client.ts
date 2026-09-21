@@ -112,11 +112,6 @@ export const loveChapterPublicApi = {
     ),
 };
 
-export const loveChapterApi = createLoveChapterApi(
-  async () => null,
-  () => undefined,
-);
-
 async function authenticatedRequest<T>(
   getToken: TokenProvider,
   onAuthenticationRequired: AuthenticationRequiredHandler,

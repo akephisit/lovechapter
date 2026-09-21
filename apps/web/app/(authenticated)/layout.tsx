@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { AuthErrorBoundary } from "../../components/auth-error-boundary";
 import { ClerkAppProvider } from "../../components/clerk-app-provider";
 
 export default function AuthenticatedLayout({
@@ -7,5 +8,9 @@ export default function AuthenticatedLayout({
 }: {
   children: ReactNode;
 }) {
-  return <ClerkAppProvider>{children}</ClerkAppProvider>;
+  return (
+    <AuthErrorBoundary>
+      <ClerkAppProvider>{children}</ClerkAppProvider>
+    </AuthErrorBoundary>
+  );
 }

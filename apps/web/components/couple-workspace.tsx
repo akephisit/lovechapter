@@ -12,7 +12,6 @@ import type {
 import { CalendarDays, Copy, Heart, Link2, Users } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
-import { loveChapterApi } from "../lib/api-client";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -20,7 +19,6 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 
 export interface CoupleWorkspaceApi {
-  getMe(): Promise<AuthenticatedUser>;
   listWeddings(cursor?: string): Promise<Page<WeddingSummary>>;
   createWedding(input: CreateWeddingInput): Promise<WeddingSummary>;
   listGuests(weddingId: string, cursor?: string): Promise<Page<GuestSummary>>;
@@ -31,10 +29,13 @@ export interface CoupleWorkspaceApi {
   ): Promise<InvitationCreated>;
 }
 
-type Props = { api?: CoupleWorkspaceApi };
+type Props = {
+  identity: AuthenticatedUser;
+  api: CoupleWorkspaceApi;
+  onSignOut(): void;
+};
 
-export function CoupleWorkspace({ api = loveChapterApi }: Props) {
-  const [identity, setIdentity] = useState<AuthenticatedUser | null>(null);
+export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
   const [weddings, setWeddings] = useState<WeddingSummary[]>([]);
   const [weddingCursor, setWeddingCursor] = useState<string | null>(null);
   const [selected, setSelected] = useState<WeddingSummary | null>(null);
@@ -51,10 +52,10 @@ export function CoupleWorkspace({ api = loveChapterApi }: Props) {
 
   useEffect(() => {
     let current = true;
-    void Promise.all([api.getMe(), api.listWeddings()])
-      .then(async ([resolvedIdentity, weddingPage]) => {
+    void api
+      .listWeddings()
+      .then(async (weddingPage) => {
         if (!current) return;
-        setIdentity(resolvedIdentity);
         setWeddings(weddingPage.items);
         setWeddingCursor(weddingPage.nextCursor);
         const first = weddingPage.items[0];
@@ -70,7 +71,7 @@ export function CoupleWorkspace({ api = loveChapterApi }: Props) {
       .catch(() => {
         if (current) {
           setMessage(
-            "The planning workspace is not connected yet. Check the configured API and development identity.",
+            "The planning workspace is not connected yet. Please try again.",
           );
         }
       })
@@ -264,21 +265,14 @@ export function CoupleWorkspace({ api = loveChapterApi }: Props) {
               </p>
             </div>
           </div>
-          {identity ? (
-            <div className="max-w-xs text-right">
-              <div className="flex items-center justify-end gap-2">
-                <Badge>Development identity</Badge>
-                <span className="text-sm font-semibold text-[#574248]">
-                  {identity.displayName}
-                </span>
-              </div>
-              <p className="mt-1 text-xs leading-5 text-[#8b7779]">
-                Production authentication is not connected.
-              </p>
-            </div>
-          ) : (
-            <Badge>Private planning</Badge>
-          )}
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold text-[#574248]">
+              {identity.displayName}
+            </span>
+            <Button variant="ghost" onClick={onSignOut}>
+              Sign out
+            </Button>
+          </div>
         </header>
 
         <section className="mb-8 max-w-3xl">
