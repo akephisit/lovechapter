@@ -6,6 +6,10 @@ export class AuthenticationRequiredError extends Error {
   override readonly name = "AuthenticationRequiredError";
 }
 
+export class OnboardingRequiredError extends Error {
+  override readonly name = "OnboardingRequiredError";
+}
+
 export class NotFoundError extends Error {
   override readonly name = "NotFoundError";
 }

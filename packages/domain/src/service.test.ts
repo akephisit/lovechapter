@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { IdentityProvider, Principal } from "./identity";
-import { NotFoundError } from "./errors";
+import {
+  DomainValidationError,
+  NotFoundError,
+  OnboardingRequiredError,
+} from "./errors";
 import { LoveChapterService } from "./service";
 import { InMemoryLoveChapterRepository } from "./testing/in-memory-repository";
 
@@ -16,6 +20,13 @@ const otherCouple: Principal = {
   provider: "development",
   subject: "couple-2",
   displayName: "Other Couple",
+};
+
+const clerkPrincipal: Principal = {
+  provider: "clerk",
+  subject: "user_clerk_1",
+  displayName: "couple@example.test",
+  email: "couple@example.test",
 };
 
 function identity(principal: Principal | null): IdentityProvider {
@@ -34,6 +45,79 @@ function service(
 }
 
 describe("LoveChapterService", () => {
+  it("allows profile setup before Clerk onboarding completes", async () => {
+    const clerkService = service(
+      new InMemoryLoveChapterRepository(),
+      clerkPrincipal,
+    );
+
+    await expect(clerkService.getMe()).resolves.toMatchObject({
+      onboardingComplete: false,
+    });
+    await expect(
+      clerkService.updateMyProfile({ displayName: "  มะลิ & Arun  " }),
+    ).resolves.toMatchObject({
+      displayName: "มะลิ & Arun",
+      onboardingComplete: true,
+    });
+  });
+
+  it.each([
+    [
+      "createWedding",
+      (clerkService: LoveChapterService) =>
+        clerkService.createWedding({
+          name: "Mali & Arun",
+          timeZone: "UTC",
+          locale: "en",
+        }),
+    ],
+    [
+      "listWeddings",
+      (clerkService: LoveChapterService) =>
+        clerkService.listWeddings({ limit: 20 }),
+    ],
+    [
+      "addGuest",
+      (clerkService: LoveChapterService) =>
+        clerkService.addGuest(crypto.randomUUID(), {
+          name: "Nok",
+          allowedPartySize: 1,
+        }),
+    ],
+    [
+      "listGuests",
+      (clerkService: LoveChapterService) =>
+        clerkService.listGuests(crypto.randomUUID(), { limit: 20 }),
+    ],
+    [
+      "createInvitation",
+      (clerkService: LoveChapterService) =>
+        clerkService.createInvitation(crypto.randomUUID(), crypto.randomUUID()),
+    ],
+  ] as const)("blocks %s before onboarding", async (_name, operation) => {
+    const clerkService = service(
+      new InMemoryLoveChapterRepository(),
+      clerkPrincipal,
+    );
+
+    await expect(operation(clerkService)).rejects.toBeInstanceOf(
+      OnboardingRequiredError,
+    );
+  });
+
+  it.each(["", "   ", "a".repeat(121)])(
+    "rejects an invalid display name: %j",
+    async (displayName) => {
+      await expect(
+        service(
+          new InMemoryLoveChapterRepository(),
+          clerkPrincipal,
+        ).updateMyProfile({ displayName }),
+      ).rejects.toBeInstanceOf(DomainValidationError);
+    },
+  );
+
   it("runs the Couple → Wedding → Guest → Invitation → RSVP flow", async () => {
     const repository = new InMemoryLoveChapterRepository();
     const coupleService = service(repository);

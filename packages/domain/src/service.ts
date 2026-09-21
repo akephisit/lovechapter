@@ -9,6 +9,7 @@ import type {
   PublicInvitation,
   RsvpResponse,
   SubmitRsvpInput,
+  UpdateProfileInput,
   WeddingSummary,
 } from "@lovechapter/contracts";
 
@@ -17,6 +18,7 @@ import {
   AuthenticationRequiredError,
   DomainValidationError,
   NotFoundError,
+  OnboardingRequiredError,
 } from "./errors";
 import type { IdentityProvider } from "./identity";
 import { generateInvitationToken, hashInvitationToken } from "./invitations";
@@ -39,8 +41,17 @@ export class LoveChapterService {
     return this.requireUser();
   }
 
-  async createWedding(input: CreateWeddingInput): Promise<WeddingSummary> {
+  async updateMyProfile(input: UpdateProfileInput): Promise<AuthenticatedUser> {
     const user = await this.requireUser();
+    const displayName = input.displayName.trim();
+    if (!displayName || Array.from(displayName).length > 120) {
+      throw new DomainValidationError("Display name must be 1–120 characters");
+    }
+    return this.repository.updateUserProfile(user.id, { displayName });
+  }
+
+  async createWedding(input: CreateWeddingInput): Promise<WeddingSummary> {
+    const user = await this.requireOnboardedUser();
     return this.repository.createWedding(
       user.id,
       crypto.randomUUID(),
@@ -49,7 +60,7 @@ export class LoveChapterService {
   }
 
   async listWeddings(page: PageInput): Promise<Page<WeddingSummary>> {
-    const user = await this.requireUser();
+    const user = await this.requireOnboardedUser();
     return this.repository.listWeddings(user.id, normalizePage(page));
   }
 
@@ -57,7 +68,7 @@ export class LoveChapterService {
     weddingId: string,
     input: CreateGuestInput,
   ): Promise<GuestSummary> {
-    const user = await this.requireUser();
+    const user = await this.requireOnboardedUser();
     return this.repository.createGuest(
       user.id,
       weddingId,
@@ -70,7 +81,7 @@ export class LoveChapterService {
     weddingId: string,
     page: PageInput,
   ): Promise<Page<GuestSummary>> {
-    const user = await this.requireUser();
+    const user = await this.requireOnboardedUser();
     return this.repository.listGuests(user.id, weddingId, normalizePage(page));
   }
 
@@ -78,7 +89,7 @@ export class LoveChapterService {
     weddingId: string,
     guestId: string,
   ): Promise<InvitationCreated> {
-    const user = await this.requireUser();
+    const user = await this.requireOnboardedUser();
     const token = generateInvitationToken();
     const created = await this.repository.createInvitation({
       id: crypto.randomUUID(),
@@ -130,6 +141,14 @@ export class LoveChapterService {
       throw new AuthenticationRequiredError("Authentication required");
     }
     return this.repository.syncUser(principal);
+  }
+
+  private async requireOnboardedUser(): Promise<AuthenticatedUser> {
+    const user = await this.requireUser();
+    if (!user.onboardingComplete) {
+      throw new OnboardingRequiredError("Profile setup required");
+    }
+    return user;
   }
 }
 
