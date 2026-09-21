@@ -5,6 +5,7 @@ coverage/
 .vinext/
 .wrangler/
 .superpowers/
+.worktrees/
 .env
 .env.*
 !.env.example
