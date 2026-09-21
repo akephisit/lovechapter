@@ -26,20 +26,61 @@ class DrizzleQueryExecutor implements QueryExecutor {
   }
 }
 
+export type PostgresClientFactory = (connectionString: string) => Client;
+
+class LazyPostgresQueryExecutor implements QueryExecutor {
+  private connection: Promise<DrizzleQueryExecutor> | null = null;
+  private client: Client | null = null;
+
+  constructor(
+    private readonly connectionString: string,
+    private readonly createClient: PostgresClientFactory,
+  ) {}
+
+  async execute<T extends Record<string, unknown>>(
+    query: SQL,
+  ): Promise<{ rows: T[] }> {
+    return (await this.executor()).execute<T>(query);
+  }
+
+  async transaction<T>(
+    operation: (executor: QueryExecutor) => Promise<T>,
+  ): Promise<T> {
+    return (await this.executor()).transaction(operation);
+  }
+
+  async close(): Promise<void> {
+    if (this.client) await this.client.end();
+  }
+
+  private executor(): Promise<DrizzleQueryExecutor> {
+    this.connection ??= this.connect();
+    return this.connection;
+  }
+
+  private async connect(): Promise<DrizzleQueryExecutor> {
+    const client = this.createClient(this.connectionString);
+    await client.connect();
+    this.client = client;
+    return new DrizzleQueryExecutor(drizzle({ client }));
+  }
+}
+
 export async function withPostgresRepository<T>(
   connectionString: string,
   operation: (repository: PostgresLoveChapterRepository) => Promise<T>,
+  createClient: PostgresClientFactory = (value) =>
+    new Client({ connectionString: value }),
 ): Promise<T> {
   if (!connectionString)
     throw new Error("PostgreSQL connection is not configured");
-  const client = new Client({ connectionString });
-  await client.connect();
+  const executor = new LazyPostgresQueryExecutor(
+    connectionString,
+    createClient,
+  );
   try {
-    const database = drizzle({ client });
-    return await operation(
-      new PostgresLoveChapterRepository(new DrizzleQueryExecutor(database)),
-    );
+    return await operation(new PostgresLoveChapterRepository(executor));
   } finally {
-    await client.end();
+    await executor.close();
   }
 }

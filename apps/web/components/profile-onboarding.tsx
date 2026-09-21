@@ -34,11 +34,19 @@ export function ProfileOnboarding({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setSaving(true);
     setMessage(null);
+    const normalizedDisplayName = displayName.trim();
+    if (
+      !normalizedDisplayName ||
+      Array.from(normalizedDisplayName).length > 120
+    ) {
+      setMessage("Display name must be 1–120 characters");
+      return;
+    }
+    setSaving(true);
     try {
       const user = await api.updateMyProfile({
-        displayName: displayName.trim(),
+        displayName: normalizedDisplayName,
       });
       onComplete(user);
     } catch (error) {
@@ -77,8 +85,7 @@ export function ProfileOnboarding({
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
               required
-              minLength={2}
-              maxLength={120}
+              minLength={1}
               autoComplete="name"
             />
           </div>

@@ -1,4 +1,4 @@
-import { createClerkClient } from "@clerk/backend";
+import { verifyToken } from "@clerk/backend";
 import type { IdentityProvider } from "@lovechapter/domain";
 
 export type ClerkIdentityConfig = {
@@ -17,25 +17,10 @@ export type AuthenticateClerkSession = (
   config: ClerkIdentityConfig,
 ) => Promise<VerifiedClerkSession | null>;
 
-type ClerkAuthLike = {
-  userId?: string | null;
-  sessionClaims?: unknown;
-};
-
-type ClerkRequestStateLike = {
-  toAuth(): ClerkAuthLike | null;
-};
-
-export type ClerkClientLike = {
-  authenticateRequest(
-    request: Request,
-    options: {
-      acceptsToken: "session_token";
-      jwtKey: string;
-      authorizedParties: string[];
-    },
-  ): Promise<ClerkRequestStateLike>;
-};
+export type VerifyClerkToken = (
+  token: string,
+  options: { jwtKey: string; authorizedParties: string[] },
+) => Promise<unknown>;
 
 export function createClerkIdentityProvider(
   config: ClerkIdentityConfig,
@@ -71,30 +56,34 @@ export function createClerkIdentityProvider(
 export async function authenticateClerkSession(
   request: Request,
   config: ClerkIdentityConfig,
-  client: ClerkClientLike = createClerkClientAdapter(config.publishableKey),
+  verify: VerifyClerkToken = verifyToken,
 ): Promise<VerifiedClerkSession | null> {
   try {
-    const state = await client.authenticateRequest(request, {
-      acceptsToken: "session_token",
+    const token = readBearerToken(request.headers.get("authorization"));
+    if (!token) return null;
+    const claims = await verify(token, {
       jwtKey: config.jwtKey,
       authorizedParties: [config.publicWebOrigin],
     });
-    const auth = state.toAuth();
-    if (!auth?.userId || !isRecord(auth.sessionClaims)) return null;
-    const primaryEmail = auth.sessionClaims.primaryEmail;
+    if (
+      !isRecord(claims) ||
+      typeof claims.sub !== "string" ||
+      typeof claims.sid !== "string" ||
+      !claims.sid.trim()
+    ) {
+      return null;
+    }
+    const primaryEmail = claims.primaryEmail;
     if (typeof primaryEmail !== "string" || !primaryEmail.trim()) return null;
-    return { subject: auth.userId, primaryEmail };
+    return { subject: claims.sub, primaryEmail };
   } catch {
     return null;
   }
 }
 
-function createClerkClientAdapter(publishableKey: string): ClerkClientLike {
-  const client = createClerkClient({ publishableKey });
-  return {
-    authenticateRequest: (request, options) =>
-      client.authenticateRequest(request, options),
-  };
+function readBearerToken(value: string | null): string | null {
+  const match = /^Bearer ([^\s]+)$/i.exec(value ?? "");
+  return match?.[1] ?? null;
 }
 
 function required(value: string, name: string): string {

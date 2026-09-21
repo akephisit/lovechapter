@@ -224,6 +224,44 @@ describe("AuthenticatedHome", () => {
     ).toBeVisible();
     expect(profileReads).toBe(2);
   });
+
+  it("offers a safe retry when Clerk sign-out fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async () =>
+        jsonResponse(
+          {
+            error: {
+              code: "authentication_required",
+              message: "Authentication required",
+            },
+          },
+          401,
+        ),
+      ),
+    );
+    const signOut = vi
+      .fn<AuthenticatedSession["signOut"]>()
+      .mockRejectedValueOnce(new Error("Clerk unavailable"))
+      .mockResolvedValueOnce(undefined);
+    const user = userEvent.setup();
+
+    render(
+      <AuthenticatedHome
+        session={sessionFixture({ signOut })}
+        signedOutFallback={<p>Sign-in redirect</p>}
+      />,
+    );
+
+    const retry = await screen.findByRole("button", {
+      name: /try signing out again/i,
+    });
+    expect(screen.queryByText("Mali & Arun")).not.toBeInTheDocument();
+    await user.click(retry);
+
+    expect(signOut).toHaveBeenCalledTimes(2);
+    expect(await screen.findByText(/signing you out/i)).toBeVisible();
+  });
 });
 
 function sessionFixture(

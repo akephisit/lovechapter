@@ -33,7 +33,8 @@ type Props = {
   signedOutFallback: ReactNode;
 };
 
-type ViewState = "loading" | "ready" | "error" | "signing-out";
+type ViewState =
+  "loading" | "ready" | "error" | "signing-out" | "sign-out-error";
 
 export function AuthenticatedHome({ session, signedOutFallback }: Props) {
   const { isLoaded, isSignedIn, getToken, signOut, suggestedDisplayName } =
@@ -42,14 +43,25 @@ export function AuthenticatedHome({ session, signedOutFallback }: Props) {
   const [viewState, setViewState] = useState<ViewState>("loading");
   const [retryRevision, setRetryRevision] = useState(0);
   const requestGeneration = useRef(0);
-  const signOutStarted = useRef(false);
+  const signOutInFlight = useRef<Promise<void> | null>(null);
 
   const handleAuthenticationRequired = useCallback(async () => {
     setIdentity(null);
     setViewState("signing-out");
-    if (signOutStarted.current) return;
-    signOutStarted.current = true;
-    await signOut();
+    if (!signOutInFlight.current) {
+      const attempt = Promise.resolve()
+        .then(() => signOut())
+        .catch(() => {
+          setViewState("sign-out-error");
+        })
+        .finally(() => {
+          if (signOutInFlight.current === attempt) {
+            signOutInFlight.current = null;
+          }
+        });
+      signOutInFlight.current = attempt;
+    }
+    await signOutInFlight.current;
   }, [signOut]);
 
   const api = useMemo(
@@ -96,6 +108,27 @@ export function AuthenticatedHome({ session, signedOutFallback }: Props) {
   if (!isSignedIn) return signedOutFallback;
   if (viewState === "signing-out") {
     return <SessionMessage>Signing you out…</SessionMessage>;
+  }
+  if (viewState === "sign-out-error") {
+    return (
+      <main className="grid min-h-screen place-items-center px-4 py-10">
+        <Card className="w-full max-w-lg p-8 text-center">
+          <h1 className="font-serif text-3xl font-semibold text-[#432f35]">
+            We couldn't sign you out.
+          </h1>
+          <p className="mt-3 leading-7 text-[#725f62]">
+            Your protected workspace has been cleared. Please try signing out
+            again.
+          </p>
+          <Button
+            className="mt-6"
+            onClick={() => void handleAuthenticationRequired()}
+          >
+            Try signing out again
+          </Button>
+        </Card>
+      </main>
+    );
   }
   if (viewState === "error") {
     return (

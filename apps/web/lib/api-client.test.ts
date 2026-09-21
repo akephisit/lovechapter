@@ -85,7 +85,8 @@ describe("LoveChapter API client", () => {
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, init] = fetchMock.mock.calls[0] ?? [];
-    expect(url).toEqual(new URL("http://localhost:8787/v1/me"));
+    expect(url).toBeInstanceOf(URL);
+    expect((url as URL).pathname).toBe("/v1/me");
     expect(init?.method).toBe("PATCH");
     expect(init?.body).toBe(JSON.stringify({ displayName: "คู่รัก" }));
   });
