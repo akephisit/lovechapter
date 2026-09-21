@@ -38,15 +38,15 @@ Configure CORS intentionally if the browser calls a separate API Worker.
 
 Current variables and bindings:
 
-- API: `PUBLIC_WEB_ORIGIN`, `AUTH_MODE`, optional development identity values,
-  and `HYPERDRIVE`;
-- web: `NEXT_PUBLIC_API_ORIGIN`, which is public and must be present in the
-  shell that builds the browser bundle. It is deliberately not a runtime
-  Wrangler variable.
+- API: `PUBLIC_WEB_ORIGIN`, `AUTH_MODE`, `CLERK_PUBLISHABLE_KEY`,
+  `CLERK_JWT_KEY`, optional development identity values, and `HYPERDRIVE`;
+- web: `NEXT_PUBLIC_API_ORIGIN` and `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`. Both
+  are public and must be present in the shell that builds the browser bundle;
+  they are deliberately not runtime Wrangler variables.
 
-Production `AUTH_MODE` intentionally remains `disabled` until the production
-authentication provider is selected. Do not deploy `AUTH_MODE=development` as
-a substitute for production authentication.
+The checked-in production-safe default remains `AUTH_MODE=disabled`. Set the
+deployed API to `AUTH_MODE=clerk` only after every Clerk value and the exact web
+origin exist. Never deploy `AUTH_MODE=development` as a substitute.
 
 ## Frontend
 
@@ -95,23 +95,37 @@ No production credentials or deployed URLs are stored in this repository.
 Replace every placeholder below with output from the relevant provider; do not
 invent an account subdomain.
 
-1. In Neon, create/select the database and a least-privilege role for
+1. Create or claim separate Clerk development and production instances. In
+   both, enable open registration, require verified email, enable email OTP and
+   Google, and disable password authentication. Add this compact custom session
+   claim in the session-token configuration:
+
+   ```json
+   { "primaryEmail": "{{user.primary_email_address}}" }
+   ```
+
+   Configure Clerk production with real Google OAuth credentials rather than
+   development shared credentials. Keep Apple, passkeys, mandatory MFA, and
+   support/admin access disabled or unchanged until their open questions are
+   decided.
+
+2. In Neon, create/select the database and a least-privilege role for
    Hyperdrive. Copy a **direct, unpooled** PostgreSQL URL (pooling unchecked).
-2. Apply the checked-in migration using a separate direct migration credential:
+3. Apply the checked-in migrations using a separate direct migration credential:
 
    ```bash
    export DATABASE_URL='postgres://MIGRATION_USER:PASSWORD@NEON_HOST:5432/lovechapter?sslmode=require'
    npm run db:migrate --workspace @lovechapter/database
    ```
 
-3. Authenticate Wrangler and create Hyperdrive with the unpooled Neon URL:
+4. Authenticate Wrangler and create Hyperdrive with the unpooled Neon URL:
 
    ```bash
    npx wrangler login
    npx wrangler hyperdrive create lovechapter-neon --connection-string='postgres://HYPERDRIVE_USER:PASSWORD@NEON_HOST:5432/lovechapter?sslmode=require'
    ```
 
-4. Replace the all-zero `id` in `apps/api/wrangler.jsonc` with the Hyperdrive ID
+5. Replace the all-zero `id` in `apps/api/wrangler.jsonc` with the Hyperdrive ID
    printed by Wrangler. Regenerate binding types:
 
    ```bash
@@ -120,12 +134,32 @@ invent an account subdomain.
    cd ../..
    ```
 
-5. Set `PUBLIC_WEB_ORIGIN` in the API Worker configuration to the actual web
-   Worker origin. Export the actual API Worker origin before every web build or
-   deployment so vinext can embed it in the browser bundle:
+6. Make an initial web/API deployment with authentication disabled if needed to
+   learn the two real `*.workers.dev` origins. Configure the web origin and
+   allowed redirect URLs in Clerk exactly; do not use the candidate custom
+   domain. Set `PUBLIC_WEB_ORIGIN` in the API Worker configuration to that exact
+   HTTPS web origin.
+
+7. Provide the production Clerk values to the API Worker through its deployment
+   configuration or secrets. The PEM public key comes from the production Clerk
+   instance's JWT/session-token settings. Do not commit either value:
+
+   ```bash
+   npx wrangler secret put CLERK_PUBLISHABLE_KEY --config apps/api/wrangler.jsonc
+   npx wrangler secret put CLERK_JWT_KEY --config apps/api/wrangler.jsonc
+   ```
+
+   Then set production `AUTH_MODE=clerk` only after both values and
+   `PUBLIC_WEB_ORIGIN` are present. The API uses the exact web origin as the
+   token's authorized party.
+
+8. Export the actual API Worker origin and production Clerk publishable key
+   before every web build or deployment so vinext can embed them in the browser
+   bundle:
 
    ```bash
    export NEXT_PUBLIC_API_ORIGIN='https://lovechapter-api.ACTUAL_SUBDOMAIN.workers.dev'
+   export NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY='pk_live_REPLACE_WITH_PRODUCTION_VALUE'
    ```
 
    The build rejects missing, non-HTTP(S), or path-bearing values rather than
@@ -134,28 +168,30 @@ invent an account subdomain.
    and web redeploy may be necessary. Keep API CORS restricted to the one
    configured web origin.
 
-6. Verify before deploying:
+9. Verify before deploying:
 
    ```bash
    export NEXT_PUBLIC_API_ORIGIN='https://lovechapter-api.ACTUAL_SUBDOMAIN.workers.dev'
+   export NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY='pk_live_REPLACE_WITH_PRODUCTION_VALUE'
    npm run check
    npm run db:check --workspace @lovechapter/database
    npm exec --workspace @lovechapter/web -- vinext check
    npm run build:next --workspace @lovechapter/web
    ```
 
-7. Deploy only after the authentication decision and staging verification are
-   complete:
+10. Deploy only after staging verification is complete:
 
-   ```bash
-   npx wrangler deploy --config apps/api/wrangler.jsonc
-   npm run deploy --workspace @lovechapter/web
-   ```
+    ```bash
+    npx wrangler deploy --config apps/api/wrangler.jsonc
+    npm run deploy --workspace @lovechapter/web
+    ```
 
-Record the real `*.workers.dev` URLs from command output. Then smoke-test
-`/health`, configured CORS, a protected-route authentication failure/success,
-and the complete invitation/RSVP flow. Never put Neon credentials in Wrangler
-variables: the API connects with `env.HYPERDRIVE.connectionString`.
+Record the real `*.workers.dev` URLs from command output. Without logging
+credentials or tokens, smoke-test Google registration/sign-in, email OTP,
+first-login profile onboarding, sign-out, a protected API failure and success,
+and the complete account-free invitation/RSVP flow. Never put Neon credentials
+in Wrangler variables: the API connects with
+`env.HYPERDRIVE.connectionString`.
 
 Both Workers disable Cloudflare invocation logs and traces because guest
 invitation tokens are carried in URL paths. Application logs must likewise

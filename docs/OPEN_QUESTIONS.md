@@ -12,14 +12,14 @@ Until resolved, use Cloudflare `*.workers.dev`.
 
 ## Authentication
 
-- Auth provider
-- Email/password vs magic link
-- Google login
 - Apple login
 - Passkeys
+- Whether multifactor authentication becomes mandatory
 - Support/admin auth model
 
-Do not build an ad-hoc production password/auth system merely to close this question.
+Clerk, open registration, verified-email OTP, and Google are accepted in
+`docs/DECISIONS.md`. Do not build an ad-hoc password system for the remaining
+questions.
 
 ## Billing
 

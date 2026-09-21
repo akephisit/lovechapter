@@ -184,3 +184,34 @@ This does not prohibit operational observability. Structured application events
 may be added when they omit or irreversibly redact credentials. Any future
 request-level logging or tracing must establish and verify token redaction before
 it is enabled.
+
+## ADR-015 — Clerk provides authenticated-user sessions
+
+**Status:** Accepted for the first MVP slice
+
+Clerk is the authentication and session provider for couples, planners, and
+future account collaborators. Registration is open to everyone through Google
+or a verified-email one-time code; password authentication is disabled. Guests
+remain account-free and continue to use high-entropy invitation URLs.
+
+Clerk proves the external identity only. Local PostgreSQL records remain
+authoritative for profile onboarding, wedding membership, roles, ownership,
+and future billing ownership. Clerk Organizations are not used. The API derives
+the Clerk subject and verified primary email from a server-verified session
+token, then scopes every wedding-owned operation with local data; it never
+trusts browser-supplied user, wedding, role, or ownership values.
+
+The API verifies bearer session tokens without a per-request Clerk network call
+by calling `@clerk/backend`'s `verifyToken()` with `CLERK_JWT_KEY`, constrains
+tokens to the exact configured `PUBLIC_WEB_ORIGIN` through
+`authorizedParties`, and requires the expected subject and primary-email
+claims. The required custom session claim is
+`{ "primaryEmail": "{{user.primary_email_address}}" }`.
+
+The exact initial SDK pins are `@clerk/nextjs` `7.9.4` and `@clerk/backend`
+`3.18.1`. `vinext check` reports Clerk's Next.js package as partially compatible
+because vinext does not implement Clerk's server-side `auth()` helper. This
+slice deliberately avoids that surface: the web uses Clerk's client hooks and
+prebuilt sign-in/sign-up components, while the separate Elysia API uses
+`@clerk/backend`. Reassess compatibility before introducing Clerk server helpers
+inside the Next.js application.
