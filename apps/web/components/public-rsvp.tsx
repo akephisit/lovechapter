@@ -9,7 +9,7 @@ import type {
 import { CalendarDays, Check, Heart, MapPin } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 
-import { ApiError, loveChapterApi } from "../lib/api-client";
+import { ApiError, loveChapterPublicApi } from "../lib/api-client";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -24,7 +24,7 @@ export interface PublicRsvpApi {
 
 export function PublicRsvp({
   token,
-  api = loveChapterApi,
+  api = loveChapterPublicApi,
 }: {
   token: string;
   api?: PublicRsvpApi;

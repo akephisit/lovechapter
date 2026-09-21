@@ -8,6 +8,7 @@ import type {
   PublicInvitation,
   RsvpResponse,
   SubmitRsvpInput,
+  UpdateProfileInput,
   WeddingSummary,
 } from "@lovechapter/contracts";
 
@@ -58,29 +59,48 @@ export async function apiRequest<T>(
   return response.json() as Promise<T>;
 }
 
-export const loveChapterApi = {
-  getMe: () => apiRequest<AuthenticatedUser>("/v1/me"),
-  listWeddings: (cursor?: string) =>
-    apiRequest<Page<WeddingSummary>>(`/v1/weddings?${pageQuery(cursor)}`),
-  createWedding: (input: CreateWeddingInput) =>
-    apiRequest<WeddingSummary>("/v1/weddings", {
-      method: "POST",
-      body: JSON.stringify(input),
-    }),
-  listGuests: (weddingId: string, cursor?: string) =>
-    apiRequest<Page<GuestSummary>>(
-      `/v1/weddings/${encodeURIComponent(weddingId)}/guests?${pageQuery(cursor)}`,
-    ),
-  addGuest: (weddingId: string, input: CreateGuestInput) =>
-    apiRequest<GuestSummary>(
-      `/v1/weddings/${encodeURIComponent(weddingId)}/guests`,
-      { method: "POST", body: JSON.stringify(input) },
-    ),
-  createInvitation: (weddingId: string, guestId: string) =>
-    apiRequest<InvitationCreated>(
-      `/v1/weddings/${encodeURIComponent(weddingId)}/guests/${encodeURIComponent(guestId)}/invitations`,
-      { method: "POST", body: "{}" },
-    ),
+export type TokenProvider = () => Promise<string | null>;
+export type AuthenticationRequiredHandler = () => void | Promise<void>;
+
+export function createLoveChapterApi(
+  getToken: TokenProvider,
+  onAuthenticationRequired: AuthenticationRequiredHandler,
+) {
+  const request = <T>(path: string, init?: RequestInit) =>
+    authenticatedRequest<T>(getToken, onAuthenticationRequired, path, init);
+
+  return {
+    getMe: () => request<AuthenticatedUser>("/v1/me"),
+    updateMyProfile: (input: UpdateProfileInput) =>
+      request<AuthenticatedUser>("/v1/me", {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    listWeddings: (cursor?: string) =>
+      request<Page<WeddingSummary>>(`/v1/weddings?${pageQuery(cursor)}`),
+    createWedding: (input: CreateWeddingInput) =>
+      request<WeddingSummary>("/v1/weddings", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    listGuests: (weddingId: string, cursor?: string) =>
+      request<Page<GuestSummary>>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/guests?${pageQuery(cursor)}`,
+      ),
+    addGuest: (weddingId: string, input: CreateGuestInput) =>
+      request<GuestSummary>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/guests`,
+        { method: "POST", body: JSON.stringify(input) },
+      ),
+    createInvitation: (weddingId: string, guestId: string) =>
+      request<InvitationCreated>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/guests/${encodeURIComponent(guestId)}/invitations`,
+        { method: "POST", body: "{}" },
+      ),
+  };
+}
+
+export const loveChapterPublicApi = {
   getInvitation: (token: string) =>
     apiRequest<PublicInvitation>(
       `/v1/public/invitations/${encodeURIComponent(token)}`,
@@ -91,6 +111,38 @@ export const loveChapterApi = {
       { method: "PUT", body: JSON.stringify(input) },
     ),
 };
+
+export const loveChapterApi = createLoveChapterApi(
+  async () => null,
+  () => undefined,
+);
+
+async function authenticatedRequest<T>(
+  getToken: TokenProvider,
+  onAuthenticationRequired: AuthenticationRequiredHandler,
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
+  const token = await getToken();
+  if (!token) {
+    await onAuthenticationRequired();
+    throw new ApiError(
+      "Authentication required",
+      401,
+      "authentication_required",
+    );
+  }
+  const headers = new Headers(init.headers);
+  headers.set("authorization", `Bearer ${token}`);
+  try {
+    return await apiRequest<T>(path, { ...init, headers });
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      await onAuthenticationRequired();
+    }
+    throw error;
+  }
+}
 
 function pageQuery(cursor?: string): string {
   const query = new URLSearchParams({ limit: "20" });
