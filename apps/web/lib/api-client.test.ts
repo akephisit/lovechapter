@@ -15,35 +15,76 @@ afterEach(() => {
 });
 
 describe("LoveChapter API client", () => {
-  it("adds the Clerk bearer token to protected requests", async () => {
-    const getToken = vi.fn(async () => "session-token");
-    const fetchMock = vi.fn<typeof fetch>(async () =>
-      jsonResponse(userFixture()),
+  it("uses same-origin cookie credentials without bearer headers", async () => {
+    const clientFetch = vi.fn<typeof fetch>(async () =>
+      jsonResponse({ user: userFixture() }),
     );
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", clientFetch);
 
-    await createLoveChapterApi(getToken, vi.fn()).getMe();
+    await createLoveChapterApi(vi.fn()).getSession();
 
-    expect(getToken).toHaveBeenCalledOnce();
-    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
-    expect(headers.get("authorization")).toBe("Bearer session-token");
+    expect(clientFetch).toHaveBeenCalledWith(
+      "/api/v1/auth/session",
+      expect.objectContaining({ credentials: "same-origin" }),
+    );
+    const headers = new Headers(clientFetch.mock.calls[0]?.[1]?.headers);
+    expect(headers.has("authorization")).toBe(false);
   });
 
-  it("does not fetch a protected endpoint without a session token", async () => {
-    const fetchMock = vi.fn();
-    const onAuthenticationRequired = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
+  it("exposes every first-party authentication endpoint", async () => {
+    const clientFetch = vi.fn<typeof fetch>(async (input) => {
+      const path = String(input);
+      if (path.endsWith("/sign-out"))
+        return new Response(null, { status: 204 });
+      if (path.endsWith("/session")) {
+        return jsonResponse({ user: userFixture() });
+      }
+      if (path.endsWith("/verify-email")) {
+        return jsonResponse({ verified: true });
+      }
+      if (path.endsWith("/reset-password")) {
+        return jsonResponse({ reset: true });
+      }
+      if (path.endsWith("/sign-in")) {
+        return jsonResponse({ signedIn: true });
+      }
+      return jsonResponse({ accepted: true }, 202);
+    });
+    vi.stubGlobal("fetch", clientFetch);
+    const api = createLoveChapterApi(vi.fn());
 
-    await expect(
-      createLoveChapterApi(async () => null, onAuthenticationRequired).getMe(),
-    ).rejects.toEqual(
-      new ApiError("Authentication required", 401, "authentication_required"),
-    );
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(onAuthenticationRequired).toHaveBeenCalledOnce();
+    await api.signUp({
+      displayName: "Mali & Arun",
+      email: "couple@example.test",
+      password: "correct horse battery staple",
+    });
+    await api.resendVerificationEmail({ email: "couple@example.test" });
+    await api.verifyEmail({ token: "verification-token" });
+    await api.signIn({
+      email: "couple@example.test",
+      password: "correct horse battery staple",
+    });
+    await api.getSession();
+    await api.signOut();
+    await api.forgotPassword({ email: "couple@example.test" });
+    await api.resetPassword({
+      token: "reset-token",
+      password: "replacement password phrase",
+    });
+
+    expect(clientFetch.mock.calls.map(([url]) => url)).toEqual([
+      "/api/v1/auth/sign-up",
+      "/api/v1/auth/verification-email",
+      "/api/v1/auth/verify-email",
+      "/api/v1/auth/sign-in",
+      "/api/v1/auth/session",
+      "/api/v1/auth/sign-out",
+      "/api/v1/auth/forgot-password",
+      "/api/v1/auth/reset-password",
+    ]);
   });
 
-  it("retains the stable error and notifies auth state after an API 401", async () => {
+  it("retains the stable error and notifies auth state once after an API 401", async () => {
     const onAuthenticationRequired = vi.fn();
     vi.stubGlobal(
       "fetch",
@@ -61,10 +102,7 @@ describe("LoveChapter API client", () => {
     );
 
     await expect(
-      createLoveChapterApi(
-        async () => "expired-token",
-        onAuthenticationRequired,
-      ).listWeddings(),
+      createLoveChapterApi(onAuthenticationRequired).listWeddings(),
     ).rejects.toMatchObject({
       status: 401,
       code: "authentication_required",
@@ -72,35 +110,49 @@ describe("LoveChapter API client", () => {
     expect(onAuthenticationRequired).toHaveBeenCalledOnce();
   });
 
-  it("sends profile completion as a protected PATCH request", async () => {
-    const fetchMock = vi.fn<typeof fetch>(async () =>
+  it("sends JSON mutations through the same-origin route", async () => {
+    const clientFetch = vi.fn<typeof fetch>(async () =>
       jsonResponse({ ...userFixture(), displayName: "คู่รัก" }),
     );
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", clientFetch);
 
-    await createLoveChapterApi(
-      async () => "session-token",
-      vi.fn(),
-    ).updateMyProfile({ displayName: "คู่รัก" });
+    await createLoveChapterApi(vi.fn()).updateMyProfile({
+      displayName: "คู่รัก",
+    });
 
-    expect(fetchMock).toHaveBeenCalledOnce();
-    const [url, init] = fetchMock.mock.calls[0] ?? [];
-    expect(url).toBeInstanceOf(URL);
-    expect((url as URL).pathname).toBe("/v1/me");
+    const [url, init] = clientFetch.mock.calls[0] ?? [];
+    expect(url).toBe("/api/v1/me");
     expect(init?.method).toBe("PATCH");
     expect(init?.body).toBe(JSON.stringify({ displayName: "คู่รัก" }));
+    expect(new Headers(init?.headers).get("content-type")).toBe(
+      "application/json",
+    );
   });
 
-  it("keeps public invitation requests free of authorization headers", async () => {
-    const fetchMock = vi.fn<typeof fetch>(async () =>
+  it("keeps public invitation requests on the same-origin proxy", async () => {
+    const clientFetch = vi.fn<typeof fetch>(async () =>
       jsonResponse(invitationFixture()),
     );
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", clientFetch);
 
     await loveChapterPublicApi.getInvitation("safe-token");
 
-    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(clientFetch.mock.calls[0]?.[0]).toBe(
+      "/api/v1/public/invitations/safe-token",
+    );
+    const headers = new Headers(clientFetch.mock.calls[0]?.[1]?.headers);
     expect(headers.has("authorization")).toBe(false);
+  });
+
+  it("keeps stable error parsing for non-JSON failures", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("unavailable", { status: 503 })),
+    );
+
+    await expect(createLoveChapterApi(vi.fn()).getSession()).rejects.toEqual(
+      new ApiError("Request failed (503)", 503),
+    );
   });
 });
 

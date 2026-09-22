@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-export const PROXY_CREDENTIAL_HEADER = "x-lovechapter-proxy-credential";
+export const PROXY_CREDENTIAL_HEADER = "x-lovechapter-proxy-secret";
 export const CLIENT_ADDRESS_HEADER = "x-lovechapter-client-address";
 
 export type IngressSecurityConfig = {

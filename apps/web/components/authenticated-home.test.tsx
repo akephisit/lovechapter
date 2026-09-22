@@ -52,7 +52,7 @@ describe("AuthenticatedHome", () => {
 
   it("completes a Unicode profile before rendering the workspace", async () => {
     const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
-      const url = new URL(String(input));
+      const url = { pathname: proxiedApiPath(input) };
       if (url.pathname === "/v1/me" && init?.method === "PATCH") {
         return jsonResponse(userFixture("มะลิ & Arun", true));
       }
@@ -94,7 +94,7 @@ describe("AuthenticatedHome", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn<typeof fetch>(async (input) => {
-        const url = new URL(String(input));
+        const url = { pathname: proxiedApiPath(input) };
         if (url.pathname === "/v1/me") return jsonResponse(userFixture());
         if (url.pathname === "/v1/weddings") return jsonResponse(page([]));
         throw new Error(`Unexpected request: ${url.pathname}`);
@@ -149,7 +149,7 @@ describe("AuthenticatedHome", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn<typeof fetch>(async (input) => {
-        const url = new URL(String(input));
+        const url = { pathname: proxiedApiPath(input) };
         if (url.pathname === "/v1/me") return jsonResponse(userFixture());
         if (url.pathname === "/v1/weddings") {
           return jsonResponse(page([wedding]));
@@ -197,7 +197,7 @@ describe("AuthenticatedHome", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn<typeof fetch>(async (input) => {
-        const url = new URL(String(input));
+        const url = { pathname: proxiedApiPath(input) };
         if (url.pathname === "/v1/me") {
           profileReads += 1;
           return profileReads === 1
@@ -310,4 +310,11 @@ function jsonResponse(payload: unknown, status = 200): Response {
     status,
     headers: { "content-type": "application/json" },
   });
+}
+
+function proxiedApiPath(input: RequestInfo | URL): string {
+  return new URL(String(input), "https://web.example.test").pathname.replace(
+    /^\/api/,
+    "",
+  );
 }

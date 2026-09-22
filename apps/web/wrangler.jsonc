@@ -3,6 +3,8 @@
   "name": "lovechapter-web",
   "compatibility_date": "2026-09-21",
   "compatibility_flags": ["nodejs_compat"],
+  // Preserve dashboard-managed API origin and proxy secret bindings on deploy.
+  "keep_vars": true,
   "observability": {
     "enabled": true,
     "logs": {
