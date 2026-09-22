@@ -212,14 +212,51 @@ describe("LoveChapter API", () => {
     expect(response.status).toBe(404);
   });
 
+  it("keeps liveness database-free and checks readiness separately", async () => {
+    const readiness = vi.fn(async () => undefined);
+    const app = appWithIdentity(
+      new InMemoryLoveChapterRepository(),
+      createConfiguredIdentityProvider({ AUTH_MODE: "disabled" }),
+      readiness,
+    );
+
+    const live = await app.handle(new Request(`${apiOrigin}/health/live`));
+
+    expect(live.status).toBe(200);
+    await expect(live.json()).resolves.toEqual({ status: "ok" });
+    expect(readiness).not.toHaveBeenCalled();
+
+    const ready = await app.handle(new Request(`${apiOrigin}/health/ready`));
+
+    expect(ready.status).toBe(200);
+    expect(readiness).toHaveBeenCalledOnce();
+  });
+
+  it("returns 503 when the readiness dependency is unavailable", async () => {
+    const app = appWithIdentity(
+      new InMemoryLoveChapterRepository(),
+      createConfiguredIdentityProvider({ AUTH_MODE: "disabled" }),
+      async () => {
+        throw new Error("database unavailable");
+      },
+    );
+
+    const response = await app.handle(new Request(`${apiOrigin}/health/ready`));
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({ status: "unavailable" });
+  });
+
   it("allows only the configured browser origin", async () => {
     const app = testApp(new InMemoryLoveChapterRepository(), couple("one"));
 
     const allowed = await app.handle(
-      new Request(`${apiOrigin}/health`, { headers: { origin: webOrigin } }),
+      new Request(`${apiOrigin}/health/live`, {
+        headers: { origin: webOrigin },
+      }),
     );
     const rejected = await app.handle(
-      new Request(`${apiOrigin}/health`, {
+      new Request(`${apiOrigin}/health/live`, {
         headers: { origin: "https://attacker.example" },
       }),
     );
@@ -272,9 +309,11 @@ function testApp(
 function appWithIdentity(
   repository: InMemoryLoveChapterRepository,
   identity: IdentityProvider,
+  readiness: () => Promise<void> = async () => undefined,
 ) {
   return createApiApp({
     publicWebOrigin: webOrigin,
+    readiness,
     run: (request, operation) =>
       operation(
         new LoveChapterService(identity, repository, webOrigin, request),

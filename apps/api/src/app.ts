@@ -20,6 +20,7 @@ import "./elysia-typebox";
 
 export type ApiDependencies = {
   publicWebOrigin: string;
+  readiness(): Promise<void>;
   run<T>(
     request: Request,
     operation: (service: LoveChapterService) => Promise<T>,
@@ -105,7 +106,15 @@ export function createApiApp(dependencies: ApiDependencies) {
       applyCors(request, set.headers, dependencies.publicWebOrigin);
       return status(204);
     })
-    .get("/health", () => ({ status: "ok" as const }))
+    .get("/health/live", () => ({ status: "ok" as const }))
+    .get("/health/ready", async () => {
+      try {
+        await dependencies.readiness();
+        return { status: "ok" as const };
+      } catch {
+        return status(503, { status: "unavailable" as const });
+      }
+    })
     .get("/v1/me", ({ request }) =>
       dependencies.run(request, (service) => service.getMe()),
     )

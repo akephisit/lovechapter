@@ -1,6 +1,6 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { SQL } from "drizzle-orm";
-import { Client } from "pg";
+import { Client, Pool, type PoolConfig } from "pg";
 
 import {
   PostgresLoveChapterRepository,
@@ -27,6 +27,56 @@ class DrizzleQueryExecutor implements QueryExecutor {
 }
 
 export type PostgresClientFactory = (connectionString: string) => Client;
+
+export type PostgresRuntimeConfig = {
+  databaseUrl: string;
+  databasePoolMax: number;
+};
+
+export type PostgresRuntime = {
+  pool: Pool;
+  loveChapterRepository: PostgresLoveChapterRepository;
+  close(): Promise<void>;
+};
+
+export function createPoolConfig(
+  environment: Record<string, string | undefined>,
+): PoolConfig {
+  const connectionString = environment.DATABASE_URL?.trim();
+  if (!connectionString) {
+    throw new Error("DATABASE_URL is required");
+  }
+  const max = Number(environment.DATABASE_POOL_MAX ?? "6");
+  if (!Number.isInteger(max) || max < 1 || max > 6) {
+    throw new Error("DATABASE_POOL_MAX must be an integer between 1 and 6");
+  }
+  return {
+    connectionString,
+    max,
+    connectionTimeoutMillis: 5_000,
+    idleTimeoutMillis: 30_000,
+    query_timeout: 10_000,
+  };
+}
+
+export function createPostgresRuntime(
+  config: PostgresRuntimeConfig,
+  createPool: (config: PoolConfig) => Pool = (poolConfig) =>
+    new Pool(poolConfig),
+): PostgresRuntime {
+  const pool = createPool(
+    createPoolConfig({
+      DATABASE_URL: config.databaseUrl,
+      DATABASE_POOL_MAX: String(config.databasePoolMax),
+    }),
+  );
+  const executor = new DrizzleQueryExecutor(drizzle({ client: pool }));
+  return {
+    pool,
+    loveChapterRepository: new PostgresLoveChapterRepository(executor),
+    close: () => pool.end(),
+  };
+}
 
 class LazyPostgresQueryExecutor implements QueryExecutor {
   private connection: Promise<DrizzleQueryExecutor> | null = null;
