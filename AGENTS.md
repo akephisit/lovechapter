@@ -54,13 +54,13 @@ Product name: **LoveChapter**
 
 No custom domain is registered yet.
 
-`lovechapter.tech` is only a candidate.
+The owner intends to register `lovechapter.net`, but ownership is unconfirmed.
 
 Until registration is confirmed:
 
-- use Cloudflare `*.workers.dev` deployment URLs;
+- use available generated deployment URLs;
 - keep origins configurable;
-- never hardcode `lovechapter.tech`;
+- never hardcode `lovechapter.net`;
 - do not create redirects/cookies/CORS rules that assume ownership of that domain.
 
 ---
@@ -83,33 +83,48 @@ Backend:
 
 - Elysia 2
 - TypeScript
-- Cloudflare Workers runtime
+- Bun 1.4.2 production runtime
+- always-on VPS HTTP process
+- separate Bun background-job process
+- browser traffic reaches the API only through the frontend Worker's server-side
+  same-origin proxy
 
 Database:
 
 - Neon PostgreSQL
-- Cloudflare Hyperdrive
 - Drizzle ORM
-- prefer `pg` / node-postgres with Hyperdrive when compatible
+- bounded direct `pg` / node-postgres pools
 
-Supporting Cloudflare services only when needed:
+Frontend-supporting Cloudflare services only when needed:
 
 - R2
-- Queues
-- Workflows/Cron
 - Durable Objects
 - KV
 
 Bun:
 
-- allowed for package management/scripts/local tooling;
-- not the production HTTP runtime.
+- pinned to 1.4.2 for backend production;
+- used for the API HTTP process and background-job process;
+- Bun-only APIs stay in bootstrap/runtime modules.
 
-Do not use Bun-only server/runtime APIs in domain logic.
+Do not use Bun-only server/runtime APIs in domain, authentication, or repository logic.
 
 Do not replace Elysia 2 with another HTTP framework without explicit approval.
 
-Elysia 2 and its Cloudflare adapter are currently version-sensitive. If a blocker exists, reproduce and document it rather than silently changing architecture.
+Elysia 2 is version-sensitive. If a blocker exists, reproduce and document it rather than silently changing architecture.
+
+Authentication:
+
+- first-party verified-email/password accounts;
+- database-backed sessions in secure HTTP-only cookies;
+- Resend behind an isolated email-transport interface;
+- guest invitation and RSVP flows remain account-free.
+
+`AUTH_MODE` supports only `disabled`, `development`, and `local`. Keep
+`disabled` as the safe default, reject `development` in production, and enable
+`local` only after every production security and delivery dependency exists.
+
+Clerk and other managed authentication providers are not production targets.
 
 ---
 
@@ -144,7 +159,7 @@ Rules:
 12. Use `EXISTS` for existence checks when the full count is not required.
 13. Prefer set-based operations/batching over loops that perform one SQL statement per row.
 14. Keep transactions short and intentional.
-15. Avoid unnecessary database round trips from Workers to PostgreSQL.
+15. Avoid unnecessary database round trips between backend processes and PostgreSQL.
 16. Apply tenant/wedding filtering in SQL, not after rows are fetched.
 17. Define deterministic ordering for pagination.
 18. Query only the data the caller is authorized to access.
@@ -234,13 +249,30 @@ Prefer:
 Avoid:
 
 - premature microservices;
-- VPS-first deployment;
+- a second backend runtime or API Worker;
 - Kubernetes;
 - Redis without a demonstrated requirement;
 - giant service files;
 - duplicate business logic;
 - realtime everywhere;
 - unnecessary Cloudflare services.
+
+---
+
+## Asynchronous and parallel work
+
+- Use asynchronous APIs for network, database, crypto, and email operations.
+- Run work in parallel only when operations are independent.
+- Use `Promise.all` only for small, statically bounded sets.
+- Apply explicit concurrency limits to data-dependent or batched work.
+- Keep dependency chains and operations sharing one transaction/client sequential.
+- Prefer set-based SQL over parallel loops that issue one query per row.
+- Make retryable background jobs idempotent.
+- Add cancellation, timeouts, and error aggregation where applicable.
+- Persist work that must survive a response before scheduling it.
+- Move CPU-heavy work away from the request loop when it cannot meet the runtime budget.
+
+Parallelism must not disguise N+1 access or issue unbounded remote work.
 
 ---
 

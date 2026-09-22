@@ -1,9 +1,11 @@
+import { AuthServiceError, type AuthService } from "@lovechapter/auth";
 import {
   AuthenticationRequiredError,
   ConflictError,
   DomainValidationError,
   NotFoundError,
   OnboardingRequiredError,
+  RateLimitExceededError,
   type LoveChapterService,
 } from "@lovechapter/domain";
 import {
@@ -17,9 +19,36 @@ import {
 import { WebStandardAdapter } from "elysia/adapter/web-standard";
 
 import "./elysia-typebox";
+import {
+  authorizeIngress,
+  RequestSecurityError,
+  requireJsonContentType,
+  requireMutationOrigin,
+} from "./request-security";
+import {
+  expireSessionCookie,
+  readSessionCookie,
+  serializeSessionCookie,
+  type CookieEnvironment,
+} from "./session-cookie";
 
 export type ApiDependencies = {
+  authService: Pick<
+    AuthService,
+    | "signUp"
+    | "resendVerificationEmail"
+    | "verifyEmail"
+    | "signIn"
+    | "resolveSession"
+    | "signOut"
+    | "forgotPassword"
+    | "resetPassword"
+  >;
+  nodeEnvironment: CookieEnvironment;
   publicWebOrigin: string;
+  proxyCredential: string;
+  fingerprintKey: Uint8Array;
+  readiness(): Promise<void>;
   run<T>(
     request: Request,
     operation: (service: LoveChapterService) => Promise<T>,
@@ -67,9 +96,54 @@ const rsvpInput = t.Object(
   },
   { additionalProperties: false },
 );
+const emailInput = t.Object(
+  { email: t.String({ minLength: 1, maxLength: 320 }) },
+  { additionalProperties: false },
+);
+const signUpInput = t.Object(
+  {
+    displayName: t.String({ minLength: 1, maxLength: 120 }),
+    email: t.String({ minLength: 1, maxLength: 320 }),
+    password: t.String({ minLength: 1, maxLength: 512 }),
+  },
+  { additionalProperties: false },
+);
+const signInInput = t.Object(
+  {
+    email: t.String({ minLength: 1, maxLength: 320 }),
+    password: t.String({ minLength: 1, maxLength: 512 }),
+  },
+  { additionalProperties: false },
+);
+const tokenInput = t.Object(
+  { token: t.String({ minLength: 1, maxLength: 512 }) },
+  { additionalProperties: false },
+);
+const resetPasswordInput = t.Object(
+  {
+    token: t.String({ minLength: 1, maxLength: 512 }),
+    password: t.String({ minLength: 1, maxLength: 512 }),
+  },
+  { additionalProperties: false },
+);
 
 export function createApiApp(dependencies: ApiDependencies) {
   return new Elysia({ adapter: WebStandardAdapter })
+    .request(({ request }) => {
+      enforceRequestSecurity(request, dependencies);
+    })
+    .derive("global", ({ request }) => {
+      if (new URL(request.url).pathname === "/health/live") {
+        return { ingressFingerprint: "" };
+      }
+      const ingress = authorizeIngress(request, {
+        proxyCredential: dependencies.proxyCredential,
+        fingerprintKey: dependencies.fingerprintKey,
+      });
+      return {
+        ingressFingerprint: ingress.allowed ? ingress.fingerprint : "",
+      };
+    })
     .afterHandle("global", ({ request, set }) => {
       applyCors(request, set.headers, dependencies.publicWebOrigin);
     })
@@ -80,6 +154,15 @@ export function createApiApp(dependencies: ApiDependencies) {
       }
       if (error instanceof DomainValidationError) {
         return status(400, errorBody("validation_error", error.message));
+      }
+      if (error instanceof AuthServiceError) {
+        return status(error.status, errorBody(error.code, error.message));
+      }
+      if (error instanceof RateLimitExceededError) {
+        return status(429, errorBody(error.code, error.message));
+      }
+      if (error instanceof RequestSecurityError) {
+        return status(error.status, errorBody(error.code, "Request rejected"));
       }
       if (error instanceof AuthenticationRequiredError) {
         return status(
@@ -99,13 +182,123 @@ export function createApiApp(dependencies: ApiDependencies) {
       if (error instanceof ConflictError) {
         return status(409, errorBody("conflict", error.message));
       }
+      if (isDependencyUnavailable(error)) {
+        return status(
+          503,
+          errorBody(
+            "dependency_unavailable",
+            "Service temporarily unavailable",
+          ),
+        );
+      }
       return status(500, errorBody("internal_error", "Internal server error"));
     })
     .options("/*", ({ request, set }) => {
       applyCors(request, set.headers, dependencies.publicWebOrigin);
       return status(204);
     })
-    .get("/health", () => ({ status: "ok" as const }))
+    .get("/health/live", () => ({ status: "ok" as const }))
+    .get("/health/ready", async () => {
+      try {
+        await dependencies.readiness();
+        return { status: "ok" as const };
+      } catch {
+        return status(503, { status: "unavailable" as const });
+      }
+    })
+    .post(
+      "/v1/auth/sign-up",
+      { body: signUpInput },
+      async ({ body, ingressFingerprint }) =>
+        status(
+          202,
+          await dependencies.authService.signUp(body, ingressFingerprint),
+        ),
+    )
+    .post(
+      "/v1/auth/verification-email",
+      { body: emailInput },
+      async ({ body, ingressFingerprint }) =>
+        status(
+          202,
+          await dependencies.authService.resendVerificationEmail(
+            body,
+            ingressFingerprint,
+          ),
+        ),
+    )
+    .post(
+      "/v1/auth/verify-email",
+      { body: tokenInput },
+      ({ body, ingressFingerprint }) =>
+        dependencies.authService.verifyEmail(body, ingressFingerprint),
+    )
+    .post(
+      "/v1/auth/sign-in",
+      { body: signInInput },
+      async ({ body, ingressFingerprint, set }) => {
+        const session = await dependencies.authService.signIn(
+          body,
+          ingressFingerprint,
+        );
+        set.headers["Set-Cookie"] = serializeSessionCookie(
+          session.token,
+          new Date(session.absoluteExpiresAt),
+          dependencies.nodeEnvironment,
+        );
+        return { signedIn: true as const };
+      },
+    )
+    .get("/v1/auth/session", async ({ request }) => {
+      const token = readSessionCookie(request, dependencies.nodeEnvironment);
+      const principal = token
+        ? await dependencies.authService.resolveSession(token)
+        : null;
+      if (!principal) throw new AuthenticationRequiredError();
+      return {
+        user: {
+          id: principal.subject,
+          displayName: principal.displayName,
+          ...(principal.email ? { email: principal.email } : {}),
+          onboardingComplete: true,
+        },
+      };
+    })
+    .post("/v1/auth/sign-out", async ({ request, set }) => {
+      await dependencies.authService.signOut(
+        readSessionCookie(request, dependencies.nodeEnvironment),
+      );
+      set.headers["Set-Cookie"] = expireSessionCookie(
+        dependencies.nodeEnvironment,
+      );
+      return status(204);
+    })
+    .post(
+      "/v1/auth/forgot-password",
+      { body: emailInput },
+      async ({ body, ingressFingerprint }) =>
+        status(
+          202,
+          await dependencies.authService.forgotPassword(
+            body,
+            ingressFingerprint,
+          ),
+        ),
+    )
+    .post(
+      "/v1/auth/reset-password",
+      { body: resetPasswordInput },
+      async ({ body, ingressFingerprint, set }) => {
+        const result = await dependencies.authService.resetPassword(
+          body,
+          ingressFingerprint,
+        );
+        set.headers["Set-Cookie"] = expireSessionCookie(
+          dependencies.nodeEnvironment,
+        );
+        return result;
+      },
+    )
     .get("/v1/me", ({ request }) =>
       dependencies.run(request, (service) => service.getMe()),
     )
@@ -181,6 +374,40 @@ export function createApiApp(dependencies: ApiDependencies) {
 
 function errorBody(code: string, message: string) {
   return { error: { code, message } };
+}
+
+function enforceRequestSecurity(
+  request: Request,
+  dependencies: Pick<
+    ApiDependencies,
+    "proxyCredential" | "fingerprintKey" | "publicWebOrigin"
+  >,
+): void {
+  if (new URL(request.url).pathname === "/health/live") return;
+  const ingress = authorizeIngress(request, {
+    proxyCredential: dependencies.proxyCredential,
+    fingerprintKey: dependencies.fingerprintKey,
+  });
+  if (!ingress.allowed) {
+    throw new RequestSecurityError("request_ingress_rejected", 403);
+  }
+  if (
+    request.method !== "GET" &&
+    request.method !== "HEAD" &&
+    request.method !== "OPTIONS"
+  ) {
+    requireMutationOrigin(request, dependencies.publicWebOrigin);
+    requireJsonContentType(request);
+  }
+}
+
+function isDependencyUnavailable(error: unknown): boolean {
+  if (!error || typeof error !== "object" || !("code" in error)) return false;
+  const code = String(error.code);
+  return (
+    code.startsWith("08") ||
+    ["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "57P01"].includes(code)
+  );
 }
 
 function applyCors(

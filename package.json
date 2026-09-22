@@ -8,11 +8,13 @@
     "packages/*"
   ],
   "engines": {
+    "bun": "1.4.2",
     "node": ">=24"
   },
   "scripts": {
-    "build": "npm run build --workspace @lovechapter/api && npm run build --workspace @lovechapter/web",
+    "build": "npm run build --workspace @lovechapter/api && npm run build --workspace @lovechapter/jobs && npm run build --workspace @lovechapter/web",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run build",
+    "ci": "npm run check && npm run db:check --workspace @lovechapter/database && npm run smoke:bun --workspace @lovechapter/api && npm run build:next --workspace @lovechapter/web && npm run check:vinext --workspace @lovechapter/web && npm run deploy --workspace @lovechapter/web -- --dry-run",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",

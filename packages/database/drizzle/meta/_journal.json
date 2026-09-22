@@ -15,6 +15,13 @@
       "when": 1790007028969,
       "tag": "0001_add_user_onboarding",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790059867279,
+      "tag": "0002_custom_auth",
+      "breakpoints": true
     }
   ]
 }

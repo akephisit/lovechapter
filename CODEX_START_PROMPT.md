@@ -28,19 +28,18 @@ Guest access must work without creating an account.
 
 No custom domain has been registered.
 
-`lovechapter.tech` is a candidate only.
+The owner intends to register `lovechapter.net`, but ownership is unconfirmed.
 
 For now:
 
-- deploy to Cloudflare-generated `*.workers.dev` URLs;
+- use available generated deployment URLs;
 - use environment/config variables for frontend/API origins;
-- do not hardcode or configure `lovechapter.tech`;
-- report the actual Workers URLs after deployment.
+- do not hardcode or configure `lovechapter.net`;
+- report only URLs observed from real deployment output.
 
-Suggested Worker names:
+Suggested frontend Worker name:
 
 - `lovechapter-web`
-- `lovechapter-api`
 
 ## Required stack
 
@@ -60,37 +59,38 @@ Backend:
 
 - Elysia 2
 - TypeScript
-- Cloudflare Workers runtime
+- Bun 1.4.2
+- always-on VPS HTTP process
+- separate Bun background-job process
+- same-origin browser access through a server-only frontend Worker proxy
 
 Database:
 
 - Neon PostgreSQL
-- Cloudflare Hyperdrive
 - Drizzle ORM
-- prefer `pg` / node-postgres with Hyperdrive when compatible
+- bounded direct `pg` / node-postgres pools
 
 Do not use Cloudflare D1 as primary data store.
 
-Do not use the Neon serverless driver on top of Hyperdrive unless current official integration requirements demonstrate a reason.
+Do not use Hyperdrive or a backend Worker in production.
 
-Bun can be package manager/tooling but production API is not a Bun server.
-
-Do not use `Bun.serve()` or Bun-only APIs in production/domain logic.
+Bun-only APIs belong in API/job bootstrap modules, not domain, authentication,
+or repository logic.
 
 ## Elysia 2 requirement
 
 Elysia 2 is a deliberate project decision.
 
-At the time this project context was written, Elysia 2 is beta and Cloudflare Worker support is experimental/version-sensitive.
+At the time this project context was written, Elysia 2 is beta and version-sensitive.
 
 Therefore:
 
 1. inspect the current official Elysia documentation;
 2. use the current Elysia 2 line appropriate at implementation time;
-3. verify the Cloudflare Workers adapter;
+3. verify the Bun HTTP adapter and lifecycle;
 4. do not assume Elysia 1.x examples are correct;
 5. verify required compile/adapter/build behavior for the selected version;
-6. do not silently replace Elysia 2.
+6. do not silently replace Elysia 2 or add a second backend runtime.
 
 If Elysia 2 is actually blocked:
 
@@ -141,10 +141,10 @@ Couple identity
 Implement:
 
 1. monorepo foundation;
-2. current Cloudflare-compatible local dev;
-3. Worker configuration;
+2. current frontend Worker-compatible local dev;
+3. frontend Worker configuration;
 4. environment strategy;
-5. Neon + Hyperdrive + Drizzle foundation;
+5. Neon + bounded `pg` pools + Drizzle foundation;
 6. MVP schema and migrations;
 7. auth boundary for Couple/Planner;
 8. wedding creation;
@@ -160,7 +160,14 @@ Implement:
 18. automated tests for critical auth/invitation/RSVP behavior;
 19. SQL/index/query review for MVP data paths.
 
-Authentication provider is still an OPEN DECISION. Do not invent a bespoke production password system. If an auth provider is not yet configured, build a clean auth boundary and continue every non-blocked part of the vertical slice; clearly record the remaining authentication integration in `docs/OPEN_QUESTIONS.md` / `docs/PROGRESS.md`.
+Authentication is first-party verified-email/password with database-backed
+sessions. Email verification is required before sign-in. Use Resend only behind
+a replaceable email-transport interface, revoke every session on password reset,
+and keep guest RSVP account-free.
+
+Allow only `AUTH_MODE=disabled`, `AUTH_MODE=development`, and
+`AUTH_MODE=local`. Keep `disabled` as the default and reject `development` in
+production.
 
 ## Do not implement yet
 
@@ -179,7 +186,16 @@ Unless genuinely necessary:
 - complex analytics;
 - Redis;
 - Kubernetes;
-- VPS deployment.
+- a backend Worker or second backend runtime.
+
+## Asynchronous work
+
+Use async APIs for network, database, crypto, and email work. Parallelize only
+independent operations, use `Promise.all` only for small statically bounded
+sets, and apply explicit concurrency limits to batched work. Keep transaction
+dependency chains sequential, prefer set-based SQL to parallel query loops,
+and require idempotency, cancellation, timeouts, and bounded cleanup for
+retryable background jobs. Persist work that must survive the response.
 
 ## Database/schema expectations
 
@@ -255,5 +271,5 @@ At the end report:
 - commands/checks that actually passed;
 - database/query/index decisions;
 - unresolved blockers;
-- deployed `*.workers.dev` URLs if deployment was performed;
+- deployed URLs if deployment was performed;
 - next smallest milestone.

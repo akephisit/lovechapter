@@ -1,183 +1,34 @@
 "use client";
 
-import type { AuthenticatedUser } from "@lovechapter/contracts";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useMemo } from "react";
 
-import {
-  ApiError,
-  createLoveChapterApi,
-  type TokenProvider,
-} from "../lib/api-client";
+import { createLoveChapterApi } from "../lib/api-client";
+import { useAuthSession } from "./auth-session-provider";
 import { CoupleWorkspace } from "./couple-workspace";
 import { ProfileOnboarding } from "./profile-onboarding";
-import { Button } from "./ui/button";
-import { Card } from "./ui/card";
 
-export type AuthenticatedSession = {
-  isLoaded: boolean;
-  isSignedIn: boolean;
-  getToken: TokenProvider;
-  suggestedDisplayName: string;
-  signOut(): Promise<void>;
-};
-
-type Props = {
-  session: AuthenticatedSession;
-  signedOutFallback: ReactNode;
-};
-
-type ViewState =
-  "loading" | "ready" | "error" | "signing-out" | "sign-out-error";
-
-export function AuthenticatedHome({ session, signedOutFallback }: Props) {
-  const { isLoaded, isSignedIn, getToken, signOut, suggestedDisplayName } =
-    session;
-  const [identity, setIdentity] = useState<AuthenticatedUser | null>(null);
-  const [viewState, setViewState] = useState<ViewState>("loading");
-  const [retryRevision, setRetryRevision] = useState(0);
-  const requestGeneration = useRef(0);
-  const signOutInFlight = useRef<Promise<void> | null>(null);
-
-  const handleAuthenticationRequired = useCallback(async () => {
-    setIdentity(null);
-    setViewState("signing-out");
-    if (!signOutInFlight.current) {
-      const attempt = Promise.resolve()
-        .then(() => signOut())
-        .catch(() => {
-          setViewState("sign-out-error");
-        })
-        .finally(() => {
-          if (signOutInFlight.current === attempt) {
-            signOutInFlight.current = null;
-          }
-        });
-      signOutInFlight.current = attempt;
-    }
-    await signOutInFlight.current;
-  }, [signOut]);
-
+export function AuthenticatedHome() {
+  const session = useAuthSession();
   const api = useMemo(
-    () => createLoveChapterApi(getToken, handleAuthenticationRequired),
-    [getToken, handleAuthenticationRequired],
+    () => createLoveChapterApi(session.refresh),
+    [session.refresh],
   );
 
-  useEffect(() => {
-    const generation = ++requestGeneration.current;
-
-    if (!isLoaded) {
-      setIdentity(null);
-      setViewState("loading");
-      return;
-    }
-    if (!isSignedIn) {
-      setIdentity(null);
-      return;
-    }
-
-    setViewState("loading");
-    void api
-      .getMe()
-      .then((user) => {
-        if (requestGeneration.current !== generation) return;
-        setIdentity(user);
-        setViewState("ready");
-      })
-      .catch((error: unknown) => {
-        if (requestGeneration.current !== generation) return;
-        if (error instanceof ApiError && error.status === 401) return;
-        setIdentity(null);
-        setViewState("error");
-      });
-
-    return () => {
-      if (requestGeneration.current === generation) {
-        requestGeneration.current += 1;
-      }
-    };
-  }, [api, isLoaded, isSignedIn, retryRevision]);
-
-  if (!isLoaded) return <SessionMessage>Checking your session…</SessionMessage>;
-  if (!isSignedIn) return signedOutFallback;
-  if (viewState === "signing-out") {
-    return <SessionMessage>Signing you out…</SessionMessage>;
-  }
-  if (viewState === "sign-out-error") {
-    return (
-      <main className="grid min-h-screen place-items-center px-4 py-10">
-        <Card className="w-full max-w-lg p-8 text-center">
-          <h1 className="font-serif text-3xl font-semibold text-[#432f35]">
-            We couldn't sign you out.
-          </h1>
-          <p className="mt-3 leading-7 text-[#725f62]">
-            Your protected workspace has been cleared. Please try signing out
-            again.
-          </p>
-          <Button
-            className="mt-6"
-            onClick={() => void handleAuthenticationRequired()}
-          >
-            Try signing out again
-          </Button>
-        </Card>
-      </main>
-    );
-  }
-  if (viewState === "error") {
-    return (
-      <main className="grid min-h-screen place-items-center px-4 py-10">
-        <Card className="w-full max-w-lg p-8 text-center">
-          <h1 className="font-serif text-3xl font-semibold text-[#432f35]">
-            We couldn't load your profile.
-          </h1>
-          <p className="mt-3 leading-7 text-[#725f62]">
-            Your session is still active. Please try the request again.
-          </p>
-          <Button
-            className="mt-6"
-            onClick={() => setRetryRevision((current) => current + 1)}
-          >
-            Try again
-          </Button>
-        </Card>
-      </main>
-    );
-  }
-  if (viewState !== "ready" || !identity) {
-    return <SessionMessage>Checking your session…</SessionMessage>;
-  }
-  if (!identity.onboardingComplete) {
+  if (session.status !== "authenticated") return null;
+  if (!session.user.onboardingComplete) {
     return (
       <ProfileOnboarding
-        suggestedDisplayName={suggestedDisplayName}
+        suggestedDisplayName={session.user.displayName}
         api={api}
-        onComplete={(user) => setIdentity(user)}
+        onComplete={() => void session.refresh()}
       />
     );
   }
-
   return (
     <CoupleWorkspace
-      identity={identity}
+      identity={session.user}
       api={api}
-      onSignOut={() => void handleAuthenticationRequired()}
+      onSignOut={() => void session.signOut()}
     />
-  );
-}
-
-function SessionMessage({ children }: { children: ReactNode }) {
-  return (
-    <main className="grid min-h-screen place-items-center px-4 py-10">
-      <p className="text-sm font-semibold text-[#725f62]" aria-live="polite">
-        {children}
-      </p>
-    </main>
   );
 }

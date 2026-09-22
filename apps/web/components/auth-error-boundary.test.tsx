@@ -16,7 +16,7 @@ describe("AuthErrorBoundary", () => {
     let shouldThrow = true;
 
     function Child() {
-      if (shouldThrow) throw new Error("Clerk failed");
+      if (shouldThrow) throw new Error("Session provider failed");
       return <p>Session restored</p>;
     }
 

@@ -60,7 +60,7 @@ describe("PostgresLoveChapterRepository", () => {
     });
   });
 
-  it("requires onboarding for a newly synchronized Clerk identity", async () => {
+  it("requires onboarding for a newly synchronized external identity", async () => {
     const executor = new FakeExecutor([
       {
         id: "00000000-0000-7000-8000-000000000011",
@@ -73,8 +73,8 @@ describe("PostgresLoveChapterRepository", () => {
 
     await expect(
       repository.syncUser({
-        provider: "clerk",
-        subject: "user_clerk",
+        provider: "external",
+        subject: "external-user",
         displayName: "couple@example.test",
         email: "couple@example.test",
       }),

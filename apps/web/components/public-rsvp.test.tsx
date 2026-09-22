@@ -35,6 +35,7 @@ describe("PublicRsvp", () => {
       await screen.findByRole("heading", { name: /you're invited/i }),
     ).toBeVisible();
     expect(screen.getByText("Mali & Arun")).toBeVisible();
+    expect(document.body).not.toHaveTextContent("safe-token");
     await user.click(screen.getByLabelText(/joyfully accept/i));
     await user.selectOptions(screen.getByLabelText(/party size/i), "2");
     await user.type(screen.getByLabelText(/note/i), "Can't wait!");

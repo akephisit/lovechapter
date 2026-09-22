@@ -127,6 +127,52 @@ describe("CoupleWorkspace", () => {
     expect(listGuests).toHaveBeenLastCalledWith(wedding.id);
   });
 
+  it("removes a one-time invitation URL when the wedding scope changes", async () => {
+    const firstWedding = weddingFixture();
+    const secondWedding = {
+      ...weddingFixture(),
+      id: crypto.randomUUID(),
+      name: "Dao & Lin",
+    };
+    const guest = guestFixture();
+    const api: CoupleWorkspaceApi = {
+      listWeddings: vi.fn(async () => page([firstWedding, secondWedding])),
+      createWedding: vi.fn(),
+      listGuests: vi.fn(async (weddingId: string) =>
+        page(weddingId === firstWedding.id ? [guest] : []),
+      ),
+      addGuest: vi.fn(),
+      createInvitation: vi.fn(async () => invitationFixture(guest.id)),
+    };
+    const user = userEvent.setup();
+
+    render(
+      <CoupleWorkspace
+        identity={userFixture()}
+        api={api}
+        onSignOut={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("Nok")).toBeVisible();
+    await user.click(
+      screen.getByRole("button", { name: /create invitation/i }),
+    );
+    expect(
+      await screen.findByRole("link", { name: /open nok's invitation/i }),
+    ).toBeVisible();
+
+    await user.click(
+      screen.getByRole("button", { name: new RegExp(secondWedding.name, "i") }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: secondWedding.name }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("link", { name: /open nok's invitation/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it("keeps the selected wedding's guests when an older request finishes last", async () => {
     const firstWedding = weddingFixture();
     const secondWedding = {

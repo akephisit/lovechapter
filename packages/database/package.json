@@ -11,9 +11,11 @@
     "db:check": "drizzle-kit check",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "test:postgres": "vitest run --config vitest.postgres.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@lovechapter/auth": "0.1.0",
     "@lovechapter/contracts": "0.1.0",
     "@lovechapter/domain": "0.1.0",
     "drizzle-orm": "0.45.3",

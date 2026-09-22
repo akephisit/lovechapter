@@ -4,12 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "wrangler deploy --dry-run --outdir dist",
-    "dev": "wrangler dev",
+    "dev": "bun --watch src/server.ts",
+    "build": "bun build src/server.ts --target=bun --sourcemap=linked --outdir=dist",
+    "benchmark:auth": "bun src/scrypt-benchmark.ts",
+    "start": "bun dist/server.js",
+    "smoke:bun": "bun src/bun-runtime-smoke.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@clerk/backend": "3.18.1",
+    "@lovechapter/auth": "0.1.0",
     "@lovechapter/contracts": "0.1.0",
     "@lovechapter/database": "0.1.0",
     "@lovechapter/domain": "0.1.0",
@@ -19,7 +22,6 @@
     "typebox": "1.3.34"
   },
   "devDependencies": {
-    "@types/bun": "1.4.2",
-    "wrangler": "4.135.0"
+    "@types/bun": "1.4.2"
   }
 }

@@ -1,0 +1,7 @@
+# API_ORIGIN_HOST must be a DNS name whose ownership and TLS routing have been
+# verified. Access logging is intentionally not enabled: invitation tokens are
+# bearer credentials in URL paths.
+{$API_ORIGIN_HOST} {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3001
+}

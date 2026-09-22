@@ -20,6 +20,20 @@ export type AuthenticatedUser = {
   onboardingComplete: boolean;
 };
 
+export type SignUpInput = {
+  displayName: string;
+  email: string;
+  password: string;
+};
+
+export type SignInInput = { email: string; password: string };
+export type ResendVerificationInput = { email: string };
+export type VerifyEmailInput = { token: string };
+export type ForgotPasswordInput = { email: string };
+export type ResetPasswordInput = { token: string; password: string };
+export type AcceptedResponse = { accepted: true };
+export type AuthSessionResponse = { user: AuthenticatedUser };
+
 export type UpdateProfileInput = {
   displayName: string;
 };

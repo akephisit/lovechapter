@@ -2,87 +2,105 @@
 
 ## Current phase
 
-First MVP vertical slice and Clerk authentication integration implemented and
-locally verified; provider/database provisioning and live staging smoke tests
-are pending.
+The approved Bun/VPS backend migration and first-party authentication vertical
+slice are implemented. The repository includes buildable API/job artifacts,
+the same-origin web proxy, account UI, provider-free tests, example systemd and
+Caddy assets, and an operational handoff.
+
+This is locally verified code, not a production deployment. No VPS, custom
+domain, Neon production database, Resend sender, or live URL is provisioned or
+claimed.
 
 ## Implemented
 
-- Product name selected: LoveChapter
-- Product vision documented
-- Couple / Planner / Guest model documented
-- Cloudflare-first direction documented
-- Elysia 2 decision documented
-- Neon + Hyperdrive + Drizzle decision documented
-- SQL/database performance rules documented
-- No-custom-domain / `workers.dev` strategy documented
-- npm-workspace monorepo with independently deployable web and API Workers
-- Next.js 16 App Router Couple workspace and account-free guest RSVP route
-- PWA manifest and conservative service-worker registration with no data caching
-- Elysia 2 API routes, request validation, configured CORS, and stable errors
-- Fail-closed server identity boundary plus environment-only development identity
-- Clerk open-registration session flow for Google and verified-email OTP
-- Networkless Clerk session-token verification with exact authorized parties
-- First-login Unicode profile onboarding and local profile ownership
-- Sign-in, sign-up, sign-out, retry, expired-session, and auth-error UI states
-- Wedding, membership, guest, invitation, and RSVP application flow
-- Six-table Drizzle schema and generated PostgreSQL migration
-- Tenant-scoped, parameterized, explicitly projected, bounded repository queries
-- Indexed keyset pagination controls for wedding and guest collections
-- SHA-256-only invitation-token storage and token-scoped public access
-- Retryable transient invitation loading with private invalid/expired states
-- Authenticated user visibility plus guest-list RSVP refresh and invitation copy
-- Build-time public API-origin validation with no localhost production fallback
-- Invitation-token-safe Worker telemetry defaults
-- Automated domain, repository, API, and UI coverage
-- Local/deployment instructions and per-query/index review
+- Bun 1.4.2 API runtime with bounded request/body/time limits, graceful drain,
+  readiness, and fail-closed validated configuration
+- Separate bounded Bun auth-email job process with leases, retries,
+  idempotency, terminal failures, and retention cleanup
+- First-party verified-email/password accounts using production-policy scrypt
+  with a global concurrency cap of two
+- Versioned HMAC action tokens, hashed session secrets, secure production
+  cookies, all-session password-reset revocation, and bounded database rate
+  limits
+- Five auth/outbox tables plus generated migration, constraints, and
+  access-pattern indexes
+- Bounded direct PostgreSQL pools: API maximum 6, jobs maximum 2
+- Next.js/vinext same-origin server proxy with strict path/header policy, body
+  cap, cookie forwarding, server-only upstream credentials, HTTPS-only remote
+  origins, and `no-store` API responses
+- Account/session provider, sign-up/sign-in/verification/reset UI, Unicode-safe
+  password handling, and immediate fragment scrubbing
+- Wedding, guest, private invitation, account-free RSVP, and couple-visible
+  response flow
+- Conservative service worker with no fetch interception or data caching
+- Provider-free in-process vertical-slice proof and browser isolation
+  regressions
+- Scrypt benchmark command with p50/p95/max/RSS output and a 750 ms p95 gate
+- Hardened example systemd services, Caddy TLS proxy config, secret rotation,
+  rollback, backup, firewall, and atomic-release guidance
 
-## In progress
+## Local validation
 
-- No implementation work is currently in progress
+Task 10 validation on 2026-09-22 passed:
 
-## Not implemented
+- format and lint;
+- TypeScript checks for every workspace;
+- 44 test files / 217 tests;
+- Drizzle migration snapshot check;
+- Bun API/jobs builds;
+- native Next production build;
+- vinext compatibility check at 94%, zero issues and one documented partial
+  `reactStrictMode` item;
+- vinext production build;
+- active-source legacy-provider/deprecated-config scan with zero matches.
 
-- Public wedding page
-- Notification delivery
-- Budget
-- Vendors
-- Seating
-- Payments
-- Planner Pro
-- Realtime
-- AI
+Task 11 added benchmark unit coverage and produced this local-runner result:
 
-## Validation status
+```json
+{
+  "benchmark": "scrypt",
+  "p50Ms": 316.84606699999995,
+  "p95Ms": 380.91432699999996,
+  "maxMs": 402.899176,
+  "samples": 20,
+  "maxConcurrent": 2,
+  "rssMiB": 49.2
+}
+```
 
-Verified on 2026-09-22 with Node.js 24.21 and npm 11.19:
+Task 11's complete local validation also passed formatting, lint, every
+workspace typecheck, 46 test files / 220 tests, Drizzle snapshot validation,
+API build and Bun smoke, the benchmark budget, jobs build, native Next build,
+vinext compatibility/build, Cloudflare deployment dry-run, and
+`git diff --check`. `systemd-analyze verify` accepted both unit structures and
+reported only that the deployment-path `/usr/local/bin/bun` is intentionally
+absent on this development runner.
 
-- `npm run format:check` — passed;
-- `npm run lint` — passed;
-- `npm run typecheck` — passed for all five workspaces;
-- `npm test` — 21 files and 139 tests passed;
-- `npm run db:check --workspace @lovechapter/database` — migration snapshot passed;
-- API Wrangler dry-run — passed, 1,759.08 KiB / 319.05 KiB gzip;
-- vinext Worker build — passed for `/`, `/sign-in/:sign-in*`,
-  `/sign-up/:sign-up*`, and `/i/:invitationToken`; generated `apps/web/dist`
-  contained 2,158,365 bytes of files;
-- native Next production build — passed for `/`, catch-all sign-in/sign-up,
-  dynamic invitation route, and manifest;
-- vinext Cloudflare deployment dry-run — passed without deploying;
-- built browser assets contain the configured API origin and no localhost API
-  fallback;
-- `vinext check` — 86% compatible, five supported items, partial
-  `reactStrictMode` and `@clerk/nextjs` support, and zero issues. The unsupported
-  Clerk server `auth()` surface is not used.
+Task 12's whole-branch review found and fixed session refresh write
+amplification, durable-email shutdown dequeueing, persisted idempotency-key
+use, and plaintext remote-origin acceptance. Focused regression coverage and
+the final release gate passed on 2026-09-22: formatting, lint, every workspace
+typecheck, 46 test files / 229 tests, Drizzle snapshot validation, API/jobs and
+vinext builds, Bun runtime smoke, native Next build, vinext compatibility at
+94% with zero issues, and Cloudflare deployment dry-run. The final benchmark
+reported p50 `279.59 ms`, p95 `362.25 ms`, maximum `378.92 ms`, concurrency 2,
+and RSS `48.7 MiB`, within the 750 ms p95 budget.
 
-No provisioned Clerk, deployed Neon/Hyperdrive environment, or representative
-credentials were available. Live Google/email-OTP authentication, migration
-execution, live end-to-end database testing, and
-`EXPLAIN`/`EXPLAIN (ANALYZE, BUFFERS)` were not run. No Cloudflare deployment
-was attempted, and no `*.workers.dev` URL is claimed.
+The benchmark numbers describe only the current development runner. No
+`TEST_DATABASE_URL` or confirmation flag was configured, so the live PostgreSQL
+concurrency suite and representative query plans remain explicit staging gates.
 
-The next smallest milestone is provisioning the Clerk production instance,
-Neon staging branch, and Hyperdrive binding, then running the migration,
-representative query plans, and a deployed end-to-end smoke test.
+## External gates
 
-Update this document after each significant Codex session.
+- ownership, DNS, public TLS, and exact origins for the intended domain
+- VPS provider/region/sizing and the Bun benchmark on that selected host
+- Neon region, disposable staging credentials, live concurrency suite, and
+  representative query plans
+- Resend sender/domain verification and end-to-end delivery/reputation controls
+- staged proxy/cookie, graceful-restart, lease-recovery, pool-exhaustion,
+  firewall, rollback, backup-restore, and token-redaction exercises
+- internationalized-email policy, MFA, email-address change/reverification,
+  and support/admin authentication decisions
+
+See `docs/DEPLOYMENT.md` and `docs/OPEN_QUESTIONS.md`. Update this document after
+each significant implementation or deployment session.

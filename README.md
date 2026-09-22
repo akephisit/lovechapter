@@ -1,126 +1,113 @@
 # LoveChapter
 
-LoveChapter is a global, web-first Wedding Planning SaaS for couples, professional wedding planners, and guests.
+LoveChapter is a global, web-first wedding-planning SaaS for couples,
+professional planners, and account-free guests.
 
 ## Current status
 
-The first MVP vertical slice is implemented: anyone can register with Clerk by
-Google or verified-email OTP, complete a local LoveChapter profile, create a
-wedding, add a guest, create a private invitation, receive an account-free
-RSVP, and see the current response in the guest list.
+The first-party MVP vertical slice is implemented and locally verified:
 
-Current working product name: **LoveChapter**
+- verified-email/password registration, secure cookie sessions, password reset,
+  bounded database rate limits, and durable auth-email jobs;
+- an Elysia 2 API and separate job process on pinned Bun 1.4.2;
+- a Next.js/vinext frontend with a server-only same-origin `/api/*` proxy;
+- wedding, guest, private invitation, and account-free RSVP flows;
+- bounded PostgreSQL repositories, generated migrations, and regression tests;
+- hardened example systemd units, Caddy TLS proxy config, and an operations
+  runbook.
 
-A possible future domain is `lovechapter.tech`, but **no domain has been registered yet**.
+This is not evidence of a live deployment. No VPS, custom domain, production
+Neon database, Resend sender, or deployed URL is claimed. See
+`docs/DEPLOYMENT.md` for the remaining external gates.
 
-Until a custom domain is actually registered and configured, deployments must use Cloudflare's generated `*.workers.dev` URLs.
+## Architecture
 
-Do not hardcode `lovechapter.tech` anywhere in production configuration yet.
+- Frontend: Next.js 16, React 19, TypeScript, Tailwind CSS, vinext, Cloudflare
+  Workers
+- Browser/API boundary: same-origin `/api/*` server proxy
+- Backend: Elysia 2 on Bun 1.4.2, supervised on an always-on VPS
+- Jobs: separate bounded Bun process using the PostgreSQL outbox
+- Authentication: first-party verified email/password and database-backed
+  sessions; guests remain account-free
+- Email: Resend behind a replaceable adapter
+- Database: Neon/PostgreSQL via bounded direct `pg` pools and Drizzle ORM
 
-## Locked technical direction
-
-- Frontend: Next.js + React + TypeScript
-- UI: Tailwind CSS + shadcn/ui
-- Deployment: Cloudflare Workers
-- Next.js on Workers: use current Cloudflare-recommended vinext path when compatible
-- Backend/API: Elysia 2
-- Production runtime: Cloudflare Workers
-- Package manager/dev tooling: Bun is allowed
-- Authentication: Clerk sessions for account users; no account for guests
-- Database: Neon PostgreSQL
-- Database access: Cloudflare Hyperdrive
-- ORM: Drizzle ORM
-- PostgreSQL driver: prefer `pg` / node-postgres with Hyperdrive
-- Object storage: Cloudflare R2 when needed
-- Async jobs: Cloudflare Queues / Workflows when needed
-- Realtime: Cloudflare Durable Objects when needed
-
-Read `PROJECT_CONTEXT.md` and `AGENTS.md` before implementing features.
+A backend Worker, Hyperdrive, Worker Queues/Cron, Kubernetes, Redis, and a
+second backend runtime are not production targets.
 
 ## Repository layout
 
-- `apps/web` — Next.js 16 App Router UI, built for Workers with vinext
-- `apps/api` — Elysia 2 API Worker
+- `apps/web` — Next.js/vinext UI and server-only API proxy
+- `apps/api` — Elysia API, Bun server, and scrypt benchmark
+- `apps/jobs` — bounded auth-email outbox worker
+- `packages/auth` — password, token, rate-limit, and auth service contracts
 - `packages/contracts` — shared HTTP/data contracts
-- `packages/domain` — framework-independent rules and application service
-- `packages/database` — Drizzle schema, migration, SQL, and PostgreSQL adapter
+- `packages/domain` — product rules and application services
+- `packages/database` — Drizzle schema, migrations, and repositories
+- `deploy` — example systemd services and Caddy configuration
+- `docs` — decisions, operations, progress, and query review
 
 ## Local setup
 
-Prerequisites: Node.js 24+, npm 11+, and a PostgreSQL database. Bun remains
-optional tooling; it is not the production HTTP runtime.
+Prerequisites are Node.js 24+, npm 11+, Bun exactly 1.4.2, and a development
+PostgreSQL database.
 
 ```bash
-npm install
-cp apps/api/.dev.vars.example apps/api/.dev.vars
+npm ci
+cp apps/api/.env.example apps/api/.env
+cp apps/jobs/.env.example apps/jobs/.env
 cp apps/web/.env.local.example apps/web/.env.local
 ```
 
-Create a Clerk development instance before running the authenticated UI. Enable
-open registration, required email verification, email OTP, and Google; disable
-password authentication. In Clerk's session-token customization, add this
-compact claim:
-
-```json
-{ "primaryEmail": "{{user.primary_email_address}}" }
-```
-
-Put the development instance's publishable key in
-`apps/web/.env.local`. To exercise real API verification locally, set
-`AUTH_MODE=clerk`, `CLERK_PUBLISHABLE_KEY`, and the instance's PEM public key as
-`CLERK_JWT_KEY` in the untracked `apps/api/.dev.vars`. The checked-in example
-defaults to a fixed development identity for database/UI work; that mode is
-never a production substitute.
-
-Set the API's local Hyperdrive connection in
-`apps/api/wrangler.jsonc` (`localConnectionString`) to a development PostgreSQL
-database. Never commit a real database password. The sample development
-identity comes only from `apps/api/.dev.vars`; request headers cannot select a
-user, wedding, or role.
-
-Apply the migration with a direct, unpooled development connection:
+Replace every placeholder with independent local values. Apply migrations with
+a direct migration connection, not an application pool credential:
 
 ```bash
-export DATABASE_URL='postgres://USER:PASSWORD@HOST:5432/lovechapter?sslmode=require'
+export DATABASE_URL='postgres://MIGRATION_USER:PASSWORD@HOST:5432/lovechapter?sslmode=require'
 npm run db:migrate --workspace @lovechapter/database
 ```
 
-Start the two Workers in separate terminals:
+Development entrypoints:
 
 ```bash
 npm run dev --workspace @lovechapter/api
+npm run dev --workspace @lovechapter/jobs
 npm run dev --workspace @lovechapter/web
 ```
-
-The defaults are API `http://localhost:8787` and web
-`http://localhost:3000`. If ports change, keep `PUBLIC_WEB_ORIGIN` and
-`NEXT_PUBLIC_API_ORIGIN` aligned.
 
 ## Verification
 
 ```bash
-export NEXT_PUBLIC_API_ORIGIN='https://api.example.workers.dev'
-export NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY='pk_test_Y2xlcmsuZXhhbXBsZS50ZXN0JA'
-npm run check
+npm run format:check
+npm run lint
+npm run typecheck
+npm test
 npm run db:check --workspace @lovechapter/database
-npm exec --workspace @lovechapter/web -- vinext check
+npm run build --workspace @lovechapter/api
+npm run smoke:bun --workspace @lovechapter/api
+npm run benchmark:auth --workspace @lovechapter/api
+npm run build --workspace @lovechapter/jobs
 npm run build:next --workspace @lovechapter/web
+npm run check:vinext --workspace @lovechapter/web
+npm run build --workspace @lovechapter/web
 ```
 
-`npm run check` checks formatting, lints, type-checks, runs tests, and builds
-both Workers. Production web builds intentionally fail if the public API origin
-or Clerk publishable key is absent or invalid; public browser configuration is
-embedded at build time and never defaults to a local server. Database
-query/index rationale is recorded in
-`docs/QUERY_REVIEW.md`; deployment steps are in `docs/DEPLOYMENT.md`.
+The PostgreSQL concurrency suite is opt-in and must target a disposable
+database explicitly:
+
+```bash
+TEST_DATABASE_URL='postgres://...' \
+TEST_DATABASE_CONFIRM=lovechapter_test \
+npm run test:postgres --workspace @lovechapter/database
+```
 
 ## Documentation
 
 - `PROJECT_CONTEXT.md` — product and architecture source of truth
-- `AGENTS.md` — instructions for Codex/AI coding agents
-- `CODEX_START_PROMPT.md` — first implementation prompt
-- `docs/DECISIONS.md` — accepted architecture decisions
-- `docs/PROGRESS.md` — implementation status
-- `docs/OPEN_QUESTIONS.md` — unresolved decisions
-- `docs/DATABASE_GUIDELINES.md` — SQL/database performance and safety rules
-- `docs/DEPLOYMENT.md` — current Cloudflare deployment strategy
+- `AGENTS.md` — engineering constraints
+- `docs/DECISIONS.md` — accepted/superseded architecture decisions
+- `docs/PROGRESS.md` — implementation and validation status
+- `docs/OPEN_QUESTIONS.md` — unresolved product/operational decisions
+- `docs/DATABASE_GUIDELINES.md` — database performance and safety rules
+- `docs/QUERY_REVIEW.md` — query, transaction, and index rationale
+- `docs/DEPLOYMENT.md` — VPS/Worker deployment and external gates

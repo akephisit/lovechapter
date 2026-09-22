@@ -24,19 +24,18 @@ Status:
 
 No custom domain has been registered yet.
 
-`lovechapter.tech` is only a candidate and must **not** be treated as owned or configured.
+The owner intends to register `lovechapter.net`, but it must **not** be treated as owned or configured until registration is verified.
 
 Until a domain is actually registered:
 
-- deploy using Cloudflare-generated `*.workers.dev` URLs;
+- use available generated deployment URLs;
 - keep public origins configurable through environment variables;
 - do not hardcode future custom-domain URLs;
-- do not configure redirects to `lovechapter.tech`.
+- do not configure redirects to `lovechapter.net`.
 
-Suggested Worker names:
+Suggested frontend Worker name:
 
 - `lovechapter-web`
-- `lovechapter-api`
 
 Actual deployed URLs depend on the Cloudflare account subdomain and must be discovered from deployment output.
 
@@ -283,13 +282,13 @@ Store money using a machine-safe amount representation and ISO currency code. Do
 
 ---
 
-## 9. Cloudflare-first architecture — LOCKED
+## 9. Frontend Worker and Bun/VPS backend architecture — LOCKED
 
-Frontend and backend target Cloudflare Workers.
+The frontend targets Cloudflare Workers. The backend targets an always-on Bun
+process on a VPS, with a separate Bun background-job process.
 
 Do not default to:
 
-- VPS;
 - Docker-based production runtime;
 - Kubernetes;
 - Redis;
@@ -314,13 +313,29 @@ Current Cloudflare recommendation for new Next.js Workers applications is vinext
 
 - Elysia 2
 - TypeScript
-- Cloudflare Workers production runtime
+- Bun 1.4.2 production runtime
+- always-on VPS HTTP process
+- separate Bun background-job process
 
 Elysia 2 is an explicit project decision.
 
-The current Elysia 2 release line is beta and the Cloudflare Worker adapter is experimental. This is an accepted project risk that must be actively validated.
+The current Elysia 2 release line is beta and version-sensitive. Its Bun runtime behavior is an accepted project risk that must be actively validated.
 
 Do not silently replace Elysia 2.
+
+### Browser/API boundary — LOCKED
+
+The browser calls only same-origin `/api/*` paths on the frontend Worker. A
+server-only route handler proxies approved requests to one explicitly configured
+HTTPS backend origin and supplies a rotatable private ingress credential. The
+credential authenticates the proxy boundary, not the user; the API still
+performs normal session authentication and server-side authorization.
+
+The proxy must keep the backend origin and ingress credential out of browser
+assets, remove spoofed forwarding headers, preserve approved `Set-Cookie`
+headers, and keep origins configurable. Production requires a stable backend
+hostname with publicly trusted TLS; a bare IP or self-signed certificate is not
+an accepted production path.
 
 If a blocker occurs:
 
@@ -338,9 +353,8 @@ Prefer Web Platform APIs:
 - Web Crypto
 - Streams
 
-Bun may be used for package management and local tooling, but production is not a Bun server.
-
-Avoid Bun-only runtime APIs in domain/business code.
+Bun-only runtime APIs are confined to API/job bootstrap modules. Domain,
+authentication, and repository logic remain runtime-independent where practical.
 
 ---
 
@@ -352,7 +366,7 @@ Primary database:
 
 Access path:
 
-`Cloudflare Worker -> Hyperdrive -> Neon PostgreSQL`
+`Bun API/job process -> bounded pg.Pool -> Neon PostgreSQL`
 
 ORM:
 
@@ -360,9 +374,14 @@ ORM:
 
 Preferred PostgreSQL driver:
 
-- `pg` / node-postgres when compatible with the selected Drizzle/Workers setup
+- `pg` / node-postgres with separately bounded API and job-process pools
 
-Use a direct/unpooled Neon PostgreSQL connection when creating Hyperdrive. Do not stack the Neon serverless driver on top of Hyperdrive unless current official integration requirements demonstrate a reason.
+Use a direct TLS PostgreSQL connection. Hyperdrive and backend Workers are not
+production targets.
+
+The initial connection budgets are a maximum of 6 connections for the API
+process and 2 for the job process. Changes require measurement against the
+deployed Neon and VPS limits.
 
 Use migrations.
 
@@ -371,6 +390,29 @@ Database performance rules are mandatory. See:
 `docs/DATABASE_GUIDELINES.md`
 
 Efficient SQL is a product requirement, not an optional optimization.
+
+### Authentication architecture — LOCKED
+
+- LoveChapter owns verified-email/password credentials.
+- Email verification is required before sign-in.
+- Sessions are database-backed and delivered only through secure HTTP-only cookies.
+- Password reset revokes every session for the account.
+- Resend is an isolated, replaceable email transport rather than an identity provider.
+- Guest invitation and RSVP access remains account-free.
+- `AUTH_MODE` supports only `disabled`, `development`, and `local`; production
+  must never use `development`.
+
+Clerk and other managed authentication providers are not production targets.
+
+### Asynchronous and parallel work — LOCKED
+
+Use asynchronous APIs for network, database, crypto, and email operations.
+Parallel execution is limited to independent work and must be statically bounded
+or protected by an explicit concurrency limit. Dependency chains and operations
+sharing a transaction/client remain sequential. Retryable background work must
+be durable and idempotent, with cancellation, timeouts, and bounded cleanup.
+Set-based SQL is preferred over parallel per-row queries; parallelism must never
+hide N+1 or unbounded remote work.
 
 ---
 
@@ -388,21 +430,6 @@ For:
 - contracts
 - quotations
 - moodboard files
-
-### Queues
-
-For:
-
-- email delivery jobs
-- notification jobs
-- asynchronous processing
-
-### Workflows / Cron
-
-For:
-
-- scheduled reminders
-- durable multi-step background tasks
 
 ### Durable Objects
 
@@ -516,9 +543,10 @@ Couple identity
 Include:
 
 - monorepo foundation;
-- Cloudflare Workers configuration;
+- frontend Cloudflare Worker configuration;
+- Bun/VPS API and background-job configuration;
 - environment strategy;
-- Neon + Hyperdrive + Drizzle foundation;
+- Neon + bounded direct PostgreSQL pools + Drizzle foundation;
 - MVP schema/migrations;
 - wedding membership/authorization;
 - guest management;
@@ -563,11 +591,9 @@ Do not over-engineer hypothetical scale, but do not write obviously inefficient 
 
 ## 17. Open decisions
 
-- Final custom domain
-- Whether `lovechapter.tech` will be purchased
-- Authentication provider
-- Login methods
-- Email provider
+- Final custom domain and verification of `lovechapter.net` ownership
+- Future login methods beyond verified email/password
+- Internationalized-email acceptance and Resend delivery support
 - Payment provider(s)
 - Couple pricing
 - Planner Pro pricing/limits

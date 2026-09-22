@@ -1,0 +1,33 @@
+[Unit]
+Description=LoveChapter Bun API
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=lovechapter
+Group=lovechapter
+WorkingDirectory=/opt/lovechapter/current
+Environment=NODE_ENV=production
+Environment=API_HOST=127.0.0.1
+Environment=API_PORT=3001
+EnvironmentFile=/etc/lovechapter/api.env
+ExecStart=/usr/local/bin/bun apps/api/dist/server.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=35
+KillSignal=SIGTERM
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

@@ -1,20 +1,24 @@
 import type {
+  AcceptedResponse,
   AuthenticatedUser,
+  AuthSessionResponse,
   CreateGuestInput,
   CreateWeddingInput,
+  ForgotPasswordInput,
   GuestSummary,
   InvitationCreated,
   Page,
   PublicInvitation,
+  ResendVerificationInput,
+  ResetPasswordInput,
   RsvpResponse,
+  SignInInput,
+  SignUpInput,
   SubmitRsvpInput,
   UpdateProfileInput,
+  VerifyEmailInput,
   WeddingSummary,
 } from "@lovechapter/contracts";
-
-import { parsePublicApiOrigin } from "./public-origin";
-
-const apiOrigin = parsePublicApiOrigin(process.env.NEXT_PUBLIC_API_ORIGIN);
 
 export class ApiError extends Error {
   constructor(
@@ -47,29 +51,68 @@ export async function apiRequest<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
+  if (!path.startsWith("/") || path.startsWith("//")) {
+    throw new Error("API paths must be root-relative");
+  }
   const headers = new Headers(init.headers);
   if (init.body !== undefined && !headers.has("content-type")) {
     headers.set("content-type", "application/json");
   }
-  const response = await fetch(new URL(path, `${apiOrigin}/`), {
+  const response = await fetch(`/api${path}`, {
     ...init,
     headers,
+    credentials: "same-origin",
   });
   if (!response.ok) throw await ApiError.fromResponse(response);
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 
-export type TokenProvider = () => Promise<string | null>;
 export type AuthenticationRequiredHandler = () => void | Promise<void>;
 
 export function createLoveChapterApi(
-  getToken: TokenProvider,
   onAuthenticationRequired: AuthenticationRequiredHandler,
 ) {
   const request = <T>(path: string, init?: RequestInit) =>
-    authenticatedRequest<T>(getToken, onAuthenticationRequired, path, init);
+    authenticatedRequest<T>(onAuthenticationRequired, path, init);
 
   return {
+    signUp: (input: SignUpInput) =>
+      apiRequest<AcceptedResponse>("/v1/auth/sign-up", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    resendVerificationEmail: (input: ResendVerificationInput) =>
+      apiRequest<AcceptedResponse>("/v1/auth/verification-email", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    verifyEmail: (input: VerifyEmailInput) =>
+      apiRequest<{ verified: true }>("/v1/auth/verify-email", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    signIn: (input: SignInInput) =>
+      apiRequest<{ signedIn: true }>("/v1/auth/sign-in", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    getSession: () => request<AuthSessionResponse>("/v1/auth/session"),
+    signOut: () =>
+      apiRequest<void>("/v1/auth/sign-out", {
+        method: "POST",
+        body: "{}",
+      }),
+    forgotPassword: (input: ForgotPasswordInput) =>
+      apiRequest<AcceptedResponse>("/v1/auth/forgot-password", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    resetPassword: (input: ResetPasswordInput) =>
+      apiRequest<{ reset: true }>("/v1/auth/reset-password", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
     getMe: () => request<AuthenticatedUser>("/v1/me"),
     updateMyProfile: (input: UpdateProfileInput) =>
       request<AuthenticatedUser>("/v1/me", {
@@ -113,24 +156,12 @@ export const loveChapterPublicApi = {
 };
 
 async function authenticatedRequest<T>(
-  getToken: TokenProvider,
   onAuthenticationRequired: AuthenticationRequiredHandler,
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
-  const token = await getToken();
-  if (!token) {
-    await onAuthenticationRequired();
-    throw new ApiError(
-      "Authentication required",
-      401,
-      "authentication_required",
-    );
-  }
-  const headers = new Headers(init.headers);
-  headers.set("authorization", `Bearer ${token}`);
   try {
-    return await apiRequest<T>(path, { ...init, headers });
+    return await apiRequest<T>(path, init);
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
       await onAuthenticationRequired();

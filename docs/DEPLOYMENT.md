@@ -1,215 +1,173 @@
 # LoveChapter — Deployment
 
-## Current domain status
+## Status and topology
 
-No custom domain is registered.
+The deployable API/job artifacts, configuration parsers, example systemd
+services, Caddy example, and local validation commands exist. No infrastructure
+is provisioned or claimed by this repository. Domain ownership, DNS/TLS, VPS,
+Neon staging/production credentials, Resend verification, and the frontend
+Worker deployment remain external gates.
 
-`lovechapter.tech` is a candidate only.
+```text
+Browser -> Cloudflare frontend Worker -> same-origin /api proxy
+        -> verified HTTPS API hostname -> Caddy -> 127.0.0.1:3001
+        -> Elysia/Bun API -> bounded pg pool -> Neon PostgreSQL
 
-Do not configure it yet.
+systemd -> Bun jobs -> bounded pg pool -> auth email outbox -> Resend
+```
 
-## Current deployment target
+The host floor is 2 vCPU and 2 GiB RAM. A smaller class requires fresh scrypt,
+pool, and concurrent-request measurements.
 
-Use Cloudflare Workers generated URLs.
+## Runtime environment contract
 
-Suggested Worker names:
+Store API and job variables in root-owned files under `/etc/lovechapter` with
+mode `0600`. Store Worker secrets in the hosting platform's secret store. Never
+commit real values.
 
-- `lovechapter-web`
-- `lovechapter-api`
+| Process | Required environment                                                                                                                                                                                                            |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API     | `DATABASE_URL`, `DATABASE_POOL_MAX=6`, `AUTH_MODE=local`, `PUBLIC_WEB_ORIGIN`, `WEB_PROXY_SHARED_SECRET`, `RATE_LIMIT_HMAC_KEY`, `AUTH_TOKEN_ACTIVE_KEY_VERSION`, `AUTH_TOKEN_HMAC_KEYS`, `API_HOST=127.0.0.1`, `API_PORT=3001` |
+| Jobs    | `DATABASE_URL`, `DATABASE_POOL_MAX=2`, `PUBLIC_WEB_ORIGIN`, `AUTH_TOKEN_ACTIVE_KEY_VERSION`, `AUTH_TOKEN_HMAC_KEYS`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`                                                                      |
+| Web     | `API_UPSTREAM_ORIGIN`, `WEB_PROXY_SHARED_SECRET`                                                                                                                                                                                |
 
-Expected URL shape after deployment:
+`API_HOST` and `API_PORT` are the implementation's names for the plan's generic
+host/port settings. The checked-in systemd unit pins both so only the API gets a
+loopback listener. Production rejects `AUTH_MODE=development`.
 
-- `https://lovechapter-web.<cloudflare-account-subdomain>.workers.dev`
-- `https://lovechapter-api.<cloudflare-account-subdomain>.workers.dev`
+Generate the proxy credential, rate-limit key, and each action-token key
+independently as canonical 32-byte base64url values. `AUTH_TOKEN_HMAC_KEYS` is a
+JSON object whose keys are positive integer versions, for example
+`{"1":"<32-byte-base64url>"}`. API and jobs must receive the same retained key
+set and active version.
 
-The exact account subdomain must come from Cloudflare deployment output. Never invent it.
+## Host preparation
 
-## Configuration
-
-Do not hardcode origins.
-
-Use environment/config values such as:
-
-- `PUBLIC_WEB_ORIGIN`
-- `PUBLIC_API_ORIGIN`
-- other framework-appropriate public/server variables
-
-Configure CORS intentionally if the browser calls a separate API Worker.
-
-Current variables and bindings:
-
-- API: `PUBLIC_WEB_ORIGIN`, `AUTH_MODE`, `CLERK_PUBLISHABLE_KEY`,
-  `CLERK_JWT_KEY`, optional development identity values, and `HYPERDRIVE`;
-- web: `NEXT_PUBLIC_API_ORIGIN` and `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`. Both
-  are public and must be present in the shell that builds the browser bundle;
-  they are deliberately not runtime Wrangler variables.
-
-The checked-in production-safe default remains `AUTH_MODE=disabled`. Set the
-deployed API to `AUTH_MODE=clerk` only after every Clerk value and the exact web
-origin exist. Never deploy `AUTH_MODE=development` as a substitute.
-
-## Frontend
-
-Target:
-
-- Next.js on Cloudflare Workers
-
-Current direction:
-
-- use the Cloudflare-recommended vinext path when compatible.
-
-Because this is version-sensitive:
-
-- run compatibility checks;
-- pin compatible versions;
-- record incompatibilities.
-
-## API
-
-Target:
-
-- Elysia 2 on Cloudflare Workers
-
-Validate the current official adapter and build requirements.
-
-At the time this project context was written:
-
-- Elysia 2 is beta;
-- Cloudflare adapter is experimental/version-sensitive.
-
-## Database
-
-Production path:
-
-Worker
--> Hyperdrive
--> Neon PostgreSQL
-
-Use a direct/unpooled Neon connection when configuring Hyperdrive.
-
-Use Drizzle + supported PostgreSQL driver from application code.
-
-## Staging/production procedure
-
-No production credentials or deployed URLs are stored in this repository.
-Replace every placeholder below with output from the relevant provider; do not
-invent an account subdomain.
-
-1. Create or claim separate Clerk development and production instances. In
-   both, enable open registration, require verified email, enable email OTP and
-   Google, and disable password authentication. Add this compact custom session
-   claim in the session-token configuration:
-
-   ```json
-   { "primaryEmail": "{{user.primary_email_address}}" }
-   ```
-
-   Configure Clerk production with real Google OAuth credentials rather than
-   development shared credentials. Keep Apple, passkeys, mandatory MFA, and
-   support/admin access disabled or unchanged until their open questions are
-   decided.
-
-2. In Neon, create/select the database and a least-privilege role for
-   Hyperdrive. Copy a **direct, unpooled** PostgreSQL URL (pooling unchecked).
-3. Apply the checked-in migrations using a separate direct migration credential:
+1. Provision a supported Linux host and create an unprivileged system account:
 
    ```bash
-   export DATABASE_URL='postgres://MIGRATION_USER:PASSWORD@NEON_HOST:5432/lovechapter?sslmode=require'
-   npm run db:migrate --workspace @lovechapter/database
+   sudo useradd --system --home /opt/lovechapter --shell /usr/sbin/nologin lovechapter
+   sudo install -d -o lovechapter -g lovechapter /opt/lovechapter/releases
+   sudo install -d -m 0750 -o root -g lovechapter /etc/lovechapter
    ```
 
-4. Authenticate Wrangler and create Hyperdrive with the unpooled Neon URL:
+2. Install Node.js 24 and npm 11 for dependency installation/builds. Install
+   Bun 1.4.2 from Bun's official versioned release and place the verified binary
+   at `/usr/local/bin/bun`. Abort unless `/usr/local/bin/bun --version` prints
+   exactly `1.4.2`.
+3. Install Caddy from its signed upstream package repository.
+4. Expose only required administration plus TCP 80/443 for certificate issuance
+   and HTTPS. Never expose TCP 3001 publicly.
+5. Create `/etc/lovechapter/api.env` and `jobs.env` from the documented
+   contracts, owned by root with mode `0600`.
 
-   ```bash
-   npx wrangler login
-   npx wrangler hyperdrive create lovechapter-neon --connection-string='postgres://HYPERDRIVE_USER:PASSWORD@NEON_HOST:5432/lovechapter?sslmode=require'
-   ```
+## Build, migrate, and release
 
-5. Replace the all-zero `id` in `apps/api/wrangler.jsonc` with the Hyperdrive ID
-   printed by Wrangler. Regenerate binding types:
+Build in a new immutable release directory rather than in `current`:
 
-   ```bash
-   cd apps/api
-   npx wrangler types --env-interface CloudflareBindings
-   cd ../..
-   ```
+```bash
+cd /opt/lovechapter/releases/RELEASE_ID
+npm ci
+npm run format:check
+npm run lint
+npm run typecheck
+npm test
+npm run build --workspace @lovechapter/api
+npm run smoke:bun --workspace @lovechapter/api
+npm run benchmark:auth --workspace @lovechapter/api
+npm run build --workspace @lovechapter/jobs
+```
 
-6. Make an initial web/API deployment with authentication disabled if needed to
-   learn the two real `*.workers.dev` origins. Configure the web origin and
-   allowed redirect URLs in Clerk exactly; do not use the candidate custom
-   domain. Set `PUBLIC_WEB_ORIGIN` in the API Worker configuration to that exact
-   HTTPS web origin.
+Run migrations once with a separate least-privilege migration credential:
 
-7. Provide the production Clerk values to the API Worker through its deployment
-   configuration or secrets. The PEM public key comes from the production Clerk
-   instance's JWT/session-token settings. Do not commit either value:
+```bash
+DATABASE_URL='postgres://MIGRATION_ROLE:SECRET@HOST/DB?sslmode=require' \
+  npm run db:migrate --workspace @lovechapter/database
+```
 
-   ```bash
-   npx wrangler secret put CLERK_PUBLISHABLE_KEY --config apps/api/wrangler.jsonc
-   npx wrangler secret put CLERK_JWT_KEY --config apps/api/wrangler.jsonc
-   ```
+Review migration compatibility before switching code. Then atomically replace
+the release symlink from `/opt/lovechapter`:
 
-   Then set production `AUTH_MODE=clerk` only after both values and
-   `PUBLIC_WEB_ORIGIN` are present. The API uses the exact web origin as the
-   token's authorized party.
+```bash
+ln -s releases/RELEASE_ID current.next
+mv -Tf current.next current
+```
 
-8. Export the actual API Worker origin and production Clerk publishable key
-   before every web build or deployment so vinext can embed them in the browser
-   bundle:
+Install the checked-in units and proxy example, substitute only a verified API
+hostname through Caddy's `API_ORIGIN_HOST` environment, then reload and restart:
 
-   ```bash
-   export NEXT_PUBLIC_API_ORIGIN='https://lovechapter-api.ACTUAL_SUBDOMAIN.workers.dev'
-   export NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY='pk_live_REPLACE_WITH_PRODUCTION_VALUE'
-   ```
+```bash
+sudo install -m 0644 deploy/systemd/lovechapter-api.service /etc/systemd/system/
+sudo install -m 0644 deploy/systemd/lovechapter-jobs.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable lovechapter-api lovechapter-jobs
+sudo systemctl restart lovechapter-api
+curl --fail --silent https://VERIFIED_API_HOST/health/live
+sudo systemctl restart lovechapter-jobs
+```
 
-   The build rejects missing, non-HTTP(S), or path-bearing values rather than
-   falling back to localhost. Because the web origin is known only after its
-   first deployment, a bootstrap deployment followed by an API origin update
-   and web redeploy may be necessary. Keep API CORS restricted to the one
-   configured web origin.
+The units run as `lovechapter`, restart only on failure, harden filesystem and
+kernel access, and allow 35 seconds for the application's 30-second drain. The
+API must be healthy before jobs resume. Run staged cookie, proxy, email,
+graceful-restart, lease-recovery, and pool-exhaustion tests before production.
 
-9. Verify before deploying:
+## Caddy and logging
 
-   ```bash
-   export NEXT_PUBLIC_API_ORIGIN='https://lovechapter-api.ACTUAL_SUBDOMAIN.workers.dev'
-   export NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY='pk_live_REPLACE_WITH_PRODUCTION_VALUE'
-   npm run check
-   npm run db:check --workspace @lovechapter/database
-   npm exec --workspace @lovechapter/web -- vinext check
-   npm run build:next --workspace @lovechapter/web
-   ```
+`deploy/Caddyfile.example` terminates publicly trusted TLS and proxies only to
+`127.0.0.1:3001`. Caddy access logging is intentionally absent, and the Bun
+applications do not enable raw request logging. Invitation tokens are bearer
+credentials in URL paths.
 
-10. Deploy only after staging verification is complete:
+Request logging may be enabled only after an automated redaction layer proves
+it removes invitation paths, cookies, full email addresses, proxy credentials,
+raw client addresses, and verification/reset action tokens. Structured event
+names and sanitized error codes are allowed.
 
-    ```bash
-    npx wrangler deploy --config apps/api/wrangler.jsonc
-    npm run deploy --workspace @lovechapter/web
-    ```
+## Password benchmark
 
-Record the real `*.workers.dev` URLs from command output. Without logging
-credentials or tokens, smoke-test Google registration/sign-in, email OTP,
-first-login profile onboarding, sign-out, a protected API failure and success,
-and the complete account-free invitation/RSVP flow. Never put Neon credentials
-in Wrangler variables: the API connects with
-`env.HYPERDRIVE.connectionString`.
+Run `npm run benchmark:auth --workspace @lovechapter/api` on the selected VPS.
+It performs one warm-up plus 20 production-policy scrypt hashes with no more
+than two concurrent hashes, reports p50/p95/max and RSS, and exits non-zero when
+p95 exceeds 750 ms. The local result is evidence about the development runner
+only; the selected VPS must pass separately.
 
-Both Workers disable Cloudflare invocation logs and traces because guest
-invitation tokens are carried in URL paths. Application logs must likewise
-avoid raw request URLs and invitation tokens. Re-enabling request telemetry
-requires a reviewed redaction strategy first.
+## Secret rotation
 
-For local API development, `localConnectionString` in the API Wrangler config
-connects directly and does not exercise Hyperdrive caching. It may point at
-local PostgreSQL or a disposable development Neon branch with required TLS.
+- Proxy credential: deploy the new value to the API and web secret stores in a
+  coordinated maintenance window; verify ingress before removing the old
+  deployment.
+- Rate-limit HMAC key: rotate only with an accepted reset of current buckets.
+- Action-token keys: add a new version to both API and jobs, deploy old+new,
+  change `AUTH_TOKEN_ACTIVE_KEY_VERSION`, wait for queued jobs and the maximum
+  token lifetime to drain, then remove the old version.
+- Database/Resend credentials: create the replacement, deploy and verify it,
+  then revoke the old credential.
 
-## Later custom domain
+Never reuse one secret for multiple purposes. Production email stays blocked
+until Resend verifies the sender/domain.
 
-Only after a domain is actually purchased:
+## Backup, rollback, and recovery
 
-1. update `PROJECT_CONTEXT.md`;
-2. add ADR to `docs/DECISIONS.md`;
-3. configure Cloudflare custom domain/routes;
-4. update public origin variables;
-5. update CORS/cookie/security policies;
-6. configure redirects from old `workers.dev` URLs only if desired;
-7. never assume the candidate `lovechapter.tech` until ownership is confirmed.
+- Enable and verify Neon backups/PITR according to the selected plan; perform a
+  restore drill before launch and on a defined schedule.
+- Retain the prior immutable release. For an application rollback, stop jobs,
+  atomically repoint `current`, restart API, verify liveness/readiness and the
+  auth flow, then restart jobs.
+- Do not reverse a migration blindly. Each release must document whether the
+  previous application remains compatible; otherwise use a reviewed forward
+  fix or restore into an isolated database before recovery.
+- Confirm leased email jobs recover after process termination and Resend
+  idempotency prevents duplicate sends.
+
+## Remaining production gates
+
+1. Confirm domain ownership, DNS, public TLS, and exact web/API origins.
+2. Select the VPS and Neon regions and supply staging credentials.
+3. Run the disposable PostgreSQL concurrency suite and representative live
+   query plans.
+4. Verify the Resend sender/domain and end-to-end verification/reset email.
+5. Pass the scrypt budget on the selected VPS.
+6. Validate Worker dry-run/deploy output and prove no secrets enter client
+   bundles.
+7. Exercise firewall, backup restore, rollback, graceful restart, job recovery,
+   pool exhaustion, proxy/cookie, and token-redaction procedures in staging.
