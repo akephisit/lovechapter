@@ -108,6 +108,14 @@ export type PasswordResetConsumption = TokenConsumption & {
   passwordHash: string;
 };
 
+export type PasswordRehash = {
+  accountId: string;
+  expectedCredentialVersion: number;
+  expectedPasswordHash: string;
+  passwordHash: string;
+  now: Date;
+};
+
 export type EmailJobClaim = {
   now: Date;
   limit: number;

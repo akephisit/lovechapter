@@ -10,6 +10,7 @@ import type {
   EmailJobRetry,
   IssueActionToken,
   ParsedActionToken,
+  PasswordRehash,
   PasswordResetConsumption,
   PasswordResetRequest,
   PendingRegistration,
@@ -34,6 +35,7 @@ export interface Clock {
 }
 
 export interface ActionTokenCodec {
+  readonly activeVersion: number;
   create(claims: ActionTokenClaims): string;
   parse(token: string): ParsedActionToken | null;
   verify(token: string, claims: ActionTokenClaims): boolean;
@@ -59,6 +61,7 @@ export interface AuthRepository {
   ): Promise<ResolvedAuthSession | null>;
   revokeSession(tokenHash: string, now: Date): Promise<void>;
   queuePasswordReset(input: PasswordResetRequest): Promise<boolean>;
+  rehashPasswordIfCurrent(input: PasswordRehash): Promise<boolean>;
   resetPasswordAndRevokeSessions(
     input: PasswordResetConsumption,
   ): Promise<boolean>;

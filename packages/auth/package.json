@@ -4,12 +4,14 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./testing": "./src/testing/in-memory-auth-repository.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@lovechapter/contracts": "0.1.0"
+    "@lovechapter/contracts": "0.1.0",
+    "@lovechapter/domain": "0.1.0"
   }
 }

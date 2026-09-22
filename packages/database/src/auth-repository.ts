@@ -11,6 +11,7 @@ import type {
   EmailJobRetry,
   EmailJobStore,
   IssueActionToken,
+  PasswordRehash,
   PasswordResetConsumption,
   PasswordResetRequest,
   PendingRegistration,
@@ -36,6 +37,7 @@ import {
   buildInsertEmailJobQuery,
   buildInvalidateTokensAndJobsQuery,
   buildMarkEmailJobSentQuery,
+  buildRehashPasswordIfCurrentQuery,
   buildRevokeAccountSessionsQuery,
   buildResolveSessionQuery,
   buildRetryEmailJobQuery,
@@ -148,6 +150,13 @@ export class PostgresAuthRepository implements AuthRepository {
 
   queuePasswordReset(input: PasswordResetRequest): Promise<boolean> {
     return this.queueActionEmail(input, "reset_password", true);
+  }
+
+  async rehashPasswordIfCurrent(input: PasswordRehash): Promise<boolean> {
+    const result = await this.executor.execute<{ id: string }>(
+      buildRehashPasswordIfCurrentQuery(input),
+    );
+    return result.rows.length === 1;
   }
 
   async resetPasswordAndRevokeSessions(

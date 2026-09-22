@@ -5,6 +5,7 @@ import type {
   EmailJobClaim,
   EmailJobCompletion,
   EmailJobRetry,
+  PasswordRehash,
   PasswordResetConsumption,
   PendingRegistration,
   RateLimitAttempt,
@@ -229,6 +230,16 @@ export function buildRevokeSessionQuery(tokenHash: string, now: Date): SQL {
   return sql`update ${authSessions}
     set ${authSessions.revokedAt} = coalesce(${authSessions.revokedAt}, ${now})
     where ${authSessions.tokenHash} = ${tokenHash}`;
+}
+
+export function buildRehashPasswordIfCurrentQuery(input: PasswordRehash): SQL {
+  return sql`update ${authAccounts}
+    set ${authAccounts.passwordHash} = ${input.passwordHash},
+        ${authAccounts.updatedAt} = ${input.now}
+    where ${authAccounts.id} = ${input.accountId}
+      and ${authAccounts.credentialVersion} = ${input.expectedCredentialVersion}
+      and ${authAccounts.passwordHash} = ${input.expectedPasswordHash}
+    returning ${authAccounts.id} as "id"`;
 }
 
 export function buildConsumePasswordResetQuery(

@@ -53,6 +53,7 @@ export function createActionTokenCodec(config: {
   };
 
   return {
+    activeVersion: config.activeVersion,
     create(claims) {
       validateClaims(claims);
       if (claims.signingKeyVersion !== config.activeVersion) {

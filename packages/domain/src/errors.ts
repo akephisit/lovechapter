@@ -17,3 +17,9 @@ export class NotFoundError extends Error {
 export class ConflictError extends Error {
   override readonly name = "ConflictError";
 }
+
+export class RateLimitExceededError extends Error {
+  override readonly name = "RateLimitExceededError";
+  readonly code = "rate_limited";
+  readonly status = 429;
+}

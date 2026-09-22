@@ -29,6 +29,7 @@ describe("action tokens", () => {
     });
     const token = codec.create(claims);
 
+    expect(codec.activeVersion).toBe(2);
     expect(token).toMatch(
       /^lc1\.2\.00000000-0000-4000-8000-000000000001\.1800000000\.[A-Za-z0-9_-]{43}$/,
     );

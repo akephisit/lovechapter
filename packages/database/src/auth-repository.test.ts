@@ -89,6 +89,24 @@ describe("PostgresAuthRepository", () => {
     });
   });
 
+  it("returns whether a credential-guarded password rehash won", async () => {
+    const repository = new PostgresAuthRepository(
+      new FakeExecutor([{ id: actualAccountId }], []),
+    );
+    const input = {
+      accountId: actualAccountId,
+      expectedCredentialVersion: 1,
+      expectedPasswordHash: "old-scrypt-envelope",
+      passwordHash: "new-scrypt-envelope",
+      now,
+    };
+
+    await expect(repository.rehashPasswordIfCurrent(input)).resolves.toBe(true);
+    await expect(repository.rehashPasswordIfCurrent(input)).resolves.toBe(
+      false,
+    );
+  });
+
   it("serializes password update and session revocation in one transaction", async () => {
     const executor = new FakeExecutor(
       [{ account_id: actualAccountId }],

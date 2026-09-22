@@ -7,6 +7,7 @@ import {
   buildFindAccountByEmailKeyQuery,
   buildConsumePasswordResetQuery,
   buildRevokeAccountSessionsQuery,
+  buildRehashPasswordIfCurrentQuery,
   buildResolveSessionQuery,
   buildUpdatePasswordQuery,
 } from "./auth-queries";
@@ -60,6 +61,22 @@ describe("authentication SQL contracts", () => {
     expect(guardedInsertSql).toMatch(/"password_hash" = \$\d+/i);
     expect(guardedInsertSql).toMatch(/"email_verified_at" is not null/i);
     expect(guardedInsertSql).toMatch(/for update/i);
+  });
+
+  it("guards password rehash against a newer credential version", () => {
+    const rehashSql = sqlOf(
+      buildRehashPasswordIfCurrentQuery({
+        accountId,
+        expectedCredentialVersion: 3,
+        expectedPasswordHash: "old-scrypt-envelope",
+        passwordHash: "new-scrypt-envelope",
+        now,
+      }),
+    );
+
+    expect(rehashSql).toMatch(/"credential_version" = \$\d+/i);
+    expect(rehashSql).toMatch(/"password_hash" = \$\d+/i);
+    expect(rehashSql).toMatch(/returning .*"id"/i);
   });
 
   it("consumes a reset and revokes sessions atomically without broad selects", () => {
