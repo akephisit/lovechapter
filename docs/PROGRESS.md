@@ -2,94 +2,94 @@
 
 ## Current phase
 
-The approved Bun/VPS backend and first-party verified-email/password
-authentication decisions are codified in the authoritative project documents.
-The product-code migration has not started.
+The approved Bun/VPS backend migration and first-party authentication vertical
+slice are implemented. The repository includes buildable API/job artifacts,
+the same-origin web proxy, account UI, provider-free tests, example systemd and
+Caddy assets, and an operational handoff.
 
-The checked-in MVP still contains the previous provider-backed authentication
-and API Worker implementation until later tasks in the approved plan replace
-and remove them. That transitional code is not the production target and has
-not been deployed.
+This is locally verified code, not a production deployment. No VPS, custom
+domain, Neon production database, Resend sender, or live URL is provisioned or
+claimed.
 
-## Implemented in the current codebase
+## Implemented
 
-- Product name and global product vision
-- Couple / Planner / Guest model
-- npm-workspace monorepo
-- Next.js 16 App Router Couple workspace and account-free guest RSVP route
-- PWA manifest and conservative service-worker registration with no data caching
-- Elysia 2 API routes, request validation, configured CORS, and stable errors
-- Fail-closed server identity boundary plus environment-only development identity
-- Existing provider-backed account flow pending approved replacement
-- First-login Unicode profile onboarding and local profile ownership
-- Wedding, membership, guest, invitation, and RSVP application flow
-- Six-table Drizzle schema and generated PostgreSQL migration
-- Tenant-scoped, parameterized, explicitly projected, bounded repository queries
-- Indexed keyset pagination controls for wedding and guest collections
-- SHA-256-only invitation-token storage and token-scoped public access
-- Retryable transient invitation loading with private invalid/expired states
-- Authenticated user visibility plus guest-list RSVP refresh and invitation copy
-- Invitation-token-safe telemetry defaults
-- Automated domain, repository, API, and UI coverage
-- Current query/index review
+- Bun 1.4.2 API runtime with bounded request/body/time limits, graceful drain,
+  readiness, and fail-closed validated configuration
+- Separate bounded Bun auth-email job process with leases, retries,
+  idempotency, terminal failures, and retention cleanup
+- First-party verified-email/password accounts using production-policy scrypt
+  with a global concurrency cap of two
+- Versioned HMAC action tokens, hashed session secrets, secure production
+  cookies, all-session password-reset revocation, and bounded database rate
+  limits
+- Five auth/outbox tables plus generated migration, constraints, and
+  access-pattern indexes
+- Bounded direct PostgreSQL pools: API maximum 6, jobs maximum 2
+- Next.js/vinext same-origin server proxy with strict path/header policy, body
+  cap, cookie forwarding, and server-only upstream credentials
+- Account/session provider, sign-up/sign-in/verification/reset UI, Unicode-safe
+  password handling, and immediate fragment scrubbing
+- Wedding, guest, private invitation, account-free RSVP, and couple-visible
+  response flow
+- Conservative service worker with no fetch interception or data caching
+- Provider-free in-process vertical-slice proof and browser isolation
+  regressions
+- Scrypt benchmark command with p50/p95/max/RSS output and a 750 ms p95 gate
+- Hardened example systemd services, Caddy TLS proxy config, secret rotation,
+  rollback, backup, firewall, and atomic-release guidance
 
-## Approved and documented, not yet implemented
+## Local validation
 
-- Frontend Worker with a same-origin server-only API proxy
-- Elysia 2 API on pinned Bun 1.4.2 as an always-on VPS process
-- Separate bounded Bun background-job process
-- Direct TLS Neon/PostgreSQL access through bounded API/job `pg.Pool` instances
-- First-party verified-email/password accounts
-- Database-backed secure cookie sessions
-- Password reset with atomic all-session revocation
-- PostgreSQL-backed bounded auth rate limits
-- Durable auth email outbox with leases, retries, and bounded cleanup
-- Resend behind a replaceable email adapter
-- VPS systemd services, TLS reverse proxy, firewall, rollback, and backup assets
-- Production scrypt benchmark and VPS staging smoke tests
+Task 10 validation on 2026-09-22 passed:
 
-No product-code work from Task 2 or later has been started in this documentation
-milestone.
+- format and lint;
+- TypeScript checks for every workspace;
+- 44 test files / 217 tests;
+- Drizzle migration snapshot check;
+- Bun API/jobs builds;
+- native Next production build;
+- vinext compatibility check at 94%, zero issues and one documented partial
+  `reactStrictMode` item;
+- vinext production build;
+- active-source legacy-provider/deprecated-config scan with zero matches.
 
-## Other product work not implemented
+Task 11 added benchmark unit coverage and produced this local-runner result:
 
-- Public wedding page
-- Notification delivery beyond the approved auth-email direction
-- Budget
-- Vendors
-- Seating
-- Payments
-- Planner Pro
-- Realtime
-- AI
+```json
+{
+  "benchmark": "scrypt",
+  "p50Ms": 316.84606699999995,
+  "p95Ms": 380.91432699999996,
+  "maxMs": 402.899176,
+  "samples": 20,
+  "maxConcurrent": 2,
+  "rssMiB": 49.2
+}
+```
 
-## Validation status
+Task 11's complete local validation also passed formatting, lint, every
+workspace typecheck, 46 test files / 220 tests, Drizzle snapshot validation,
+API build and Bun smoke, the benchmark budget, jobs build, native Next build,
+vinext compatibility/build, Cloudflare deployment dry-run, and
+`git diff --check`. `systemd-analyze verify` accepted both unit structures and
+reported only that the deployment-path `/usr/local/bin/bun` is intentionally
+absent on this development runner.
 
-Baseline verification at commit `6426a8d` on 2026-09-22:
+The benchmark numbers describe only the current development runner. No
+`TEST_DATABASE_URL` or confirmation flag was configured, so the live PostgreSQL
+concurrency suite and representative query plans remain explicit staging gates.
 
-- `npm test` — 21 test files and 139 tests passed.
+## External gates
 
-Task 1 documentation verification on 2026-09-22:
+- ownership, DNS, public TLS, and exact origins for the intended domain
+- VPS provider/region/sizing and the Bun benchmark on that selected host
+- Neon region, disposable staging credentials, live concurrency suite, and
+  representative query plans
+- Resend sender/domain verification and end-to-end delivery/reputation controls
+- staged proxy/cookie, graceful-restart, lease-recovery, pool-exhaustion,
+  firewall, rollback, backup-restore, and token-redaction exercises
+- internationalized-email policy, MFA, email-address change/reverification,
+  and support/admin authentication decisions
 
-- the active-document contradiction audit returned no matches;
-- the ADR supersession audit found ADR-016, ADR-017, and ADR-018;
-- `npx prettier --check AGENTS.md CODEX_START_PROMPT.md PROJECT_CONTEXT.md README.md docs`
-  passed;
-- `git diff --check` passed.
-
-The earlier MVP validation recorded at that commit also included formatting,
-lint, type-checking, database snapshot checking, API/web dry-run builds, native
-Next build, and vinext compatibility checks. Those results describe the
-pre-migration tree; they do not validate the approved Bun/VPS or first-party
-authentication target.
-
-No VPS, custom domain, Neon production environment, Resend production sender,
-or deployed URL has been provisioned or claimed. Live migrations, representative
-query plans, email delivery, same-origin proxying, Bun process lifecycle,
-graceful restart, job recovery, and pool-exhaustion tests have not run.
-
-The next plan milestone after this documentation-only task is Task 2: replace
-the API Worker bootstrap with the bounded Bun runtime. It is outside the current
-Task 1 scope.
-
-Update this document after each significant Codex session.
+See `docs/DEPLOYMENT.md` and `docs/OPEN_QUESTIONS.md`. Update this document after
+each significant implementation or deployment session.

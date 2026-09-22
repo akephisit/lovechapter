@@ -2,6 +2,10 @@
 
 Do not treat these as settled requirements.
 
+The first-party auth/runtime implementation is complete locally. The items
+below are decisions or external provisioning evidence that the repository
+cannot supply by itself.
+
 ## Branding/domain
 
 - Will ownership, DNS, and publicly trusted TLS for `lovechapter.net` be
@@ -55,7 +59,8 @@ weaken the approved security gates to answer the remaining questions.
 ## Backend/operations
 
 - VPS provider, region, sizing, backup, and recovery ownership
-- Production result of the Bun 1.4.2 scrypt benchmark on the selected VPS class
+- Production result of the passing Bun 1.4.2 scrypt benchmark on the selected
+  VPS class (the local development-runner result is not a substitute)
 - Stable HTTPS backend hostname, DNS, certificate, and reverse-proxy ownership
 - Production monitoring and token-safe observability strategy
 - Upgrade cadence for Bun 1.4.2 and Elysia 2.0.0-beta.16
@@ -68,6 +73,8 @@ weaken the approved security gates to answer the remaining questions.
 - Production query monitoring/observability strategy
 - Representative staging query-plan results after direct-pool provisioning
 - Measured API/job pool sizes within Neon and VPS connection budgets
+- Disposable staging credentials for the PostgreSQL concurrency suite and live
+  query-plan review
 
 ## Product
 

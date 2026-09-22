@@ -251,3 +251,24 @@ credential, and email delivery configuration are ready.
 The owner intends to register `lovechapter.net`, but the repository must treat
 it as unowned until registration is verified. Origins and hostnames remain
 configuration and deployment continues to use available generated URLs.
+
+## ADR-019 — VPS processes use systemd and a TLS reverse proxy
+
+**Status:** Accepted for the first production handoff
+
+The API and auth-email jobs run as separate unprivileged `lovechapter` systemd
+services from an atomically switched release directory. Both use Bun 1.4.2,
+restart on failure, receive a 35-second stop timeout, and use systemd filesystem
+and privilege hardening. Only the API receives `API_HOST=127.0.0.1` and
+`API_PORT=3001`.
+
+Caddy terminates publicly trusted TLS and proxies a verified configurable API
+hostname to the loopback API. Caddy access logs and raw Bun request logs remain
+disabled until tested redaction removes invitation paths, cookies, email
+addresses, proxy credentials, client addresses, and action tokens.
+
+Releases use a separate migration credential, immutable release directories,
+an atomic `current` symlink, retained rollback artifacts, verified backups, and
+coordinated secret rotation. These checked-in assets are operational guidance;
+they do not claim that a VPS, domain, certificate, database, or email sender has
+been provisioned.

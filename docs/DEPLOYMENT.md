@@ -1,188 +1,173 @@
 # LoveChapter — Deployment
 
-## Current status
+## Status and topology
 
-The approved production architecture is documented, but the Bun/VPS runtime,
-first-party authentication, job process, deployment assets, and provider
-configuration are not implemented or provisioned yet. Do not treat this file as
-evidence of a live deployment.
-
-No custom domain is registered. The owner intends to register
-`lovechapter.net`, but ownership, DNS, and TLS remain unconfirmed. Keep all
-origins and hostnames configurable and never hardcode or claim that domain.
-
-## Approved production topology
+The deployable API/job artifacts, configuration parsers, example systemd
+services, Caddy example, and local validation commands exist. No infrastructure
+is provisioned or claimed by this repository. Domain ownership, DNS/TLS, VPS,
+Neon staging/production credentials, Resend verification, and the frontend
+Worker deployment remain external gates.
 
 ```text
-Browser
-  -> Next.js/vinext frontend on Cloudflare Workers
-  -> same-origin /api/* server proxy
-  -> configured HTTPS VPS backend origin
-  -> host reverse proxy
-  -> Elysia 2 on Bun 1.4.2 at a loopback-only port
-  -> bounded direct pg.Pool
-  -> Neon PostgreSQL
+Browser -> Cloudflare frontend Worker -> same-origin /api proxy
+        -> verified HTTPS API hostname -> Caddy -> 127.0.0.1:3001
+        -> Elysia/Bun API -> bounded pg pool -> Neon PostgreSQL
 
-Separate Bun 1.4.2 job process
-  -> separately bounded direct pg.Pool
-  -> Neon auth email outbox
-  -> Resend through standard fetch
+systemd -> Bun jobs -> bounded pg pool -> auth email outbox -> Resend
 ```
 
-Cloudflare Workers remain the frontend target. A backend Worker, Hyperdrive,
-Cloudflare Queues, and Worker Cron are not production targets for the approved
-backend design.
+The host floor is 2 vCPU and 2 GiB RAM. A smaller class requires fresh scrypt,
+pool, and concurrent-request measurements.
 
-## Frontend Worker
+## Runtime environment contract
 
-The frontend uses Next.js, vinext, and the Cloudflare Workers runtime. The
-suggested Worker name is `lovechapter-web`.
+Store API and job variables in root-owned files under `/etc/lovechapter` with
+mode `0600`. Store Worker secrets in the hosting platform's secret store. Never
+commit real values.
 
-Until a custom domain is verified, the frontend may use the generated URL
-reported by deployment, typically:
+| Process | Required environment                                                                                                                                                                                                            |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API     | `DATABASE_URL`, `DATABASE_POOL_MAX=6`, `AUTH_MODE=local`, `PUBLIC_WEB_ORIGIN`, `WEB_PROXY_SHARED_SECRET`, `RATE_LIMIT_HMAC_KEY`, `AUTH_TOKEN_ACTIVE_KEY_VERSION`, `AUTH_TOKEN_HMAC_KEYS`, `API_HOST=127.0.0.1`, `API_PORT=3001` |
+| Jobs    | `DATABASE_URL`, `DATABASE_POOL_MAX=2`, `PUBLIC_WEB_ORIGIN`, `AUTH_TOKEN_ACTIVE_KEY_VERSION`, `AUTH_TOKEN_HMAC_KEYS`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`                                                                      |
+| Web     | `API_UPSTREAM_ORIGIN`, `WEB_PROXY_SHARED_SECRET`                                                                                                                                                                                |
 
-```text
-https://lovechapter-web.<actual-cloudflare-account-subdomain>.workers.dev
+`API_HOST` and `API_PORT` are the implementation's names for the plan's generic
+host/port settings. The checked-in systemd unit pins both so only the API gets a
+loopback listener. Production rejects `AUTH_MODE=development`.
+
+Generate the proxy credential, rate-limit key, and each action-token key
+independently as canonical 32-byte base64url values. `AUTH_TOKEN_HMAC_KEYS` is a
+JSON object whose keys are positive integer versions, for example
+`{"1":"<32-byte-base64url>"}`. API and jobs must receive the same retained key
+set and active version.
+
+## Host preparation
+
+1. Provision a supported Linux host and create an unprivileged system account:
+
+   ```bash
+   sudo useradd --system --home /opt/lovechapter --shell /usr/sbin/nologin lovechapter
+   sudo install -d -o lovechapter -g lovechapter /opt/lovechapter/releases
+   sudo install -d -m 0750 -o root -g lovechapter /etc/lovechapter
+   ```
+
+2. Install Node.js 24 and npm 11 for dependency installation/builds. Install
+   Bun 1.4.2 from Bun's official versioned release and place the verified binary
+   at `/usr/local/bin/bun`. Abort unless `/usr/local/bin/bun --version` prints
+   exactly `1.4.2`.
+3. Install Caddy from its signed upstream package repository.
+4. Expose only required administration plus TCP 80/443 for certificate issuance
+   and HTTPS. Never expose TCP 3001 publicly.
+5. Create `/etc/lovechapter/api.env` and `jobs.env` from the documented
+   contracts, owned by root with mode `0600`.
+
+## Build, migrate, and release
+
+Build in a new immutable release directory rather than in `current`:
+
+```bash
+cd /opt/lovechapter/releases/RELEASE_ID
+npm ci
+npm run format:check
+npm run lint
+npm run typecheck
+npm test
+npm run build --workspace @lovechapter/api
+npm run smoke:bun --workspace @lovechapter/api
+npm run benchmark:auth --workspace @lovechapter/api
+npm run build --workspace @lovechapter/jobs
 ```
 
-Never invent the account subdomain or claim a URL that was not present in real
-deployment output.
+Run migrations once with a separate least-privilege migration credential:
 
-The browser calls only the public web origin. A server-only route handler
-proxies approved `/api/*` traffic to one configured HTTPS backend origin. The
-proxy must:
-
-- keep the backend origin and private ingress credential out of browser assets;
-- remove inbound spoofed internal/forwarding headers;
-- add only trusted proxy metadata;
-- forward only allowlisted request and response headers;
-- preserve every approved `Set-Cookie` response;
-- avoid following upstream redirects automatically;
-- force auth responses to remain uncacheable.
-
-The private ingress credential proves that a request passed through the trusted
-frontend proxy. It is not user identity and never replaces session
-authentication or authorization.
-
-## Bun/VPS backend
-
-The production backend consists of two unprivileged, separately supervised
-processes on the same deployment:
-
-- `lovechapter-api` — always-on Elysia 2 HTTP process on Bun 1.4.2;
-- `lovechapter-jobs` — Bun 1.4.2 background-job and maintenance process.
-
-A host reverse proxy terminates publicly trusted TLS and forwards the configured
-backend hostname to the API on a private loopback port. The firewall exposes
-only required administration and HTTPS ports. A bare IP, self-signed
-certificate, or publicly exposed Bun port is not an approved production path.
-
-The initial supported VPS floor is 2 vCPU and 2 GiB RAM. A smaller host requires
-fresh password-hashing, pool, and concurrent-request validation. Bun upgrades
-must repeat runtime, Elysia, crypto, database, and contract checks.
-
-The API must stop accepting new application traffic, drain in-flight requests,
-and close its database pool during graceful shutdown. The job process must stop
-claiming work, drain its bounded in-flight jobs, and close its own pool.
-
-## Database connections
-
-Both backend processes connect directly to Neon/PostgreSQL over TLS with
-process-wide bounded `pg.Pool` instances:
-
-- API default maximum: 6 connections;
-- job-process default maximum: 2 connections.
-
-Use a separate least-privilege migration credential for schema changes. Do not
-create a pool per request or repository, and do not layer another database
-transport over these direct pools.
-
-## Authentication and email
-
-The fail-closed modes are:
-
-- `AUTH_MODE=disabled` — protected routes reject authentication;
-- `AUTH_MODE=development` — complete environment-only development identity;
-- `AUTH_MODE=local` — first-party verified-email/password accounts and
-  database-backed sessions.
-
-Keep `disabled` as the checked-in default. Production must reject
-`development`, and `local` must not be enabled until migrations, cryptographic
-keys, exact origins, the proxy ingress credential, and Resend configuration are
-present.
-
-Production sessions use a host-only `__Host-lovechapter_session` cookie with
-`Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`, and no `Domain` attribute.
-Local HTTP development uses a different non-production cookie name.
-
-Resend is a replaceable transactional-email transport, not an identity
-provider. Production email remains blocked until the sender/domain is verified.
-Verification/reset work must be persisted atomically with its token metadata,
-then sent by the bounded job process after commit.
-
-## Secrets and configuration
-
-Do not commit database URLs, password hashes, session secrets, action-token
-keys, rate-limit keys, proxy credentials, provider keys, cookies, or real email
-addresses.
-
-The implementation plan defines these production configuration groups:
-
-```text
-API: DATABASE_URL, DATABASE_POOL_MAX, AUTH_MODE, PUBLIC_WEB_ORIGIN,
-     WEB_PROXY_SHARED_SECRET, RATE_LIMIT_HMAC_KEY,
-     AUTH_TOKEN_ACTIVE_KEY_VERSION, AUTH_TOKEN_HMAC_KEYS, HOST, PORT
-JOBS: DATABASE_URL, DATABASE_POOL_MAX, PUBLIC_WEB_ORIGIN,
-      AUTH_TOKEN_ACTIVE_KEY_VERSION, AUTH_TOKEN_HMAC_KEYS,
-      RESEND_API_KEY, RESEND_FROM_EMAIL
-WEB: API_UPSTREAM_ORIGIN, WEB_PROXY_SHARED_SECRET
+```bash
+DATABASE_URL='postgres://MIGRATION_ROLE:SECRET@HOST/DB?sslmode=require' \
+  npm run db:migrate --workspace @lovechapter/database
 ```
 
-Exact parsing, validation, example files, service units, and rotation procedures
-are implementation work in later approved-plan tasks. Do not create placeholder
-production secrets or weaken startup validation to make deployment proceed.
+Review migration compatibility before switching code. Then atomically replace
+the release symlink from `/opt/lovechapter`:
 
-## Logging and telemetry
+```bash
+ln -s releases/RELEASE_ID current.next
+mv -Tf current.next current
+```
 
-Guest invitation tokens remain bearer credentials in URL paths. Verification
-and reset secrets are also sensitive. Keep raw request/access logging disabled
-until a tested redaction layer removes invitation paths, cookies, email
-addresses, proxy credentials, client addresses, and action tokens.
+Install the checked-in units and proxy example, substitute only a verified API
+hostname through Caddy's `API_ORIGIN_HOST` environment, then reload and restart:
 
-Application logs may contain named events and sanitized reason codes only. They
-must not contain passwords, cookies, authorization values, raw tokens,
-token-bearing URLs, raw IP addresses, full email addresses, or provider response
-bodies.
+```bash
+sudo install -m 0644 deploy/systemd/lovechapter-api.service /etc/systemd/system/
+sudo install -m 0644 deploy/systemd/lovechapter-jobs.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable lovechapter-api lovechapter-jobs
+sudo systemctl restart lovechapter-api
+curl --fail --silent https://VERIFIED_API_HOST/health/live
+sudo systemctl restart lovechapter-jobs
+```
 
-## Deployment gates
+The units run as `lovechapter`, restart only on failure, harden filesystem and
+kernel access, and allow 35 seconds for the application's 30-second drain. The
+API must be healthy before jobs resume. Run staged cookie, proxy, email,
+graceful-restart, lease-recovery, and pool-exhaustion tests before production.
 
-Production deployment is blocked until all of the following are real and
-verified:
+## Caddy and logging
 
-1. reviewed migrations, unique constraints, and access-pattern indexes;
-2. production-policy scrypt benchmark on pinned Bun 1.4.2 and the selected VPS;
-3. confirmed frontend and backend HTTPS origins;
-4. stable backend hostname with a publicly trusted certificate;
-5. non-committed high-entropy action-token, rate-limit, and ingress secrets;
-6. verified Resend sender/domain and production credentials;
-7. generic enumeration-resistant auth responses and bounded rate limiting;
-8. bounded, idempotent outbox claims, retries, and cleanup;
-9. passing Bun API/job and frontend Worker contract/build checks;
-10. staged proxy, cookie, graceful-restart, job-recovery, and pool-exhaustion
-    smoke tests;
-11. token-safe logging verification;
-12. backup, rollback, firewall, and secret-rotation procedures.
+`deploy/Caddyfile.example` terminates publicly trusted TLS and proxies only to
+`127.0.0.1:3001`. Caddy access logging is intentionally absent, and the Bun
+applications do not enable raw request logging. Invitation tokens are bearer
+credentials in URL paths.
 
-No VPS, Neon production database, Resend production sender, custom domain, or
-deployed URL is claimed by the repository at this stage.
+Request logging may be enabled only after an automated redaction layer proves
+it removes invitation paths, cookies, full email addresses, proxy credentials,
+raw client addresses, and verification/reset action tokens. Structured event
+names and sanitized error codes are allowed.
 
-## Later custom domain
+## Password benchmark
 
-Only after ownership is verified:
+Run `npm run benchmark:auth --workspace @lovechapter/api` on the selected VPS.
+It performs one warm-up plus 20 production-policy scrypt hashes with no more
+than two concurrent hashes, reports p50/p95/max and RSS, and exits non-zero when
+p95 exceeds 750 ms. The local result is evidence about the development runner
+only; the selected VPS must pass separately.
 
-1. update `PROJECT_CONTEXT.md`;
-2. add or amend an ADR in `docs/DECISIONS.md`;
-3. configure DNS, TLS, and Cloudflare custom routes;
-4. update exact public/upstream origins;
-5. review cookie, proxy, CORS/origin, and redirect policies;
-6. run the full staged security and deployment gates again.
+## Secret rotation
+
+- Proxy credential: deploy the new value to the API and web secret stores in a
+  coordinated maintenance window; verify ingress before removing the old
+  deployment.
+- Rate-limit HMAC key: rotate only with an accepted reset of current buckets.
+- Action-token keys: add a new version to both API and jobs, deploy old+new,
+  change `AUTH_TOKEN_ACTIVE_KEY_VERSION`, wait for queued jobs and the maximum
+  token lifetime to drain, then remove the old version.
+- Database/Resend credentials: create the replacement, deploy and verify it,
+  then revoke the old credential.
+
+Never reuse one secret for multiple purposes. Production email stays blocked
+until Resend verifies the sender/domain.
+
+## Backup, rollback, and recovery
+
+- Enable and verify Neon backups/PITR according to the selected plan; perform a
+  restore drill before launch and on a defined schedule.
+- Retain the prior immutable release. For an application rollback, stop jobs,
+  atomically repoint `current`, restart API, verify liveness/readiness and the
+  auth flow, then restart jobs.
+- Do not reverse a migration blindly. Each release must document whether the
+  previous application remains compatible; otherwise use a reviewed forward
+  fix or restore into an isolated database before recovery.
+- Confirm leased email jobs recover after process termination and Resend
+  idempotency prevents duplicate sends.
+
+## Remaining production gates
+
+1. Confirm domain ownership, DNS, public TLS, and exact web/API origins.
+2. Select the VPS and Neon regions and supply staging credentials.
+3. Run the disposable PostgreSQL concurrency suite and representative live
+   query plans.
+4. Verify the Resend sender/domain and end-to-end verification/reset email.
+5. Pass the scrypt budget on the selected VPS.
+6. Validate Worker dry-run/deploy output and prove no secrets enter client
+   bundles.
+7. Exercise firewall, backup restore, rollback, graceful restart, job recovery,
+   pool exhaustion, proxy/cookie, and token-redaction procedures in staging.

@@ -352,3 +352,33 @@ Before merging a data-heavy feature, ask:
 - Does this still behave efficiently with 10x/100x more rows?
 
 Database efficiency is part of feature correctness for LoveChapter.
+
+---
+
+## 19. Authentication and outbox invariants
+
+Authentication paths have stricter concurrency requirements than ordinary
+profile writes:
+
+- normalize email once and enforce uniqueness with `auth_accounts.email_key`;
+- keep pending registration, local-user seeding, action-token replacement, and
+  email-job insertion in one short transaction;
+- create sessions with a credential-version and observed-password-hash guard so
+  a concurrent reset cannot publish a stale session;
+- consume verification/reset tokens with account, purpose, hash, expiry, and
+  unconsumed predicates in the database;
+- reset passwords, increment credential version, and revoke every active
+  session in one transaction;
+- claim no more than 10 jobs with stable due ordering, leases, and
+  `FOR UPDATE SKIP LOCKED`;
+- use the persisted job idempotency key for provider calls and guard completion
+  updates with the exact lease timestamp;
+- delete expired auth state in bounded, deterministically ordered batches.
+
+Raw passwords, session tokens, action-token MACs, raw client addresses, and
+complete token-bearing URLs must never be selected for diagnostics or logged.
+Only hashes/metadata required by the operation belong in PostgreSQL.
+
+Generated SQL contract tests and `drizzle-kit check` are merge gates. Live query
+plans and the opt-in PostgreSQL concurrency suite remain staging gates and must
+target a confirmed disposable database, never an inferred `DATABASE_URL`.

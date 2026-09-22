@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "bun --watch src/server.ts",
     "build": "bun build src/server.ts --target=bun --sourcemap=linked --outdir=dist",
+    "benchmark:auth": "bun src/scrypt-benchmark.ts",
     "start": "bun dist/server.js",
     "smoke:bun": "bun src/bun-runtime-smoke.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
