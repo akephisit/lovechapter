@@ -4,22 +4,30 @@ Do not treat these as settled requirements.
 
 ## Branding/domain
 
-- Will `lovechapter.tech` be registered?
-- If not, what will the final domain be?
+- Will ownership, DNS, and publicly trusted TLS for `lovechapter.net` be
+  confirmed?
+- If not, what will the final custom domain be?
+- Which stable HTTPS hostname will expose the VPS API to the frontend Worker?
 - Final logo/visual identity
 
-Until resolved, use Cloudflare `*.workers.dev`.
+Until ownership is verified, keep every origin and hostname configurable. The
+frontend may use its generated `*.workers.dev` URL; do not hardcode or claim the
+intended custom domain.
 
 ## Authentication
 
-- Apple login
+- Apple login or other social login after the first-party flow is stable
 - Passkeys
 - Whether multifactor authentication becomes mandatory
-- Support/admin auth model
+- Email-address change and reverification flow
+- Support/admin authentication and authorization model
+- Exact internationalized-email acceptance and Resend delivery support
+- End-user session/device management UI
 
-Clerk, open registration, verified-email OTP, and Google are accepted in
-`docs/DECISIONS.md`. Do not build an ad-hoc password system for the remaining
-questions.
+First-party verified-email/password accounts, database-backed sessions, Resend
+as a replaceable email transport, and account-free guest RSVP are accepted in
+`docs/DECISIONS.md`. Do not add another production authentication provider or
+weaken the approved security gates to answer the remaining questions.
 
 ## Billing
 
@@ -32,7 +40,7 @@ questions.
 
 ## Notifications
 
-- Email provider
+- Resend sender/domain verification and production reputation controls
 - Web Push implementation
 - SMS provider
 - WhatsApp provider
@@ -44,17 +52,22 @@ questions.
   `docs/DECISIONS.md`
 - When vinext's partial App Router `reactStrictMode` support becomes complete
 
-## Backend
+## Backend/operations
 
-- When an Elysia 2 release exposes the documented Cloudflare adapter and no
-  longer needs the localized TypeBox compiler compatibility shim
+- VPS provider, region, sizing, backup, and recovery ownership
+- Production result of the Bun 1.4.2 scrypt benchmark on the selected VPS class
+- Stable HTTPS backend hostname, DNS, certificate, and reverse-proxy ownership
+- Production monitoring and token-safe observability strategy
+- Upgrade cadence for Bun 1.4.2 and Elysia 2.0.0-beta.16
+- When Elysia 2 no longer needs the localized TypeBox compatibility shim
 
 ## Database
 
 - Neon region
 - PostgreSQL Row Level Security decision
 - Production query monitoring/observability strategy
-- Representative staging query-plan results after Neon/Hyperdrive provisioning
+- Representative staging query-plan results after direct-pool provisioning
+- Measured API/job pool sizes within Neon and VPS connection budgets
 
 ## Product
 

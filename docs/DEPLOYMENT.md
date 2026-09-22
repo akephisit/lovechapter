@@ -1,215 +1,188 @@
 # LoveChapter — Deployment
 
-## Current domain status
+## Current status
 
-No custom domain is registered.
+The approved production architecture is documented, but the Bun/VPS runtime,
+first-party authentication, job process, deployment assets, and provider
+configuration are not implemented or provisioned yet. Do not treat this file as
+evidence of a live deployment.
 
-`lovechapter.tech` is a candidate only.
+No custom domain is registered. The owner intends to register
+`lovechapter.net`, but ownership, DNS, and TLS remain unconfirmed. Keep all
+origins and hostnames configurable and never hardcode or claim that domain.
 
-Do not configure it yet.
+## Approved production topology
 
-## Current deployment target
+```text
+Browser
+  -> Next.js/vinext frontend on Cloudflare Workers
+  -> same-origin /api/* server proxy
+  -> configured HTTPS VPS backend origin
+  -> host reverse proxy
+  -> Elysia 2 on Bun 1.4.2 at a loopback-only port
+  -> bounded direct pg.Pool
+  -> Neon PostgreSQL
 
-Use Cloudflare Workers generated URLs.
+Separate Bun 1.4.2 job process
+  -> separately bounded direct pg.Pool
+  -> Neon auth email outbox
+  -> Resend through standard fetch
+```
 
-Suggested Worker names:
+Cloudflare Workers remain the frontend target. A backend Worker, Hyperdrive,
+Cloudflare Queues, and Worker Cron are not production targets for the approved
+backend design.
 
-- `lovechapter-web`
-- `lovechapter-api`
+## Frontend Worker
 
-Expected URL shape after deployment:
+The frontend uses Next.js, vinext, and the Cloudflare Workers runtime. The
+suggested Worker name is `lovechapter-web`.
 
-- `https://lovechapter-web.<cloudflare-account-subdomain>.workers.dev`
-- `https://lovechapter-api.<cloudflare-account-subdomain>.workers.dev`
+Until a custom domain is verified, the frontend may use the generated URL
+reported by deployment, typically:
 
-The exact account subdomain must come from Cloudflare deployment output. Never invent it.
+```text
+https://lovechapter-web.<actual-cloudflare-account-subdomain>.workers.dev
+```
 
-## Configuration
+Never invent the account subdomain or claim a URL that was not present in real
+deployment output.
 
-Do not hardcode origins.
+The browser calls only the public web origin. A server-only route handler
+proxies approved `/api/*` traffic to one configured HTTPS backend origin. The
+proxy must:
 
-Use environment/config values such as:
+- keep the backend origin and private ingress credential out of browser assets;
+- remove inbound spoofed internal/forwarding headers;
+- add only trusted proxy metadata;
+- forward only allowlisted request and response headers;
+- preserve every approved `Set-Cookie` response;
+- avoid following upstream redirects automatically;
+- force auth responses to remain uncacheable.
 
-- `PUBLIC_WEB_ORIGIN`
-- `PUBLIC_API_ORIGIN`
-- other framework-appropriate public/server variables
+The private ingress credential proves that a request passed through the trusted
+frontend proxy. It is not user identity and never replaces session
+authentication or authorization.
 
-Configure CORS intentionally if the browser calls a separate API Worker.
+## Bun/VPS backend
 
-Current variables and bindings:
+The production backend consists of two unprivileged, separately supervised
+processes on the same deployment:
 
-- API: `PUBLIC_WEB_ORIGIN`, `AUTH_MODE`, `CLERK_PUBLISHABLE_KEY`,
-  `CLERK_JWT_KEY`, optional development identity values, and `HYPERDRIVE`;
-- web: `NEXT_PUBLIC_API_ORIGIN` and `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`. Both
-  are public and must be present in the shell that builds the browser bundle;
-  they are deliberately not runtime Wrangler variables.
+- `lovechapter-api` — always-on Elysia 2 HTTP process on Bun 1.4.2;
+- `lovechapter-jobs` — Bun 1.4.2 background-job and maintenance process.
 
-The checked-in production-safe default remains `AUTH_MODE=disabled`. Set the
-deployed API to `AUTH_MODE=clerk` only after every Clerk value and the exact web
-origin exist. Never deploy `AUTH_MODE=development` as a substitute.
+A host reverse proxy terminates publicly trusted TLS and forwards the configured
+backend hostname to the API on a private loopback port. The firewall exposes
+only required administration and HTTPS ports. A bare IP, self-signed
+certificate, or publicly exposed Bun port is not an approved production path.
 
-## Frontend
+The initial supported VPS floor is 2 vCPU and 2 GiB RAM. A smaller host requires
+fresh password-hashing, pool, and concurrent-request validation. Bun upgrades
+must repeat runtime, Elysia, crypto, database, and contract checks.
 
-Target:
+The API must stop accepting new application traffic, drain in-flight requests,
+and close its database pool during graceful shutdown. The job process must stop
+claiming work, drain its bounded in-flight jobs, and close its own pool.
 
-- Next.js on Cloudflare Workers
+## Database connections
 
-Current direction:
+Both backend processes connect directly to Neon/PostgreSQL over TLS with
+process-wide bounded `pg.Pool` instances:
 
-- use the Cloudflare-recommended vinext path when compatible.
+- API default maximum: 6 connections;
+- job-process default maximum: 2 connections.
 
-Because this is version-sensitive:
+Use a separate least-privilege migration credential for schema changes. Do not
+create a pool per request or repository, and do not layer another database
+transport over these direct pools.
 
-- run compatibility checks;
-- pin compatible versions;
-- record incompatibilities.
+## Authentication and email
 
-## API
+The fail-closed modes are:
 
-Target:
+- `AUTH_MODE=disabled` — protected routes reject authentication;
+- `AUTH_MODE=development` — complete environment-only development identity;
+- `AUTH_MODE=local` — first-party verified-email/password accounts and
+  database-backed sessions.
 
-- Elysia 2 on Cloudflare Workers
+Keep `disabled` as the checked-in default. Production must reject
+`development`, and `local` must not be enabled until migrations, cryptographic
+keys, exact origins, the proxy ingress credential, and Resend configuration are
+present.
 
-Validate the current official adapter and build requirements.
+Production sessions use a host-only `__Host-lovechapter_session` cookie with
+`Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`, and no `Domain` attribute.
+Local HTTP development uses a different non-production cookie name.
 
-At the time this project context was written:
+Resend is a replaceable transactional-email transport, not an identity
+provider. Production email remains blocked until the sender/domain is verified.
+Verification/reset work must be persisted atomically with its token metadata,
+then sent by the bounded job process after commit.
 
-- Elysia 2 is beta;
-- Cloudflare adapter is experimental/version-sensitive.
+## Secrets and configuration
 
-## Database
+Do not commit database URLs, password hashes, session secrets, action-token
+keys, rate-limit keys, proxy credentials, provider keys, cookies, or real email
+addresses.
 
-Production path:
+The implementation plan defines these production configuration groups:
 
-Worker
--> Hyperdrive
--> Neon PostgreSQL
+```text
+API: DATABASE_URL, DATABASE_POOL_MAX, AUTH_MODE, PUBLIC_WEB_ORIGIN,
+     WEB_PROXY_SHARED_SECRET, RATE_LIMIT_HMAC_KEY,
+     AUTH_TOKEN_ACTIVE_KEY_VERSION, AUTH_TOKEN_HMAC_KEYS, HOST, PORT
+JOBS: DATABASE_URL, DATABASE_POOL_MAX, PUBLIC_WEB_ORIGIN,
+      AUTH_TOKEN_ACTIVE_KEY_VERSION, AUTH_TOKEN_HMAC_KEYS,
+      RESEND_API_KEY, RESEND_FROM_EMAIL
+WEB: API_UPSTREAM_ORIGIN, WEB_PROXY_SHARED_SECRET
+```
 
-Use a direct/unpooled Neon connection when configuring Hyperdrive.
+Exact parsing, validation, example files, service units, and rotation procedures
+are implementation work in later approved-plan tasks. Do not create placeholder
+production secrets or weaken startup validation to make deployment proceed.
 
-Use Drizzle + supported PostgreSQL driver from application code.
+## Logging and telemetry
 
-## Staging/production procedure
+Guest invitation tokens remain bearer credentials in URL paths. Verification
+and reset secrets are also sensitive. Keep raw request/access logging disabled
+until a tested redaction layer removes invitation paths, cookies, email
+addresses, proxy credentials, client addresses, and action tokens.
 
-No production credentials or deployed URLs are stored in this repository.
-Replace every placeholder below with output from the relevant provider; do not
-invent an account subdomain.
+Application logs may contain named events and sanitized reason codes only. They
+must not contain passwords, cookies, authorization values, raw tokens,
+token-bearing URLs, raw IP addresses, full email addresses, or provider response
+bodies.
 
-1. Create or claim separate Clerk development and production instances. In
-   both, enable open registration, require verified email, enable email OTP and
-   Google, and disable password authentication. Add this compact custom session
-   claim in the session-token configuration:
+## Deployment gates
 
-   ```json
-   { "primaryEmail": "{{user.primary_email_address}}" }
-   ```
+Production deployment is blocked until all of the following are real and
+verified:
 
-   Configure Clerk production with real Google OAuth credentials rather than
-   development shared credentials. Keep Apple, passkeys, mandatory MFA, and
-   support/admin access disabled or unchanged until their open questions are
-   decided.
+1. reviewed migrations, unique constraints, and access-pattern indexes;
+2. production-policy scrypt benchmark on pinned Bun 1.4.2 and the selected VPS;
+3. confirmed frontend and backend HTTPS origins;
+4. stable backend hostname with a publicly trusted certificate;
+5. non-committed high-entropy action-token, rate-limit, and ingress secrets;
+6. verified Resend sender/domain and production credentials;
+7. generic enumeration-resistant auth responses and bounded rate limiting;
+8. bounded, idempotent outbox claims, retries, and cleanup;
+9. passing Bun API/job and frontend Worker contract/build checks;
+10. staged proxy, cookie, graceful-restart, job-recovery, and pool-exhaustion
+    smoke tests;
+11. token-safe logging verification;
+12. backup, rollback, firewall, and secret-rotation procedures.
 
-2. In Neon, create/select the database and a least-privilege role for
-   Hyperdrive. Copy a **direct, unpooled** PostgreSQL URL (pooling unchecked).
-3. Apply the checked-in migrations using a separate direct migration credential:
-
-   ```bash
-   export DATABASE_URL='postgres://MIGRATION_USER:PASSWORD@NEON_HOST:5432/lovechapter?sslmode=require'
-   npm run db:migrate --workspace @lovechapter/database
-   ```
-
-4. Authenticate Wrangler and create Hyperdrive with the unpooled Neon URL:
-
-   ```bash
-   npx wrangler login
-   npx wrangler hyperdrive create lovechapter-neon --connection-string='postgres://HYPERDRIVE_USER:PASSWORD@NEON_HOST:5432/lovechapter?sslmode=require'
-   ```
-
-5. Replace the all-zero `id` in `apps/api/wrangler.jsonc` with the Hyperdrive ID
-   printed by Wrangler. Regenerate binding types:
-
-   ```bash
-   cd apps/api
-   npx wrangler types --env-interface CloudflareBindings
-   cd ../..
-   ```
-
-6. Make an initial web/API deployment with authentication disabled if needed to
-   learn the two real `*.workers.dev` origins. Configure the web origin and
-   allowed redirect URLs in Clerk exactly; do not use the candidate custom
-   domain. Set `PUBLIC_WEB_ORIGIN` in the API Worker configuration to that exact
-   HTTPS web origin.
-
-7. Provide the production Clerk values to the API Worker through its deployment
-   configuration or secrets. The PEM public key comes from the production Clerk
-   instance's JWT/session-token settings. Do not commit either value:
-
-   ```bash
-   npx wrangler secret put CLERK_PUBLISHABLE_KEY --config apps/api/wrangler.jsonc
-   npx wrangler secret put CLERK_JWT_KEY --config apps/api/wrangler.jsonc
-   ```
-
-   Then set production `AUTH_MODE=clerk` only after both values and
-   `PUBLIC_WEB_ORIGIN` are present. The API uses the exact web origin as the
-   token's authorized party.
-
-8. Export the actual API Worker origin and production Clerk publishable key
-   before every web build or deployment so vinext can embed them in the browser
-   bundle:
-
-   ```bash
-   export NEXT_PUBLIC_API_ORIGIN='https://lovechapter-api.ACTUAL_SUBDOMAIN.workers.dev'
-   export NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY='pk_live_REPLACE_WITH_PRODUCTION_VALUE'
-   ```
-
-   The build rejects missing, non-HTTP(S), or path-bearing values rather than
-   falling back to localhost. Because the web origin is known only after its
-   first deployment, a bootstrap deployment followed by an API origin update
-   and web redeploy may be necessary. Keep API CORS restricted to the one
-   configured web origin.
-
-9. Verify before deploying:
-
-   ```bash
-   export NEXT_PUBLIC_API_ORIGIN='https://lovechapter-api.ACTUAL_SUBDOMAIN.workers.dev'
-   export NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY='pk_live_REPLACE_WITH_PRODUCTION_VALUE'
-   npm run check
-   npm run db:check --workspace @lovechapter/database
-   npm exec --workspace @lovechapter/web -- vinext check
-   npm run build:next --workspace @lovechapter/web
-   ```
-
-10. Deploy only after staging verification is complete:
-
-    ```bash
-    npx wrangler deploy --config apps/api/wrangler.jsonc
-    npm run deploy --workspace @lovechapter/web
-    ```
-
-Record the real `*.workers.dev` URLs from command output. Without logging
-credentials or tokens, smoke-test Google registration/sign-in, email OTP,
-first-login profile onboarding, sign-out, a protected API failure and success,
-and the complete account-free invitation/RSVP flow. Never put Neon credentials
-in Wrangler variables: the API connects with
-`env.HYPERDRIVE.connectionString`.
-
-Both Workers disable Cloudflare invocation logs and traces because guest
-invitation tokens are carried in URL paths. Application logs must likewise
-avoid raw request URLs and invitation tokens. Re-enabling request telemetry
-requires a reviewed redaction strategy first.
-
-For local API development, `localConnectionString` in the API Wrangler config
-connects directly and does not exercise Hyperdrive caching. It may point at
-local PostgreSQL or a disposable development Neon branch with required TLS.
+No VPS, Neon production database, Resend production sender, custom domain, or
+deployed URL is claimed by the repository at this stage.
 
 ## Later custom domain
 
-Only after a domain is actually purchased:
+Only after ownership is verified:
 
 1. update `PROJECT_CONTEXT.md`;
-2. add ADR to `docs/DECISIONS.md`;
-3. configure Cloudflare custom domain/routes;
-4. update public origin variables;
-5. update CORS/cookie/security policies;
-6. configure redirects from old `workers.dev` URLs only if desired;
-7. never assume the candidate `lovechapter.tech` until ownership is confirmed.
+2. add or amend an ADR in `docs/DECISIONS.md`;
+3. configure DNS, TLS, and Cloudflare custom routes;
+4. update exact public/upstream origins;
+5. review cookie, proxy, CORS/origin, and redirect policies;
+6. run the full staged security and deployment gates again.

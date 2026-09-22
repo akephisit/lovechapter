@@ -27,7 +27,7 @@ Keep separate:
 
 ## ADR-004 — Cloudflare-first
 
-**Status:** Accepted
+**Status:** Accepted historically; backend-runtime portion superseded by ADR-016
 
 Frontend and API target Cloudflare Workers.
 
@@ -35,7 +35,7 @@ Do not introduce VPS/Kubernetes/Redis by default.
 
 ## ADR-005 — Elysia 2 backend
 
-**Status:** Accepted with known compatibility risk
+**Status:** Accepted with known compatibility risk; runtime portion superseded by ADR-016
 
 Elysia 2 is the chosen API framework.
 
@@ -60,7 +60,7 @@ Compatibility must be verified before relying on version-sensitive features.
 
 ## ADR-007 — Neon PostgreSQL + Hyperdrive + Drizzle
 
-**Status:** Accepted
+**Status:** Accepted historically; connection path superseded by ADR-016
 
 Primary database: Neon PostgreSQL.
 
@@ -96,7 +96,7 @@ See `docs/DATABASE_GUIDELINES.md`.
 
 ## ADR-009 — No custom domain yet
 
-**Status:** Accepted
+**Status:** Superseded by ADR-018
 
 No custom domain is currently owned.
 
@@ -187,7 +187,7 @@ it is enabled.
 
 ## ADR-015 — Clerk provides authenticated-user sessions
 
-**Status:** Accepted for the first MVP slice
+**Status:** Superseded by ADR-017
 
 Clerk is the authentication and session provider for couples, planners, and
 future account collaborators. Registration is open to everyone through Google
@@ -215,3 +215,39 @@ slice deliberately avoids that surface: the web uses Clerk's client hooks and
 prebuilt sign-in/sign-up components, while the separate Elysia API uses
 `@clerk/backend`. Reassess compatibility before introducing Clerk server helpers
 inside the Next.js application.
+
+## ADR-016 — Bun/VPS is the sole backend production runtime
+
+**Status:** Accepted; supersedes the backend-runtime portions of ADR-004, ADR-005, and ADR-007
+
+The Next.js/vinext frontend remains on Cloudflare Workers. Elysia 2 runs as an
+always-on Bun HTTP process on a VPS, with a separate Bun background-job process.
+Both use bounded direct PostgreSQL pools. Hyperdrive and backend Workers are no
+longer production targets.
+
+The browser calls the API through a server-only same-origin proxy on the
+frontend Worker. The proxy forwards to one configured HTTPS backend origin and
+authenticates that ingress boundary with a rotatable private credential. The
+credential is not user identity, and normal session authorization remains
+mandatory.
+
+## ADR-017 — First-party verified-email/password authentication
+
+**Status:** Accepted; supersedes ADR-015
+
+LoveChapter owns password credentials and database-backed sessions. Email must
+be verified before sign-in. Resend is an isolated email transport, password
+reset revokes every session, and guest RSVP remains account-free.
+
+The fail-closed authentication modes are `disabled`, `development`, and `local`.
+Production rejects `development`, uses secure HTTP-only cookies, and enables
+`local` only after the database, cryptographic secrets, origins, ingress
+credential, and email delivery configuration are ready.
+
+## ADR-018 — Intended domain remains unconfirmed
+
+**Status:** Accepted; supersedes ADR-009's candidate name
+
+The owner intends to register `lovechapter.net`, but the repository must treat
+it as unowned until registration is verified. Origins and hostnames remain
+configuration and deployment continues to use available generated URLs.

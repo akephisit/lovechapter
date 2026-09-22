@@ -2,7 +2,8 @@
 
 ## Goal
 
-LoveChapter uses Neon PostgreSQL through Cloudflare Hyperdrive and Drizzle ORM.
+LoveChapter uses Neon PostgreSQL through bounded direct `pg` / node-postgres
+pools and Drizzle ORM.
 
 The ORM is a tool, not a substitute for SQL design.
 
@@ -20,17 +21,21 @@ Every engineer/agent must care about:
 
 Production path:
 
-Cloudflare Worker
--> Hyperdrive
+Elysia API and background-job processes on Bun/VPS
+-> separately bounded `pg.Pool` instances
 -> Neon PostgreSQL
 
 Preferred:
 
 - Drizzle ORM
-- `pg` / node-postgres where compatible
-- direct/unpooled Neon connection configured behind Hyperdrive
+- `pg` / node-postgres
+- direct TLS Neon/PostgreSQL connection
+- one process-wide pool per backend process
+- initial maximum of 6 API connections and 2 job-process connections
 
-Do not layer the Neon serverless driver over Hyperdrive unless current official integration explicitly requires or justifies it.
+Hyperdrive and backend Cloudflare Workers are not production targets. Pool-size
+changes require measurement against the VPS concurrency and Neon connection
+budgets; do not multiply connection pools per request or repository.
 
 ---
 
@@ -60,7 +65,7 @@ Benefits:
 
 - less database work;
 - less network transfer;
-- smaller Worker memory usage;
+- smaller application memory usage;
 - clearer authorization/data exposure.
 
 ---
@@ -196,6 +201,10 @@ Prefer:
 - batched update strategy;
 - PostgreSQL set-based operations.
 
+For data-dependent work, do not replace a write loop with unbounded
+`Promise.all`. Use a set-based statement where practical or an explicit small
+concurrency limit where operations are genuinely independent.
+
 ---
 
 ## 12. Transactions
@@ -227,11 +236,21 @@ Where concurrent edits can occur:
 
 Avoid application-level "check then insert" logic when a UNIQUE constraint can enforce correctness.
 
+Keep operations that share one transaction or database client sequential.
+Parallelize only independent work, and ensure the combined concurrency cannot
+exhaust either process pool. Parallelism must not hide an N+1 query pattern.
+
+Retryable background work must be durable and idempotent. Claim outbox work in
+bounded, deterministically ordered batches using leases and, where appropriate,
+`FOR UPDATE SKIP LOCKED`. Cleanup statements must also have explicit limits and
+stable tie-breakers so later loop iterations can continue safely.
+
 ---
 
 ## 14. Query round trips
 
-Workers may execute globally while Neon is regional.
+The VPS and Neon may be in different regions, and the API and job processes
+share a finite database connection budget.
 
 Reduce unnecessary round trips.
 
@@ -244,6 +263,10 @@ Prefer:
 over chains of dependent queries when they can be safely combined.
 
 Do not contort simple code into unreadable mega-SQL merely to remove one cheap query. Measure important cases.
+
+Use asynchronous database APIs. Add timeouts and cancellation where the driver
+and operation support them, and aggregate independent failures without losing
+which bounded operation failed.
 
 ---
 
@@ -318,7 +341,11 @@ Before merging a data-heavy feature, ask:
 - Are there redundant indexes?
 - Could this use EXISTS instead of COUNT?
 - Are multiple round trips unnecessarily serialized?
+- Are parallel operations truly independent and explicitly bounded?
+- Does combined API/job concurrency remain within the database connection budget?
 - Are transactions short?
+- Is every retryable job durable and idempotent?
+- Are job claims and cleanup statements bounded and deterministically ordered?
 - Are constraints enforcing invariants?
 - Did we inspect generated SQL?
 - Did we review the query plan for important queries?
