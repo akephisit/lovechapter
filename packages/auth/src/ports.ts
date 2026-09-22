@@ -7,6 +7,7 @@ import type {
   ClaimedEmailJob,
   EmailJobClaim,
   EmailJobCompletion,
+  EmailJobFailure,
   EmailJobRetry,
   IssueActionToken,
   ParsedActionToken,
@@ -37,6 +38,7 @@ export interface Clock {
 export interface ActionTokenCodec {
   readonly activeVersion: number;
   create(claims: ActionTokenClaims): string;
+  reconstruct(claims: ActionTokenClaims): string;
   parse(token: string): ParsedActionToken | null;
   verify(token: string, claims: ActionTokenClaims): boolean;
   hash(token: string): string;
@@ -71,5 +73,6 @@ export interface EmailJobStore {
   claimEmailJobs(input: EmailJobClaim): Promise<ClaimedEmailJob[]>;
   markEmailJobSent(input: EmailJobCompletion): Promise<void>;
   retryEmailJob(input: EmailJobRetry): Promise<void>;
+  failEmailJob(input: EmailJobFailure): Promise<void>;
   cleanupExpired(input: AuthCleanupRequest): Promise<AuthCleanupResult>;
 }

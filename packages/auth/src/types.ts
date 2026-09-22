@@ -143,6 +143,10 @@ export type EmailJobRetry = EmailJobCompletion & {
   lastErrorCode: string;
 };
 
+export type EmailJobFailure = EmailJobCompletion & {
+  lastErrorCode: string;
+};
+
 export type AuthCleanupRequest = { now: Date; limit: number };
 
 export type AuthCleanupResult = {

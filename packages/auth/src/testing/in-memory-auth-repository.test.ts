@@ -58,6 +58,40 @@ describe("InMemoryAuthRepository", () => {
 
     expect(outcomes.toSorted()).toEqual([false, true]);
   });
+
+  it("gives concurrent claimers disjoint jobs and reclaims expired leases", async () => {
+    const repository = new InMemoryAuthRepository();
+    for (const index of [1, 2]) {
+      await repository.registerPending(
+        {
+          candidateAccountId: crypto.randomUUID(),
+          email: `Couple${index}@example.test`,
+          emailKey: `couple${index}@example.test`,
+          displayName: `Couple ${index}`,
+          passwordHash: "hash-one",
+          now,
+        },
+        issue("verify_email"),
+      );
+    }
+
+    const [left, right] = await Promise.all([
+      repository.claimEmailJobs({ now, limit: 1, leaseSeconds: 120 }),
+      repository.claimEmailJobs({ now, limit: 1, leaseSeconds: 120 }),
+    ]);
+
+    expect(left).toHaveLength(1);
+    expect(right).toHaveLength(1);
+    expect(left[0]?.id).not.toBe(right[0]?.id);
+    const reclaimed = await repository.claimEmailJobs({
+      now: new Date(now.getTime() + 120_001),
+      limit: 2,
+      leaseSeconds: 120,
+    });
+    expect(reclaimed.map((job) => job.id).toSorted()).toEqual(
+      [left[0]?.id, right[0]?.id].toSorted(),
+    );
+  });
 });
 
 function issue(

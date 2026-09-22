@@ -8,6 +8,7 @@ import type {
   ClaimedEmailJob,
   EmailJobClaim,
   EmailJobCompletion,
+  EmailJobFailure,
   EmailJobRetry,
   IssueActionToken,
   PasswordRehash,
@@ -218,7 +219,7 @@ export class InMemoryAuthRepository implements AuthRepository, EmailJobStore {
       .filter(
         (job) =>
           !job.sentAt &&
-          job.attemptCount < 10 &&
+          job.attemptCount < 8 &&
           job.availableAt <= input.now &&
           (!job.leasedUntil || job.leasedUntil <= input.now),
       )
@@ -268,6 +269,16 @@ export class InMemoryAuthRepository implements AuthRepository, EmailJobStore {
     }
   }
 
+  async failEmailJob(input: EmailJobFailure): Promise<void> {
+    const job = this.jobsById.get(input.id);
+    if (job?.leasedUntil?.getTime() === input.leasedUntil.getTime()) {
+      job.attemptCount = 8;
+      job.leasedUntil = null;
+      job.lastErrorCode = input.lastErrorCode;
+      job.availableAt = input.now;
+    }
+  }
+
   async cleanupExpired(input: AuthCleanupRequest): Promise<AuthCleanupResult> {
     return {
       rateLimits: this.deleteLimited(this.rateLimits, () => true, input.limit),
@@ -286,7 +297,7 @@ export class InMemoryAuthRepository implements AuthRepository, EmailJobStore {
       ),
       emailJobs: this.deleteLimited(
         this.jobsById,
-        (job) => job.sentAt !== null || job.attemptCount >= 10,
+        (job) => job.sentAt !== null || job.attemptCount >= 8,
         input.limit,
       ),
     };

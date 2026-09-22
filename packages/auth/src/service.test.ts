@@ -22,7 +22,9 @@ describe("AuthService", () => {
     ).resolves.toEqual({ accepted: true });
 
     expect(harness.repository.accountsByEmailKey.size).toBe(1);
-    expect(harness.repository.currentJobs("verification")).toHaveLength(1);
+    const jobs = harness.repository.currentJobs("verification");
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]?.idempotencyKey).toBe(`auth-email/${jobs[0]?.id}`);
   });
 
   it("uses the same invalid-credentials result for unverified and missing accounts", async () => {

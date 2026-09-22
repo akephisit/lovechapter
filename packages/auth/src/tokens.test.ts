@@ -56,6 +56,7 @@ describe("action tokens", () => {
     });
 
     expect(codecWithOldAndNewKeys.verify(oldToken, oldClaims)).toBe(true);
+    expect(codecWithOldAndNewKeys.reconstruct(oldClaims)).toBe(oldToken);
   });
 
   it("fails closed for malformed tokens or mismatched stored claims", () => {

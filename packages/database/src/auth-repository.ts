@@ -8,6 +8,7 @@ import type {
   ClaimedEmailJob,
   EmailJobClaim,
   EmailJobCompletion,
+  EmailJobFailure,
   EmailJobRetry,
   EmailJobStore,
   IssueActionToken,
@@ -33,6 +34,7 @@ import {
   buildFindActionTokenQuery,
   buildFindEligibleAccountForEmailQuery,
   buildFindResetEligibleAccountForEmailQuery,
+  buildFailEmailJobQuery,
   buildInsertActionTokenQuery,
   buildInsertEmailJobQuery,
   buildInvalidateTokensAndJobsQuery,
@@ -233,10 +235,13 @@ export class PostgresEmailJobStore implements EmailJobStore {
   }
 
   async retryEmailJob(input: EmailJobRetry): Promise<void> {
-    if (!/^[a-z0-9_:-]{1,64}$/i.test(input.lastErrorCode)) {
-      throw new Error("Email job error code must be sanitized");
-    }
+    validateErrorCode(input.lastErrorCode);
     await this.executor.execute(buildRetryEmailJobQuery(input));
+  }
+
+  async failEmailJob(input: EmailJobFailure): Promise<void> {
+    validateErrorCode(input.lastErrorCode);
+    await this.executor.execute(buildFailEmailJobQuery(input));
   }
 
   cleanupExpired(input: AuthCleanupRequest): Promise<AuthCleanupResult> {
@@ -330,6 +335,12 @@ function mapClaimedEmailJob(row: ClaimedEmailJobRow): ClaimedEmailJob {
 function boundedLimit(value: number, maximum: number, name: string): void {
   if (!Number.isInteger(value) || value < 1 || value > maximum) {
     throw new Error(`${name} must be between 1 and ${maximum}`);
+  }
+}
+
+function validateErrorCode(value: string): void {
+  if (!/^[a-z0-9_:-]{1,64}$/i.test(value)) {
+    throw new Error("Email job error code must be sanitized");
   }
 }
 

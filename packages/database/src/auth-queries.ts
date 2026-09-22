@@ -4,6 +4,7 @@ import type {
   AuthCleanupRequest,
   EmailJobClaim,
   EmailJobCompletion,
+  EmailJobFailure,
   EmailJobRetry,
   PasswordRehash,
   PasswordResetConsumption,
@@ -285,7 +286,7 @@ export function buildClaimEmailJobsQuery(input: EmailJobClaim): SQL {
       select ${authEmailJobs.id} as "id"
       from ${authEmailJobs}
       where ${authEmailJobs.sentAt} is null
-        and ${authEmailJobs.attemptCount} < 10
+        and ${authEmailJobs.attemptCount} < 8
         and ${authEmailJobs.availableAt} <= ${input.now}
         and (${authEmailJobs.leasedUntil} is null or ${authEmailJobs.leasedUntil} <= ${input.now})
       order by ${authEmailJobs.availableAt}, ${authEmailJobs.id}
@@ -347,6 +348,16 @@ export function buildRetryEmailJobQuery(input: EmailJobRetry): SQL {
       and ${authEmailJobs.leasedUntil} = ${input.leasedUntil}`;
 }
 
+export function buildFailEmailJobQuery(input: EmailJobFailure): SQL {
+  return sql`update ${authEmailJobs}
+    set ${authEmailJobs.attemptCount} = 8,
+        ${authEmailJobs.leasedUntil} = null,
+        ${authEmailJobs.lastErrorCode} = ${input.lastErrorCode},
+        ${authEmailJobs.updatedAt} = ${input.now}
+    where ${authEmailJobs.id} = ${input.id}
+      and ${authEmailJobs.leasedUntil} = ${input.leasedUntil}`;
+}
+
 export type AuthCleanupTable =
   "rate_limits" | "tokens" | "sessions" | "email_jobs";
 
@@ -354,32 +365,37 @@ export function buildCleanupQuery(
   table: AuthCleanupTable,
   input: AuthCleanupRequest,
 ): SQL {
+  const sevenDaysAgo = new Date(input.now.getTime() - 7 * 86_400_000);
+  const thirtyDaysAgo = new Date(input.now.getTime() - 30 * 86_400_000);
   if (table === "rate_limits") {
     return sql`delete from ${authRateLimits}
       where (${authRateLimits.scope}, ${authRateLimits.keyHash}, ${authRateLimits.bucketStartedAt}) in (
         select ${authRateLimits.scope}, ${authRateLimits.keyHash}, ${authRateLimits.bucketStartedAt}
         from ${authRateLimits}
         where ${authRateLimits.expiresAt} <= ${input.now}
-        order by ${authRateLimits.expiresAt}, ${authRateLimits.scope}, ${authRateLimits.keyHash}
+        order by ${authRateLimits.expiresAt}, ${authRateLimits.scope}, ${authRateLimits.keyHash}, ${authRateLimits.bucketStartedAt}
         limit ${input.limit}
       )
       returning ${authRateLimits.keyHash} as "id"`;
   }
   if (table === "tokens") {
-    return boundedDelete(
-      authTokens,
-      authTokens.id,
-      authTokens.expiresAt,
-      input,
-    );
+    return sql`delete from ${authTokens}
+      where ${authTokens.id} in (
+        select ${authTokens.id} from ${authTokens}
+        where ${authTokens.expiresAt} <= ${sevenDaysAgo}
+           or ${authTokens.consumedAt} <= ${sevenDaysAgo}
+        order by ${authTokens.expiresAt}, ${authTokens.id}
+        limit ${input.limit}
+      )
+      returning ${authTokens.id} as "id"`;
   }
   if (table === "sessions") {
     return sql`delete from ${authSessions}
       where ${authSessions.id} in (
         select ${authSessions.id} from ${authSessions}
-        where ${authSessions.absoluteExpiresAt} <= ${input.now}
-           or ${authSessions.idleExpiresAt} <= ${input.now}
-           or ${authSessions.revokedAt} is not null
+        where ${authSessions.absoluteExpiresAt} <= ${thirtyDaysAgo}
+           or ${authSessions.idleExpiresAt} <= ${thirtyDaysAgo}
+           or ${authSessions.revokedAt} <= ${thirtyDaysAgo}
         order by ${authSessions.absoluteExpiresAt}, ${authSessions.id}
         limit ${input.limit}
       )
@@ -388,26 +404,10 @@ export function buildCleanupQuery(
   return sql`delete from ${authEmailJobs}
     where ${authEmailJobs.id} in (
       select ${authEmailJobs.id} from ${authEmailJobs}
-      where ${authEmailJobs.sentAt} is not null
-         or ${authEmailJobs.attemptCount} >= 10
+      where ${authEmailJobs.sentAt} <= ${sevenDaysAgo}
+         or (${authEmailJobs.attemptCount} >= 8 and ${authEmailJobs.updatedAt} <= ${sevenDaysAgo})
       order by ${authEmailJobs.updatedAt}, ${authEmailJobs.id}
       limit ${input.limit}
     )
     returning ${authEmailJobs.id} as "id"`;
-}
-
-function boundedDelete(
-  table: typeof authTokens,
-  id: typeof authTokens.id,
-  expiresAt: typeof authTokens.expiresAt,
-  input: AuthCleanupRequest,
-): SQL {
-  return sql`delete from ${table}
-    where ${id} in (
-      select ${id} from ${table}
-      where ${expiresAt} <= ${input.now}
-      order by ${expiresAt}, ${id}
-      limit ${input.limit}
-    )
-    returning ${id} as "id"`;
 }

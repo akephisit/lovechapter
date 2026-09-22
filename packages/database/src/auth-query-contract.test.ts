@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildClaimEmailJobsQuery,
+  buildCleanupQuery,
   buildCreateSessionIfCredentialsCurrentQuery,
   buildFindAccountByEmailKeyQuery,
+  buildFailEmailJobQuery,
   buildConsumePasswordResetQuery,
   buildRevokeAccountSessionsQuery,
   buildRehashPasswordIfCurrentQuery,
@@ -36,10 +38,63 @@ describe("authentication SQL contracts", () => {
     );
 
     expect(query.sql).toMatch(/for update skip locked/i);
+    expect(query.sql).toMatch(/"leased_until".*<=/i);
+    expect(query.sql).toMatch(/"attempt_count" < 8/i);
     expect(query.sql).toMatch(/order by .*"available_at".*"id"/i);
     expect(query.sql).toMatch(/limit \$\d+/i);
     expect(query.params).toContain(10);
     expect(query.sql).not.toMatch(/select\s+\*/i);
+  });
+
+  it("exhausts terminal jobs under their active lease", () => {
+    const query = dialect.sqlToQuery(
+      buildFailEmailJobQuery({
+        id: crypto.randomUUID(),
+        leasedUntil: new Date("2026-09-22T00:02:00.000Z"),
+        now,
+        lastErrorCode: "provider_rejected",
+      }),
+    );
+
+    expect(query.sql).toMatch(/"attempt_count" = 8/i);
+    expect(query.sql).toMatch(/"leased_until" = \$\d+/i);
+    expect(query.sql).toMatch(/"last_error_code" = \$\d+/i);
+  });
+
+  it("uses bounded deterministic retention windows for every cleanup", () => {
+    for (const table of [
+      "rate_limits",
+      "tokens",
+      "sessions",
+      "email_jobs",
+    ] as const) {
+      const query = dialect.sqlToQuery(
+        buildCleanupQuery(table, { now, limit: 500 }),
+      );
+      expect(query.sql).toMatch(/order by/i);
+      expect(query.sql).toMatch(/"id"/i);
+      expect(query.sql).toMatch(/limit \$\d+/i);
+      expect(query.params).toContain(500);
+    }
+
+    const tokenQuery = dialect.sqlToQuery(
+      buildCleanupQuery("tokens", { now, limit: 500 }),
+    );
+    const sessionQuery = dialect.sqlToQuery(
+      buildCleanupQuery("sessions", { now, limit: 500 }),
+    );
+    const emailJobQuery = dialect.sqlToQuery(
+      buildCleanupQuery("email_jobs", { now, limit: 500 }),
+    );
+    expect(tokenQuery.params).toContainEqual(
+      new Date("2026-09-15T00:00:00.000Z"),
+    );
+    expect(sessionQuery.params).toContainEqual(
+      new Date("2026-08-23T00:00:00.000Z"),
+    );
+    expect(emailJobQuery.params).toContainEqual(
+      new Date("2026-09-15T00:00:00.000Z"),
+    );
   });
 
   it("guards session insertion against reset/sign-in races", () => {

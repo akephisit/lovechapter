@@ -12,7 +12,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "build": "npm run build --workspace @lovechapter/api && npm run build --workspace @lovechapter/web",
+    "build": "npm run build --workspace @lovechapter/api && npm run build --workspace @lovechapter/jobs && npm run build --workspace @lovechapter/web",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

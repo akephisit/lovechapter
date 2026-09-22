@@ -52,25 +52,29 @@ export function createActionTokenCodec(config: {
     };
   };
 
+  const reconstruct = (claims: ActionTokenClaims): string => {
+    validateClaims(claims);
+    const key = keys.get(claims.signingKeyVersion);
+    if (!key) throw new Error("The action-token signing key is missing");
+    const mac = sign(key, claims);
+    return [
+      TOKEN_PREFIX,
+      claims.signingKeyVersion,
+      claims.id,
+      claims.expiresAtEpochSeconds,
+      Buffer.from(mac).toString("base64url"),
+    ].join(".");
+  };
+
   return {
     activeVersion: config.activeVersion,
     create(claims) {
-      validateClaims(claims);
       if (claims.signingKeyVersion !== config.activeVersion) {
         throw new Error("Action tokens may only use the active signing key");
       }
-      const key = keys.get(config.activeVersion);
-      if (!key)
-        throw new Error("The active action-token signing key is missing");
-      const mac = sign(key, claims);
-      return [
-        TOKEN_PREFIX,
-        config.activeVersion,
-        claims.id,
-        claims.expiresAtEpochSeconds,
-        Buffer.from(mac).toString("base64url"),
-      ].join(".");
+      return reconstruct(claims);
     },
+    reconstruct,
     parse,
     verify(token, claims) {
       const parsed = parse(token);

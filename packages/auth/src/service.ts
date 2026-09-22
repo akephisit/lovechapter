@@ -282,7 +282,6 @@ export class AuthService {
   private prepareIssue(purpose: AuthTokenPurpose, now: Date): IssueActionToken {
     const tokenId = this.randomUuid();
     const jobId = this.randomUuid();
-    const idempotencyKey = this.randomUuid();
     const expiresAtEpochSeconds = Math.floor(
       (now.getTime() + (purpose === "verify_email" ? 30 : 15) * MINUTE_MS) /
         1000,
@@ -306,7 +305,7 @@ export class AuthService {
           accountId,
           authTokenId: tokenId,
           kind: purpose,
-          idempotencyKey,
+          idempotencyKey: `auth-email/${jobId}`,
           availableAt: now,
         },
       };

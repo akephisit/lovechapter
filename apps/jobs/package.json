@@ -1,0 +1,19 @@
+{
+  "name": "@lovechapter/jobs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build src/index.ts --target=bun --sourcemap=linked --outdir=dist",
+    "start": "bun dist/index.js",
+    "dev": "bun --watch src/index.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@lovechapter/auth": "0.1.0",
+    "@lovechapter/database": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2"
+  }
+}

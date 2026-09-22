@@ -171,6 +171,21 @@ describe("PostgresEmailJobStore", () => {
       store.claimEmailJobs({ now, limit: 11, leaseSeconds: 60 }),
     ).rejects.toThrow("between 1 and 10");
   });
+
+  it("records only sanitized terminal failure codes", async () => {
+    const store = new PostgresEmailJobStore(new FakeExecutor([], []));
+    const input = {
+      id: crypto.randomUUID(),
+      leasedUntil: new Date("2026-09-22T00:02:00.000Z"),
+      now,
+      lastErrorCode: "provider_rejected",
+    };
+
+    await expect(store.failEmailJob(input)).resolves.toBeUndefined();
+    await expect(
+      store.failEmailJob({ ...input, lastErrorCode: "raw provider detail!" }),
+    ).rejects.toThrow("sanitized");
+  });
 });
 
 class FakeExecutor implements QueryExecutor {
