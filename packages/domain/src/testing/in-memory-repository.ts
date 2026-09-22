@@ -1,19 +1,22 @@
 import type {
   AuthenticatedUser,
+  CreateGuestAffiliationInput,
   CreateGuestInput,
   CreateWeddingInput,
+  GuestAffiliation,
   GuestSummary,
   InvitationCreated,
   Page,
   PublicInvitation,
   RsvpResponse,
   SubmitRsvpInput,
+  UpdateGuestAffiliationInput,
   UpdateProfileInput,
   WeddingSummary,
 } from "@lovechapter/contracts";
 
 import { encodeCursor } from "../cursor";
-import { ConflictError, NotFoundError } from "../errors";
+import { ConflictError, DomainValidationError, NotFoundError } from "../errors";
 import type { Principal } from "../identity";
 import type {
   CreateInvitationRecord,
@@ -40,6 +43,10 @@ export class InMemoryLoveChapterRepository implements LoveChapterRepository {
   private readonly usersByIdentity = new Map<string, AuthenticatedUser>();
   private readonly weddings = new Map<string, WeddingRecord>();
   private readonly guests = new Map<string, GuestRecord>();
+  private readonly guestAffiliations = new Map<
+    string,
+    { weddingId: string; summary: GuestAffiliation }
+  >();
   private readonly invitations = new Map<string, InvitationRecord>();
   private readonly rsvpsByGuest = new Map<string, RsvpResponse>();
   private readonly now: () => Date;
@@ -130,6 +137,100 @@ export class InMemoryLoveChapterRepository implements LoveChapterRepository {
     return summary;
   }
 
+  async listGuestAffiliations(
+    userId: string,
+    weddingId: string,
+  ): Promise<GuestAffiliation[]> {
+    this.requireMember(userId, weddingId);
+    return this.affiliationsForWedding(weddingId);
+  }
+
+  async createGuestAffiliation(
+    userId: string,
+    weddingId: string,
+    id: string,
+    input: CreateGuestAffiliationInput,
+  ): Promise<GuestAffiliation> {
+    this.requireMember(userId, weddingId);
+    const current = this.affiliationsForWedding(weddingId);
+    if (current.length >= 100) {
+      throw new DomainValidationError(
+        "A wedding can have at most 100 guest affiliations",
+      );
+    }
+    this.assertUniqueAffiliationName(weddingId, input.name);
+    const summary: GuestAffiliation = {
+      id,
+      ...input,
+      sortOrder: (current.at(-1)?.sortOrder ?? -1) + 1,
+      createdAt: this.now().toISOString(),
+    };
+    this.guestAffiliations.set(id, { weddingId, summary });
+    return summary;
+  }
+
+  async updateGuestAffiliation(
+    userId: string,
+    weddingId: string,
+    affiliationId: string,
+    input: UpdateGuestAffiliationInput,
+  ): Promise<GuestAffiliation> {
+    this.requireMember(userId, weddingId);
+    const record = this.requireAffiliation(weddingId, affiliationId);
+    this.assertUniqueAffiliationName(weddingId, input.name, affiliationId);
+    const summary = { ...record.summary, ...input };
+    this.guestAffiliations.set(affiliationId, { weddingId, summary });
+    return summary;
+  }
+
+  async reorderGuestAffiliations(
+    userId: string,
+    weddingId: string,
+    affiliationIds: string[],
+  ): Promise<GuestAffiliation[]> {
+    this.requireMember(userId, weddingId);
+    const current = this.affiliationsForWedding(weddingId);
+    if (
+      current.length !== affiliationIds.length ||
+      affiliationIds.some(
+        (id) =>
+          !this.guestAffiliations.get(id) ||
+          this.guestAffiliations.get(id)?.weddingId !== weddingId,
+      )
+    ) {
+      throw new DomainValidationError("Invalid guest affiliation order");
+    }
+    affiliationIds.forEach((id, sortOrder) => {
+      const record = this.requireAffiliation(weddingId, id);
+      this.guestAffiliations.set(id, {
+        ...record,
+        summary: { ...record.summary, sortOrder },
+      });
+    });
+    return this.affiliationsForWedding(weddingId);
+  }
+
+  async deleteGuestAffiliation(
+    userId: string,
+    weddingId: string,
+    affiliationId: string,
+  ): Promise<void> {
+    this.requireMember(userId, weddingId);
+    this.requireAffiliation(weddingId, affiliationId);
+    this.guestAffiliations.delete(affiliationId);
+    for (const [guestId, record] of this.guests) {
+      if (
+        record.weddingId === weddingId &&
+        record.summary.affiliation?.id === affiliationId
+      ) {
+        this.guests.set(guestId, {
+          ...record,
+          summary: { ...record.summary, affiliation: null },
+        });
+      }
+    }
+  }
+
   async listGuests(
     userId: string,
     weddingId: string,
@@ -152,12 +253,16 @@ export class InMemoryLoveChapterRepository implements LoveChapterRepository {
     input: CreateGuestInput,
   ): Promise<GuestSummary> {
     this.requireMember(userId, weddingId);
+    const affiliation = input.affiliationId
+      ? this.requireAffiliation(weddingId, input.affiliationId).summary
+      : null;
     const summary: GuestSummary = input.email
       ? {
           id,
           name: input.name,
           email: input.email,
           allowedPartySize: input.allowedPartySize,
+          affiliation,
           createdAt: this.now().toISOString(),
           rsvp: null,
         }
@@ -165,10 +270,30 @@ export class InMemoryLoveChapterRepository implements LoveChapterRepository {
           id,
           name: input.name,
           allowedPartySize: input.allowedPartySize,
+          affiliation,
           createdAt: this.now().toISOString(),
           rsvp: null,
         };
     this.guests.set(id, { weddingId, summary });
+    return summary;
+  }
+
+  async setGuestAffiliation(
+    userId: string,
+    weddingId: string,
+    guestId: string,
+    affiliationId: string | null,
+  ): Promise<GuestSummary> {
+    this.requireMember(userId, weddingId);
+    const record = this.guests.get(guestId);
+    if (!record || record.weddingId !== weddingId) {
+      throw new NotFoundError("Guest not found");
+    }
+    const affiliation = affiliationId
+      ? this.requireAffiliation(weddingId, affiliationId).summary
+      : null;
+    const summary = { ...record.summary, affiliation };
+    this.guests.set(guestId, { ...record, summary });
     return summary;
   }
 
@@ -266,6 +391,45 @@ export class InMemoryLoveChapterRepository implements LoveChapterRepository {
     if (!wedding?.members.has(userId))
       throw new NotFoundError("Wedding not found");
     return wedding;
+  }
+
+  private affiliationsForWedding(weddingId: string): GuestAffiliation[] {
+    return [...this.guestAffiliations.values()]
+      .filter((record) => record.weddingId === weddingId)
+      .map((record) => record.summary)
+      .toSorted(
+        (left, right) =>
+          left.sortOrder - right.sortOrder ||
+          left.createdAt.localeCompare(right.createdAt) ||
+          left.id.localeCompare(right.id),
+      );
+  }
+
+  private requireAffiliation(
+    weddingId: string,
+    affiliationId: string,
+  ): { weddingId: string; summary: GuestAffiliation } {
+    const record = this.guestAffiliations.get(affiliationId);
+    if (!record || record.weddingId !== weddingId) {
+      throw new NotFoundError("Guest affiliation not found");
+    }
+    return record;
+  }
+
+  private assertUniqueAffiliationName(
+    weddingId: string,
+    name: string,
+    exceptId?: string,
+  ): void {
+    const duplicate = [...this.guestAffiliations.entries()].some(
+      ([id, record]) =>
+        id !== exceptId &&
+        record.weddingId === weddingId &&
+        record.summary.name.localeCompare(name, undefined, {
+          sensitivity: "accent",
+        }) === 0,
+    );
+    if (duplicate) throw new ConflictError("Guest affiliation already exists");
   }
 
   private activeInvitation(tokenHash: string): InvitationRecord | undefined {

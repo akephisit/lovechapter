@@ -7,6 +7,7 @@ import {
   authRateLimits,
   authSessions,
   authTokens,
+  guestAffiliations,
   guests,
   invitations,
   rsvps,
@@ -22,6 +23,7 @@ describe("MVP PostgreSQL schema", () => {
         users,
         weddings,
         weddingMembers,
+        guestAffiliations,
         guests,
         invitations,
         rsvps,
@@ -39,6 +41,7 @@ describe("MVP PostgreSQL schema", () => {
       "auth_rate_limits",
       "auth_sessions",
       "auth_tokens",
+      "guest_affiliations",
       "guests",
       "invitations",
       "rsvps",
@@ -144,6 +147,31 @@ describe("MVP PostgreSQL schema", () => {
     ).toEqual(["wedding_id", "id"]);
     expect(activeIndex?.config.unique).toBe(true);
     expect(activeIndex?.config.where).toBeDefined();
+  });
+
+  it("keeps a guest affiliation optional and scoped to the same wedding", () => {
+    const guestConfig = getTableConfig(guests);
+    const affiliationColumn = guestConfig.columns.find(
+      (column) => column.name === "affiliation_id",
+    );
+    const affiliationReference = guestConfig.foreignKeys
+      .map((foreignKey) => foreignKey.reference())
+      .find((reference) => reference.name === "guests_affiliation_scope_fk");
+
+    expect(affiliationColumn?.notNull).toBe(false);
+    expect(affiliationReference?.columns.map((column) => column.name)).toEqual([
+      "wedding_id",
+      "affiliation_id",
+    ]);
+    expect(
+      affiliationReference?.foreignColumns.map((column) => column.name),
+    ).toEqual(["wedding_id", "id"]);
+    expect(indexNames(guestAffiliations)).toEqual(
+      expect.arrayContaining([
+        "guest_affiliations_wedding_name_unique",
+        "guest_affiliations_wedding_order_idx",
+      ]),
+    );
   });
 
   it("ties each RSVP to an invitation for the same wedding and guest", () => {

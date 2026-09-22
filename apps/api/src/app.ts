@@ -60,6 +60,10 @@ const guestParams = t.Object({
   weddingId: t.String({ format: "uuid" }),
   guestId: t.String({ format: "uuid" }),
 });
+const affiliationParams = t.Object({
+  weddingId: t.String({ format: "uuid" }),
+  affiliationId: t.String({ format: "uuid" }),
+});
 const invitationParams = t.Object({
   invitationToken: t.String({ pattern: "^[A-Za-z0-9_-]{43}$" }),
 });
@@ -85,6 +89,29 @@ const guestInput = t.Object(
     name: t.String({ minLength: 1, maxLength: 120 }),
     email: t.Optional(t.String({ maxLength: 320 })),
     allowedPartySize: t.Integer({ minimum: 1, maximum: 20 }),
+    affiliationId: t.Optional(t.String({ format: "uuid" })),
+  },
+  { additionalProperties: false },
+);
+const guestAffiliationInput = t.Object(
+  {
+    name: t.String({ minLength: 1, maxLength: 80 }),
+    color: t.String({ pattern: "^#[0-9A-Fa-f]{6}$" }),
+  },
+  { additionalProperties: false },
+);
+const guestAffiliationOrderInput = t.Object(
+  {
+    ids: t.Array(t.String({ format: "uuid" }), {
+      maxItems: 100,
+      uniqueItems: true,
+    }),
+  },
+  { additionalProperties: false },
+);
+const setGuestAffiliationInput = t.Object(
+  {
+    affiliationId: t.Union([t.String({ format: "uuid" }), t.Null()]),
   },
   { additionalProperties: false },
 );
@@ -322,6 +349,58 @@ export function createApiApp(dependencies: ApiDependencies) {
       ),
     )
     .get(
+      "/v1/weddings/:weddingId/guest-affiliations",
+      { params: idParams },
+      ({ params, request }) =>
+        dependencies.run(request, (service) =>
+          service.listGuestAffiliations(params.weddingId),
+        ),
+    )
+    .post(
+      "/v1/weddings/:weddingId/guest-affiliations",
+      { params: idParams, body: guestAffiliationInput },
+      async ({ params, body, request }) =>
+        status(
+          201,
+          await dependencies.run(request, (service) =>
+            service.createGuestAffiliation(params.weddingId, body),
+          ),
+        ),
+    )
+    .put(
+      "/v1/weddings/:weddingId/guest-affiliations/order",
+      { params: idParams, body: guestAffiliationOrderInput },
+      ({ params, body, request }) =>
+        dependencies.run(request, (service) =>
+          service.reorderGuestAffiliations(params.weddingId, body.ids),
+        ),
+    )
+    .patch(
+      "/v1/weddings/:weddingId/guest-affiliations/:affiliationId",
+      { params: affiliationParams, body: guestAffiliationInput },
+      ({ params, body, request }) =>
+        dependencies.run(request, (service) =>
+          service.updateGuestAffiliation(
+            params.weddingId,
+            params.affiliationId,
+            body,
+          ),
+        ),
+    )
+    .delete(
+      "/v1/weddings/:weddingId/guest-affiliations/:affiliationId",
+      { params: affiliationParams },
+      async ({ params, request }) => {
+        await dependencies.run(request, (service) =>
+          service.deleteGuestAffiliation(
+            params.weddingId,
+            params.affiliationId,
+          ),
+        );
+        return status(204);
+      },
+    )
+    .get(
       "/v1/weddings/:weddingId/guests",
       { params: idParams, query: pageQuery },
       ({ params, query, request }) =>
@@ -340,6 +419,18 @@ export function createApiApp(dependencies: ApiDependencies) {
           201,
           await dependencies.run(request, (service) =>
             service.addGuest(params.weddingId, body),
+          ),
+        ),
+    )
+    .patch(
+      "/v1/weddings/:weddingId/guests/:guestId/affiliation",
+      { params: guestParams, body: setGuestAffiliationInput },
+      ({ params, body, request }) =>
+        dependencies.run(request, (service) =>
+          service.setGuestAffiliation(
+            params.weddingId,
+            params.guestId,
+            body.affiliationId,
           ),
         ),
     )

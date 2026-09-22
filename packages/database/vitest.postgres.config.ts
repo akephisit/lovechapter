@@ -4,6 +4,9 @@ export default defineConfig({
   test: {
     environment: "node",
     fileParallelism: false,
-    include: ["src/auth-postgres.integration.ts"],
+    include: [
+      "src/auth-postgres.integration.ts",
+      "src/guest-affiliations-postgres.integration.ts",
+    ],
   },
 });

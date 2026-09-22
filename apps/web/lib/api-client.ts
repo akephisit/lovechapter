@@ -2,9 +2,11 @@ import type {
   AcceptedResponse,
   AuthenticatedUser,
   AuthSessionResponse,
+  CreateGuestAffiliationInput,
   CreateGuestInput,
   CreateWeddingInput,
   ForgotPasswordInput,
+  GuestAffiliation,
   GuestSummary,
   InvitationCreated,
   Page,
@@ -12,9 +14,11 @@ import type {
   ResendVerificationInput,
   ResetPasswordInput,
   RsvpResponse,
+  SetGuestAffiliationInput,
   SignInInput,
   SignUpInput,
   SubmitRsvpInput,
+  UpdateGuestAffiliationInput,
   UpdateProfileInput,
   VerifyEmailInput,
   WeddingSummary,
@@ -126,6 +130,37 @@ export function createLoveChapterApi(
         method: "POST",
         body: JSON.stringify(input),
       }),
+    listGuestAffiliations: (weddingId: string) =>
+      request<GuestAffiliation[]>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/guest-affiliations`,
+      ),
+    createGuestAffiliation: (
+      weddingId: string,
+      input: CreateGuestAffiliationInput,
+    ) =>
+      request<GuestAffiliation>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/guest-affiliations`,
+        { method: "POST", body: JSON.stringify(input) },
+      ),
+    updateGuestAffiliation: (
+      weddingId: string,
+      affiliationId: string,
+      input: UpdateGuestAffiliationInput,
+    ) =>
+      request<GuestAffiliation>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/guest-affiliations/${encodeURIComponent(affiliationId)}`,
+        { method: "PATCH", body: JSON.stringify(input) },
+      ),
+    reorderGuestAffiliations: (weddingId: string, ids: string[]) =>
+      request<GuestAffiliation[]>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/guest-affiliations/order`,
+        { method: "PUT", body: JSON.stringify({ ids }) },
+      ),
+    deleteGuestAffiliation: (weddingId: string, affiliationId: string) =>
+      request<void>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/guest-affiliations/${encodeURIComponent(affiliationId)}`,
+        { method: "DELETE", body: "{}" },
+      ),
     listGuests: (weddingId: string, cursor?: string) =>
       request<Page<GuestSummary>>(
         `/v1/weddings/${encodeURIComponent(weddingId)}/guests?${pageQuery(cursor)}`,
@@ -134,6 +169,15 @@ export function createLoveChapterApi(
       request<GuestSummary>(
         `/v1/weddings/${encodeURIComponent(weddingId)}/guests`,
         { method: "POST", body: JSON.stringify(input) },
+      ),
+    setGuestAffiliation: (
+      weddingId: string,
+      guestId: string,
+      input: SetGuestAffiliationInput,
+    ) =>
+      request<GuestSummary>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/guests/${encodeURIComponent(guestId)}/affiliation`,
+        { method: "PATCH", body: JSON.stringify(input) },
       ),
     createInvitation: (weddingId: string, guestId: string) =>
       request<InvitationCreated>(

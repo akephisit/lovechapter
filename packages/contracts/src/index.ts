@@ -51,10 +51,34 @@ export type WeddingSummary = CreateWeddingInput & {
   createdAt: string;
 };
 
+export type GuestAffiliation = {
+  id: string;
+  name: string;
+  color: string;
+  sortOrder: number;
+  createdAt: string;
+};
+
+export type CreateGuestAffiliationInput = {
+  name: string;
+  color: string;
+};
+
+export type UpdateGuestAffiliationInput = CreateGuestAffiliationInput;
+
+export type ReorderGuestAffiliationsInput = {
+  ids: string[];
+};
+
+export type SetGuestAffiliationInput = {
+  affiliationId: string | null;
+};
+
 export type CreateGuestInput = {
   name: string;
   email?: string;
   allowedPartySize: number;
+  affiliationId?: string;
 };
 
 export type RsvpResponse = {
@@ -64,8 +88,9 @@ export type RsvpResponse = {
   updatedAt: string;
 };
 
-export type GuestSummary = CreateGuestInput & {
+export type GuestSummary = Omit<CreateGuestInput, "affiliationId"> & {
   id: string;
+  affiliation: GuestAffiliation | null;
   createdAt: string;
   rsvp: RsvpResponse | null;
 };

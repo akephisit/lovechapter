@@ -107,6 +107,20 @@ Resolution:
 
 Sensitive guest changes may later require email OTP or equivalent verification.
 
+### Guest affiliations — LOCKED
+
+- Affiliations are wedding-defined and are never hardcoded as bride side,
+  groom side, or another assumed family structure.
+- A wedding member can create, rename, color, order, and delete affiliations.
+- A wedding may have at most 100 affiliations, and the limit is enforced before
+  a new one is created.
+- A guest has zero or one affiliation in the first version.
+- Existing guests can be assigned, reassigned, or returned to unassigned.
+- Deleting an affiliation preserves every guest and leaves affected guests
+  unassigned.
+- Tags or multi-group membership are a separate future capability.
+- A postal address is not required to create or manage a guest.
+
 ---
 
 ## 4. Ownership and billing — LOCKED
@@ -199,7 +213,7 @@ Domain code should emit notification events. Delivery providers should be isolat
 ### Guests
 
 - guest list
-- groups
+- wedding-defined affiliations
 - invitations
 - RSVP
 - party size / plus-one

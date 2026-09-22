@@ -3,6 +3,7 @@ import type { ListCursor } from "@lovechapter/domain";
 import { sql, type SQL } from "drizzle-orm";
 
 import {
+  guestAffiliations,
   guests,
   invitations,
   rsvps,
@@ -124,6 +125,11 @@ export function buildListGuestsQuery(input: {
       ${guests.name} as "name",
       ${guests.email} as "email",
       ${guests.allowedPartySize} as "allowed_party_size",
+      ${guestAffiliations.id} as "affiliation_id",
+      ${guestAffiliations.name} as "affiliation_name",
+      ${guestAffiliations.color} as "affiliation_color",
+      ${guestAffiliations.sortOrder} as "affiliation_sort_order",
+      ${guestAffiliations.createdAt} as "affiliation_created_at",
       ${guests.createdAt} as "created_at",
       ${rsvps.attendance} as "rsvp_attendance",
       ${rsvps.partySize} as "rsvp_party_size",
@@ -136,6 +142,9 @@ export function buildListGuestsQuery(input: {
     left join ${rsvps}
       on ${rsvps.weddingId} = ${guests.weddingId}
      and ${rsvps.guestId} = ${guests.id}
+    left join ${guestAffiliations}
+      on ${guestAffiliations.weddingId} = ${guests.weddingId}
+     and ${guestAffiliations.id} = ${guests.affiliationId}
     order by ${guests.createdAt} desc nulls last, ${guests.id} desc nulls last
     limit ${input.limit + 1}`;
 }
@@ -147,19 +156,278 @@ export function buildCreateGuestQuery(input: {
   name: string;
   email: string | null;
   allowedPartySize: number;
+  affiliationId: string | null;
 }): SQL {
-  return sql`insert into ${guests}
-      (${guests.id}, ${guests.weddingId}, ${guests.name}, ${guests.email}, ${guests.allowedPartySize})
-    select ${input.id}, ${input.weddingId}, ${input.name}, ${input.email}, ${input.allowedPartySize}
+  return sql`with "inserted_guest" as (
+    insert into ${guests}
+      (${guests.id}, ${guests.weddingId}, ${guests.name}, ${guests.email}, ${guests.allowedPartySize}, ${guests.affiliationId})
+    select ${input.id}, ${input.weddingId}, ${input.name}, ${input.email}, ${input.allowedPartySize}, ${input.affiliationId}
     from ${weddingMembers}
     where ${weddingMembers.weddingId} = ${input.weddingId}
       and ${weddingMembers.userId} = ${input.userId}
+      and (${input.affiliationId}::uuid is null or exists (
+        select 1 from ${guestAffiliations}
+        where ${guestAffiliations.weddingId} = ${input.weddingId}
+          and ${guestAffiliations.id} = ${input.affiliationId}
+      ))
+    returning ${guests.id}, ${guests.weddingId}, ${guests.name}, ${guests.email},
+      ${guests.allowedPartySize}, ${guests.affiliationId}, ${guests.createdAt}
+  )
+  select
+    "inserted_guest"."id" as "id",
+    "inserted_guest"."name" as "name",
+    "inserted_guest"."email" as "email",
+    "inserted_guest"."allowed_party_size" as "allowed_party_size",
+    "inserted_guest"."created_at" as "created_at",
+    ${guestAffiliations.id} as "affiliation_id",
+    ${guestAffiliations.name} as "affiliation_name",
+    ${guestAffiliations.color} as "affiliation_color",
+    ${guestAffiliations.sortOrder} as "affiliation_sort_order",
+    ${guestAffiliations.createdAt} as "affiliation_created_at"
+  from "inserted_guest"
+  left join ${guestAffiliations}
+    on ${guestAffiliations.weddingId} = "inserted_guest"."wedding_id"
+   and ${guestAffiliations.id} = "inserted_guest"."affiliation_id"`;
+}
+
+export function buildListGuestAffiliationsQuery(input: {
+  userId: string;
+  weddingId: string;
+}): SQL {
+  return sql`with "authorized_wedding" as (
+    select ${weddingMembers.weddingId} as "wedding_id"
+    from ${weddingMembers}
+    where ${weddingMembers.weddingId} = ${input.weddingId}
+      and ${weddingMembers.userId} = ${input.userId}
+    limit 1
+  )
+  select
+    true as "authorized",
+    ${guestAffiliations.id} as "id",
+    ${guestAffiliations.name} as "name",
+    ${guestAffiliations.color} as "color",
+    ${guestAffiliations.sortOrder} as "sort_order",
+    ${guestAffiliations.createdAt} as "created_at"
+  from "authorized_wedding"
+  left join ${guestAffiliations}
+    on ${guestAffiliations.weddingId} = "authorized_wedding"."wedding_id"
+  order by ${guestAffiliations.sortOrder} asc nulls last,
+    ${guestAffiliations.createdAt} asc nulls last,
+    ${guestAffiliations.id} asc nulls last
+  limit 101`;
+}
+
+export function buildCreateGuestAffiliationQuery(input: {
+  id: string;
+  userId: string;
+  weddingId: string;
+  name: string;
+  color: string;
+}): SQL {
+  return sql`insert into ${guestAffiliations}
+    (${guestAffiliations.id}, ${guestAffiliations.weddingId}, ${guestAffiliations.name}, ${guestAffiliations.color}, ${guestAffiliations.sortOrder})
+  select ${input.id}, ${input.weddingId}, ${input.name}, ${input.color},
+    coalesce(max(${guestAffiliations.sortOrder}), -1) + 1
+  from ${weddingMembers}
+  left join ${guestAffiliations}
+    on ${guestAffiliations.weddingId} = ${weddingMembers.weddingId}
+  where ${weddingMembers.weddingId} = ${input.weddingId}
+    and ${weddingMembers.userId} = ${input.userId}
+  group by ${weddingMembers.weddingId}
+  having count(${guestAffiliations.id}) < 100
+  returning
+    ${guestAffiliations.id} as "id",
+    ${guestAffiliations.name} as "name",
+    ${guestAffiliations.color} as "color",
+    ${guestAffiliations.sortOrder} as "sort_order",
+    ${guestAffiliations.createdAt} as "created_at"`;
+}
+
+export function buildLockGuestAffiliationScopeQuery(input: {
+  userId: string;
+  weddingId: string;
+  affiliationId?: string;
+}): SQL {
+  return sql`select ${weddings.id} as "wedding_id"
+  from ${weddings}
+  inner join ${weddingMembers}
+    on ${weddingMembers.weddingId} = ${weddings.id}
+   and ${weddingMembers.userId} = ${input.userId}
+  ${
+    input.affiliationId
+      ? sql`inner join ${guestAffiliations}
+          on ${guestAffiliations.weddingId} = ${weddings.id}
+         and ${guestAffiliations.id} = ${input.affiliationId}`
+      : sql``
+  }
+  where ${weddings.id} = ${input.weddingId}
+  ${
+    input.affiliationId
+      ? sql`for update of ${weddings}, ${guestAffiliations}`
+      : sql`for update of ${weddings}`
+  }`;
+}
+
+export function buildUpdateGuestAffiliationQuery(input: {
+  userId: string;
+  weddingId: string;
+  affiliationId: string;
+  name: string;
+  color: string;
+}): SQL {
+  return sql`update ${guestAffiliations}
+  set ${guestAffiliations.name} = ${input.name},
+      ${guestAffiliations.color} = ${input.color},
+      ${guestAffiliations.updatedAt} = now()
+  where ${guestAffiliations.weddingId} = ${input.weddingId}
+    and ${guestAffiliations.id} = ${input.affiliationId}
+    and exists (
+      select 1 from ${weddingMembers}
+      where ${weddingMembers.weddingId} = ${input.weddingId}
+        and ${weddingMembers.userId} = ${input.userId}
+    )
+  returning
+    ${guestAffiliations.id} as "id",
+    ${guestAffiliations.name} as "name",
+    ${guestAffiliations.color} as "color",
+    ${guestAffiliations.sortOrder} as "sort_order",
+    ${guestAffiliations.createdAt} as "created_at"`;
+}
+
+export function buildReorderGuestAffiliationsQuery(input: {
+  userId: string;
+  weddingId: string;
+  affiliationIds: string[];
+}): SQL {
+  return sql`with "authorized_wedding" as (
+    select ${weddingMembers.weddingId} as "wedding_id"
+    from ${weddingMembers}
+    where ${weddingMembers.weddingId} = ${input.weddingId}
+      and ${weddingMembers.userId} = ${input.userId}
+    limit 1
+  ), "requested_order" as (
+    select "value"::uuid as "id", ("ordinality" - 1)::integer as "sort_order"
+    from unnest(${input.affiliationIds}::uuid[]) with ordinality
+      as "requested"("value", "ordinality")
+  ), "valid_order" as (
+    select "authorized_wedding"."wedding_id"
+    from "authorized_wedding"
+    where (
+      select count(*) from ${guestAffiliations}
+      where ${guestAffiliations.weddingId} = "authorized_wedding"."wedding_id"
+    ) = ${input.affiliationIds.length}
+      and not exists (
+        select 1 from ${guestAffiliations}
+        where ${guestAffiliations.weddingId} = "authorized_wedding"."wedding_id"
+          and not (${guestAffiliations.id} = any(${input.affiliationIds}::uuid[]))
+      )
+  ), "updated_affiliations" as (
+    update ${guestAffiliations}
+    set ${guestAffiliations.sortOrder} = "requested_order"."sort_order",
+        ${guestAffiliations.updatedAt} = now()
+    from "requested_order", "valid_order"
+    where ${guestAffiliations.weddingId} = "valid_order"."wedding_id"
+      and ${guestAffiliations.id} = "requested_order"."id"
     returning
-      ${guests.id} as "id",
-      ${guests.name} as "name",
-      ${guests.email} as "email",
-      ${guests.allowedPartySize} as "allowed_party_size",
-      ${guests.createdAt} as "created_at"`;
+      ${guestAffiliations.id} as "id",
+      ${guestAffiliations.name} as "name",
+      ${guestAffiliations.color} as "color",
+      ${guestAffiliations.sortOrder} as "sort_order",
+      ${guestAffiliations.createdAt} as "created_at"
+  )
+  select
+    true as "authorized",
+    "updated_affiliations"."id",
+    "updated_affiliations"."name",
+    "updated_affiliations"."color",
+    "updated_affiliations"."sort_order",
+    "updated_affiliations"."created_at"
+  from "valid_order"
+  left join "updated_affiliations" on true
+  order by "updated_affiliations"."sort_order" asc nulls last,
+    "updated_affiliations"."id" asc nulls last`;
+}
+
+export function buildUnassignGuestAffiliationQuery(input: {
+  userId: string;
+  weddingId: string;
+  affiliationId: string;
+}): SQL {
+  return sql`update ${guests}
+  set ${guests.affiliationId} = null,
+      ${guests.updatedAt} = now()
+  where ${guests.weddingId} = ${input.weddingId}
+    and ${guests.affiliationId} = ${input.affiliationId}
+    and exists (
+      select 1 from ${weddingMembers}
+      where ${weddingMembers.weddingId} = ${input.weddingId}
+        and ${weddingMembers.userId} = ${input.userId}
+    )`;
+}
+
+export function buildDeleteGuestAffiliationQuery(input: {
+  userId: string;
+  weddingId: string;
+  affiliationId: string;
+}): SQL {
+  return sql`delete from ${guestAffiliations}
+  where ${guestAffiliations.weddingId} = ${input.weddingId}
+    and ${guestAffiliations.id} = ${input.affiliationId}
+    and exists (
+      select 1 from ${weddingMembers}
+      where ${weddingMembers.weddingId} = ${input.weddingId}
+        and ${weddingMembers.userId} = ${input.userId}
+    )
+  returning ${guestAffiliations.id} as "id"`;
+}
+
+export function buildSetGuestAffiliationQuery(input: {
+  userId: string;
+  weddingId: string;
+  guestId: string;
+  affiliationId: string | null;
+}): SQL {
+  return sql`with "updated_guest" as (
+    update ${guests}
+    set ${guests.affiliationId} = ${input.affiliationId},
+        ${guests.updatedAt} = now()
+    where ${guests.weddingId} = ${input.weddingId}
+      and ${guests.id} = ${input.guestId}
+      and exists (
+        select 1 from ${weddingMembers}
+        where ${weddingMembers.weddingId} = ${input.weddingId}
+          and ${weddingMembers.userId} = ${input.userId}
+      )
+      and (${input.affiliationId}::uuid is null or exists (
+        select 1 from ${guestAffiliations}
+        where ${guestAffiliations.weddingId} = ${input.weddingId}
+          and ${guestAffiliations.id} = ${input.affiliationId}
+      ))
+    returning ${guests.id}, ${guests.weddingId}, ${guests.name}, ${guests.email},
+      ${guests.allowedPartySize}, ${guests.affiliationId}, ${guests.createdAt}
+  )
+  select
+    "updated_guest"."id" as "id",
+    "updated_guest"."name" as "name",
+    "updated_guest"."email" as "email",
+    "updated_guest"."allowed_party_size" as "allowed_party_size",
+    "updated_guest"."created_at" as "created_at",
+    ${guestAffiliations.id} as "affiliation_id",
+    ${guestAffiliations.name} as "affiliation_name",
+    ${guestAffiliations.color} as "affiliation_color",
+    ${guestAffiliations.sortOrder} as "affiliation_sort_order",
+    ${guestAffiliations.createdAt} as "affiliation_created_at",
+    ${rsvps.attendance} as "rsvp_attendance",
+    ${rsvps.partySize} as "rsvp_party_size",
+    ${rsvps.note} as "rsvp_note",
+    ${rsvps.updatedAt} as "rsvp_updated_at"
+  from "updated_guest"
+  left join ${guestAffiliations}
+    on ${guestAffiliations.weddingId} = "updated_guest"."wedding_id"
+   and ${guestAffiliations.id} = "updated_guest"."affiliation_id"
+  left join ${rsvps}
+    on ${rsvps.weddingId} = "updated_guest"."wedding_id"
+   and ${rsvps.guestId} = "updated_guest"."id"`;
 }
 
 export function buildCreateInvitationQuery(input: {

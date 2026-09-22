@@ -1,18 +1,22 @@
 import type {
   AuthenticatedUser,
+  CreateGuestAffiliationInput,
   CreateGuestInput,
   CreateWeddingInput,
+  GuestAffiliation,
   GuestSummary,
   InvitationCreated,
   Page,
   PublicInvitation,
   RsvpResponse,
   SubmitRsvpInput,
+  UpdateGuestAffiliationInput,
   UpdateProfileInput,
   WeddingSummary,
 } from "@lovechapter/contracts";
 import {
   ConflictError,
+  DomainValidationError,
   encodeCursor,
   NotFoundError,
   type CreateInvitationRecord,
@@ -24,16 +28,24 @@ import {
 import type { SQL } from "drizzle-orm";
 
 import {
+  buildCreateGuestAffiliationQuery,
   buildCreateGuestQuery,
   buildCreateInvitationQuery,
   buildCreateOwnerMembershipQuery,
   buildCreateWeddingQuery,
+  buildDeleteGuestAffiliationQuery,
+  buildListGuestAffiliationsQuery,
   buildListGuestsQuery,
   buildListWeddingsQuery,
   buildPublicInvitationQuery,
+  buildLockGuestAffiliationScopeQuery,
+  buildReorderGuestAffiliationsQuery,
+  buildSetGuestAffiliationQuery,
   buildSyncUserQuery,
+  buildUpdateGuestAffiliationQuery,
   buildUpdateUserProfileQuery,
   buildUpsertRsvpQuery,
+  buildUnassignGuestAffiliationQuery,
 } from "./queries";
 
 export interface QueryExecutor {
@@ -121,30 +133,225 @@ export class PostgresLoveChapterRepository implements LoveChapterRepository {
     return toPage(guestRows.map(mapGuest), page.limit);
   }
 
+  async listGuestAffiliations(
+    userId: string,
+    weddingId: string,
+  ): Promise<GuestAffiliation[]> {
+    const result = await this.executor.execute<GuestAffiliationListRow>(
+      buildListGuestAffiliationsQuery({ userId, weddingId }),
+    );
+    if (result.rows.length === 0) throw new NotFoundError("Wedding not found");
+    const affiliations = result.rows
+      .filter(isMaterializedGuestAffiliationRow)
+      .map(mapGuestAffiliation);
+    if (affiliations.length > 100) {
+      throw new DomainValidationError(
+        "A wedding can have at most 100 guest affiliations",
+      );
+    }
+    return affiliations;
+  }
+
+  async createGuestAffiliation(
+    userId: string,
+    weddingId: string,
+    id: string,
+    input: CreateGuestAffiliationInput,
+  ): Promise<GuestAffiliation> {
+    try {
+      return await this.executor.transaction(async (transaction) => {
+        const scope = await transaction.execute<{ wedding_id: string }>(
+          buildLockGuestAffiliationScopeQuery({ userId, weddingId }),
+        );
+        if (!scope.rows[0]) throw new NotFoundError("Wedding not found");
+        const result = await transaction.execute<GuestAffiliationRow>(
+          buildCreateGuestAffiliationQuery({
+            id,
+            userId,
+            weddingId,
+            ...input,
+          }),
+        );
+        const row = result.rows[0];
+        if (!row) {
+          throw new DomainValidationError(
+            "A wedding can have at most 100 guest affiliations",
+          );
+        }
+        return mapGuestAffiliation(row);
+      });
+    } catch (error) {
+      if (isPostgresError(error, "23505")) {
+        throw new ConflictError("Guest affiliation already exists");
+      }
+      throw error;
+    }
+  }
+
+  async updateGuestAffiliation(
+    userId: string,
+    weddingId: string,
+    affiliationId: string,
+    input: UpdateGuestAffiliationInput,
+  ): Promise<GuestAffiliation> {
+    try {
+      const result = await this.executor.execute<GuestAffiliationRow>(
+        buildUpdateGuestAffiliationQuery({
+          userId,
+          weddingId,
+          affiliationId,
+          ...input,
+        }),
+      );
+      const row = result.rows[0];
+      if (!row) throw new NotFoundError("Guest affiliation not found");
+      return mapGuestAffiliation(row);
+    } catch (error) {
+      if (isPostgresError(error, "23505")) {
+        throw new ConflictError("Guest affiliation already exists");
+      }
+      throw error;
+    }
+  }
+
+  async reorderGuestAffiliations(
+    userId: string,
+    weddingId: string,
+    affiliationIds: string[],
+  ): Promise<GuestAffiliation[]> {
+    return this.executor.transaction(async (transaction) => {
+      const scope = await transaction.execute<{ wedding_id: string }>(
+        buildLockGuestAffiliationScopeQuery({ userId, weddingId }),
+      );
+      if (!scope.rows[0]) throw new NotFoundError("Wedding not found");
+      const result = await transaction.execute<GuestAffiliationListRow>(
+        buildReorderGuestAffiliationsQuery({
+          userId,
+          weddingId,
+          affiliationIds,
+        }),
+      );
+      if (result.rows.length === 0) {
+        throw new DomainValidationError("Invalid guest affiliation order");
+      }
+      return result.rows
+        .filter(isMaterializedGuestAffiliationRow)
+        .map(mapGuestAffiliation);
+    });
+  }
+
+  async deleteGuestAffiliation(
+    userId: string,
+    weddingId: string,
+    affiliationId: string,
+  ): Promise<void> {
+    await this.executor.transaction(async (transaction) => {
+      const scope = await transaction.execute<{ wedding_id: string }>(
+        buildLockGuestAffiliationScopeQuery({
+          userId,
+          weddingId,
+          affiliationId,
+        }),
+      );
+      if (!scope.rows[0]) {
+        throw new NotFoundError("Guest affiliation not found");
+      }
+      await transaction.execute(
+        buildUnassignGuestAffiliationQuery({
+          userId,
+          weddingId,
+          affiliationId,
+        }),
+      );
+      const result = await transaction.execute<{ id: string }>(
+        buildDeleteGuestAffiliationQuery({
+          userId,
+          weddingId,
+          affiliationId,
+        }),
+      );
+      if (!result.rows[0]) {
+        throw new NotFoundError("Guest affiliation not found");
+      }
+    });
+  }
+
   async createGuest(
     userId: string,
     weddingId: string,
     id: string,
     input: CreateGuestInput,
   ): Promise<GuestSummary> {
-    const result = await this.executor.execute<GuestWriteRow>(
-      buildCreateGuestQuery({
-        id,
-        userId,
-        weddingId,
-        name: input.name,
-        email: input.email ?? null,
-        allowedPartySize: input.allowedPartySize,
-      }),
-    );
-    const row = result.rows[0];
-    if (!row) throw new NotFoundError("Wedding not found");
-    return mapGuest({
-      ...row,
-      rsvp_attendance: null,
-      rsvp_party_size: null,
-      rsvp_note: null,
-      rsvp_updated_at: null,
+    const create = async (executor: QueryExecutor) => {
+      const result = await executor.execute<GuestWriteRow>(
+        buildCreateGuestQuery({
+          id,
+          userId,
+          weddingId,
+          name: input.name,
+          email: input.email ?? null,
+          allowedPartySize: input.allowedPartySize,
+          affiliationId: input.affiliationId ?? null,
+        }),
+      );
+      const row = result.rows[0];
+      if (!row)
+        throw new NotFoundError("Wedding or guest affiliation not found");
+      return mapGuest({
+        ...row,
+        rsvp_attendance: null,
+        rsvp_party_size: null,
+        rsvp_note: null,
+        rsvp_updated_at: null,
+      });
+    };
+    const affiliationId = input.affiliationId;
+    if (!affiliationId) return create(this.executor);
+    return this.executor.transaction(async (transaction) => {
+      const scope = await transaction.execute<{ wedding_id: string }>(
+        buildLockGuestAffiliationScopeQuery({
+          userId,
+          weddingId,
+          affiliationId,
+        }),
+      );
+      if (!scope.rows[0]) {
+        throw new NotFoundError("Wedding or guest affiliation not found");
+      }
+      return create(transaction);
+    });
+  }
+
+  async setGuestAffiliation(
+    userId: string,
+    weddingId: string,
+    guestId: string,
+    affiliationId: string | null,
+  ): Promise<GuestSummary> {
+    return this.executor.transaction(async (transaction) => {
+      const scope = await transaction.execute<{ wedding_id: string }>(
+        buildLockGuestAffiliationScopeQuery({
+          userId,
+          weddingId,
+          ...(affiliationId ? { affiliationId } : {}),
+        }),
+      );
+      if (!scope.rows[0]) {
+        throw new NotFoundError("Guest or guest affiliation not found");
+      }
+      const result = await transaction.execute<GuestRow>(
+        buildSetGuestAffiliationQuery({
+          userId,
+          weddingId,
+          guestId,
+          affiliationId,
+        }),
+      );
+      const row = result.rows[0];
+      if (!row || !isMaterializedGuestRow(row)) {
+        throw new NotFoundError("Guest or guest affiliation not found");
+      }
+      return mapGuest(row);
     });
   }
 
@@ -290,10 +497,42 @@ function mapGuest(row: MaterializedGuestRow): GuestSummary {
     id: row.id,
     name: row.name,
     allowedPartySize: Number(row.allowed_party_size),
+    affiliation: mapNullableGuestAffiliation(row),
     createdAt: asTimestamp(row.created_at),
     rsvp: mapNullableRsvp(row),
   };
   return row.email ? { ...common, email: row.email } : common;
+}
+
+function mapGuestAffiliation(row: GuestAffiliationRow): GuestAffiliation {
+  return {
+    id: row.id,
+    name: row.name,
+    color: row.color,
+    sortOrder: Number(row.sort_order),
+    createdAt: asTimestamp(row.created_at),
+  };
+}
+
+function mapNullableGuestAffiliation(
+  row: GuestAffiliationColumns,
+): GuestAffiliation | null {
+  if (
+    !row.affiliation_id ||
+    !row.affiliation_name ||
+    !row.affiliation_color ||
+    row.affiliation_sort_order === null ||
+    !row.affiliation_created_at
+  ) {
+    return null;
+  }
+  return {
+    id: row.affiliation_id,
+    name: row.affiliation_name,
+    color: row.affiliation_color,
+    sortOrder: Number(row.affiliation_sort_order),
+    createdAt: asTimestamp(row.affiliation_created_at),
+  };
 }
 
 function mapNullableRsvp(row: NullableRsvpRow): RsvpResponse | null {
@@ -390,6 +629,46 @@ type GuestWriteRow = {
   email: string | null;
   allowed_party_size: number;
   created_at: string | Date;
+} & GuestAffiliationColumns;
+
+type GuestAffiliationRow = {
+  id: string;
+  name: string;
+  color: string;
+  sort_order: number;
+  created_at: string | Date;
+};
+
+type GuestAffiliationListRow = {
+  authorized?: boolean;
+  id: string | null;
+  name: string | null;
+  color: string | null;
+  sort_order: number | null;
+  created_at: string | Date | null;
+};
+
+type MaterializedGuestAffiliationRow = GuestAffiliationListRow &
+  GuestAffiliationRow;
+
+function isMaterializedGuestAffiliationRow(
+  row: GuestAffiliationListRow,
+): row is MaterializedGuestAffiliationRow {
+  return (
+    row.id !== null &&
+    row.name !== null &&
+    row.color !== null &&
+    row.sort_order !== null &&
+    row.created_at !== null
+  );
+}
+
+type GuestAffiliationColumns = {
+  affiliation_id: string | null;
+  affiliation_name: string | null;
+  affiliation_color: string | null;
+  affiliation_sort_order: number | null;
+  affiliation_created_at: string | Date | null;
 };
 
 type GuestRow = Omit<

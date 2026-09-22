@@ -32,6 +32,10 @@ claimed.
   password handling, and immediate fragment scrubbing
 - Wedding, guest, private invitation, account-free RSVP, and couple-visible
   response flow
+- Wedding-defined guest affiliations with create, rename, color, reorder,
+  assignment/reassignment for new or existing guests, a 100-item bound, and
+  transactional delete-to-unassigned behavior; no affiliation is hardcoded or
+  seeded
 - Conservative service worker with no fetch interception or data caching
 - Provider-free in-process vertical-slice proof and browser isolation
   regressions
@@ -85,6 +89,23 @@ vinext builds, Bun runtime smoke, native Next build, vinext compatibility at
 94% with zero issues, and Cloudflare deployment dry-run. The final benchmark
 reported p50 `279.59 ms`, p95 `362.25 ms`, maximum `378.92 ms`, concurrency 2,
 and RSS `48.7 MiB`, within the 750 ms p95 budget.
+
+The guest-affiliation slice adds a wedding-scoped table and composite tenant
+foreign key, API/domain/repository operations, couple-workspace controls, stale
+request guards, and confirmation before deletion. Focused API, database, domain,
+and web tests pass. A disposable-PostgreSQL suite covers tenant isolation,
+delete-to-unassigned, the concurrent 100-item limit, and assignment/delete
+races; it remains a staging gate until `TEST_DATABASE_URL` is supplied. The
+complete provider-free release gate result is recorded when this branch
+finishes verification.
+
+The final provider-free guest-affiliation release gate passed on 2026-09-23:
+formatting, lint, every workspace typecheck, 46 test files / 247 tests, Drizzle
+snapshot validation, API/jobs and vinext builds, Bun runtime smoke, native Next
+build, vinext compatibility at 94% with zero issues, and Cloudflare deployment
+dry-run. `git diff --check` also passed. The disposable PostgreSQL suite was not
+executed because this runner has no `TEST_DATABASE_URL`; it remains an explicit
+staging gate rather than a claimed result.
 
 The benchmark numbers describe only the current development runner. No
 `TEST_DATABASE_URL` or confirmation flag was configured, so the live PostgreSQL

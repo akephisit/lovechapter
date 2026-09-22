@@ -272,3 +272,18 @@ an atomic `current` symlink, retained rollback artifacts, verified backups, and
 coordinated secret rotation. These checked-in assets are operational guidance;
 they do not claim that a VPS, domain, certificate, database, or email sender has
 been provisioned.
+
+## ADR-020 — Guest affiliations are wedding-defined
+
+**Status:** Accepted
+
+Guest affiliations belong to one wedding and are created, named, colored,
+ordered, and deleted by its authenticated members. LoveChapter does not seed or
+hardcode bride-side, groom-side, family, friend, or work categories.
+
+A guest has at most one affiliation in this phase. Deleting an affiliation is
+atomic: affected guests remain in the wedding and become unassigned before the
+affiliation is removed. Postal address is not part of affiliation management
+and is not required for guest creation. Existing guests can be reassigned, and
+each wedding is bounded to 100 affiliations so the complete ordered set remains
+manageable in one operation.

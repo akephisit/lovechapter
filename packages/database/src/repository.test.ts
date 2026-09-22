@@ -1,6 +1,7 @@
 import {
   ConflictError,
   decodeCursor,
+  DomainValidationError,
   NotFoundError,
 } from "@lovechapter/domain";
 import type { SQL } from "drizzle-orm";
@@ -175,7 +176,163 @@ describe("PostgresLoveChapterRepository", () => {
       partySize: 2,
     });
     expect(page.items[1]?.rsvp).toBeNull();
+    expect(page.items[1]?.affiliation).toBeNull();
     expect(page.nextCursor).toMatch(/^[A-Za-z0-9_-]+$/);
+  });
+
+  it("maps ordered guest affiliations and an assigned guest", async () => {
+    const affiliation = {
+      id: "00000000-0000-7000-8000-000000000004",
+      name: "Family",
+      color: "#a855f7",
+      sort_order: 0,
+      created_at: "2026-09-21T09:00:00.000Z",
+    };
+    const repository = new PostgresLoveChapterRepository(
+      new FakeExecutor(
+        [{ authorized: true, ...affiliation }],
+        [
+          {
+            ...guestRow("00000000-0000-7000-8000-000000000003", null),
+            affiliation_id: affiliation.id,
+            affiliation_name: affiliation.name,
+            affiliation_color: affiliation.color,
+            affiliation_sort_order: affiliation.sort_order,
+            affiliation_created_at: affiliation.created_at,
+          },
+        ],
+      ),
+    );
+
+    await expect(
+      repository.listGuestAffiliations(
+        "00000000-0000-7000-8000-000000000010",
+        "00000000-0000-7000-8000-000000000020",
+      ),
+    ).resolves.toEqual([
+      {
+        id: affiliation.id,
+        name: "Family",
+        color: "#a855f7",
+        sortOrder: 0,
+        createdAt: "2026-09-21T09:00:00.000Z",
+      },
+    ]);
+
+    const guests = await repository.listGuests(
+      "00000000-0000-7000-8000-000000000010",
+      "00000000-0000-7000-8000-000000000020",
+      { limit: 20 },
+    );
+    expect(guests.items[0]?.affiliation).toMatchObject({
+      id: affiliation.id,
+      name: "Family",
+    });
+  });
+
+  it("assigns an affiliation to an existing guest", async () => {
+    const row = {
+      ...guestRow("00000000-0000-7000-8000-000000000003", null),
+      affiliation_id: "00000000-0000-7000-8000-000000000004",
+      affiliation_name: "Family",
+      affiliation_color: "#a855f7",
+      affiliation_sort_order: 0,
+      affiliation_created_at: "2026-09-21T09:00:00.000Z",
+    };
+    const repository = new PostgresLoveChapterRepository(
+      new FakeExecutor(
+        [{ wedding_id: "00000000-0000-7000-8000-000000000020" }],
+        [row],
+      ),
+    );
+
+    await expect(
+      repository.setGuestAffiliation(
+        "00000000-0000-7000-8000-000000000010",
+        "00000000-0000-7000-8000-000000000020",
+        row.id,
+        row.affiliation_id,
+      ),
+    ).resolves.toMatchObject({
+      id: row.id,
+      affiliation: { id: row.affiliation_id, name: "Family" },
+    });
+  });
+
+  it("locks affiliation scope before creating an assigned guest", async () => {
+    const affiliation = {
+      id: "00000000-0000-7000-8000-000000000004",
+      name: "Family",
+      color: "#a855f7",
+      sort_order: 0,
+      created_at: "2026-09-21T09:00:00.000Z",
+    };
+    const row = {
+      ...guestRow("00000000-0000-7000-8000-000000000003", null),
+      affiliation_id: affiliation.id,
+      affiliation_name: affiliation.name,
+      affiliation_color: affiliation.color,
+      affiliation_sort_order: affiliation.sort_order,
+      affiliation_created_at: affiliation.created_at,
+    };
+    const executor = new FakeExecutor(
+      [{ wedding_id: "00000000-0000-7000-8000-000000000020" }],
+      [row],
+    );
+    const repository = new PostgresLoveChapterRepository(executor);
+
+    await expect(
+      repository.createGuest(
+        "00000000-0000-7000-8000-000000000010",
+        "00000000-0000-7000-8000-000000000020",
+        row.id,
+        {
+          name: row.name,
+          allowedPartySize: row.allowed_party_size,
+          affiliationId: affiliation.id,
+        },
+      ),
+    ).resolves.toMatchObject({
+      id: row.id,
+      affiliation: { id: affiliation.id, name: affiliation.name },
+    });
+    expect(executor.executeCount).toBe(2);
+  });
+
+  it("deletes an affiliation through sequential transaction statements", async () => {
+    const executor = new FakeExecutor(
+      [{ wedding_id: "00000000-0000-7000-8000-000000000020" }],
+      [],
+      [{ id: "00000000-0000-7000-8000-000000000004" }],
+    );
+    const repository = new PostgresLoveChapterRepository(executor);
+
+    await expect(
+      repository.deleteGuestAffiliation(
+        "00000000-0000-7000-8000-000000000010",
+        "00000000-0000-7000-8000-000000000020",
+        "00000000-0000-7000-8000-000000000004",
+      ),
+    ).resolves.toBeUndefined();
+    expect(executor.executeCount).toBe(3);
+  });
+
+  it("rejects a 101st affiliation after locking the wedding scope", async () => {
+    const repository = new PostgresLoveChapterRepository(
+      new FakeExecutor(
+        [{ wedding_id: "00000000-0000-7000-8000-000000000020" }],
+        [],
+      ),
+    );
+
+    await expect(
+      repository.createGuestAffiliation(
+        "00000000-0000-7000-8000-000000000010",
+        "00000000-0000-7000-8000-000000000020",
+        "00000000-0000-7000-8000-000000000004",
+        { name: "Too many", color: "#a855f7" },
+      ),
+    ).rejects.toBeInstanceOf(DomainValidationError);
   });
 
   it("returns not found when an authorization-scoped guest insert returns no row", async () => {
@@ -304,6 +461,11 @@ function guestRow(id: string, attendance: "attending" | null) {
     name: `Guest ${id.at(-1)}`,
     email: null,
     allowed_party_size: 2,
+    affiliation_id: null,
+    affiliation_name: null,
+    affiliation_color: null,
+    affiliation_sort_order: null,
+    affiliation_created_at: null,
     created_at: "2026-09-21T10:00:00.000Z",
     rsvp_attendance: attendance,
     rsvp_party_size: attendance ? 2 : null,

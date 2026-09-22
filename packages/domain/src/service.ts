@@ -1,7 +1,9 @@
 import type {
   AuthenticatedUser,
+  CreateGuestAffiliationInput,
   CreateGuestInput,
   CreateWeddingInput,
+  GuestAffiliation,
   GuestSummary,
   InvitationCreated,
   Page,
@@ -9,6 +11,7 @@ import type {
   PublicInvitation,
   RsvpResponse,
   SubmitRsvpInput,
+  UpdateGuestAffiliationInput,
   UpdateProfileInput,
   WeddingSummary,
 } from "@lovechapter/contracts";
@@ -64,6 +67,68 @@ export class LoveChapterService {
     return this.repository.listWeddings(user.id, normalizePage(page));
   }
 
+  async listGuestAffiliations(weddingId: string): Promise<GuestAffiliation[]> {
+    const user = await this.requireOnboardedUser();
+    return this.repository.listGuestAffiliations(user.id, weddingId);
+  }
+
+  async createGuestAffiliation(
+    weddingId: string,
+    input: CreateGuestAffiliationInput,
+  ): Promise<GuestAffiliation> {
+    const user = await this.requireOnboardedUser();
+    return this.repository.createGuestAffiliation(
+      user.id,
+      weddingId,
+      crypto.randomUUID(),
+      normalizeGuestAffiliation(input),
+    );
+  }
+
+  async updateGuestAffiliation(
+    weddingId: string,
+    affiliationId: string,
+    input: UpdateGuestAffiliationInput,
+  ): Promise<GuestAffiliation> {
+    const user = await this.requireOnboardedUser();
+    return this.repository.updateGuestAffiliation(
+      user.id,
+      weddingId,
+      affiliationId,
+      normalizeGuestAffiliation(input),
+    );
+  }
+
+  async reorderGuestAffiliations(
+    weddingId: string,
+    affiliationIds: string[],
+  ): Promise<GuestAffiliation[]> {
+    const user = await this.requireOnboardedUser();
+    if (
+      affiliationIds.length > 100 ||
+      new Set(affiliationIds).size !== affiliationIds.length
+    ) {
+      throw new DomainValidationError("Invalid guest affiliation order");
+    }
+    return this.repository.reorderGuestAffiliations(
+      user.id,
+      weddingId,
+      affiliationIds,
+    );
+  }
+
+  async deleteGuestAffiliation(
+    weddingId: string,
+    affiliationId: string,
+  ): Promise<void> {
+    const user = await this.requireOnboardedUser();
+    await this.repository.deleteGuestAffiliation(
+      user.id,
+      weddingId,
+      affiliationId,
+    );
+  }
+
   async addGuest(
     weddingId: string,
     input: CreateGuestInput,
@@ -74,6 +139,20 @@ export class LoveChapterService {
       weddingId,
       crypto.randomUUID(),
       normalizeGuest(input),
+    );
+  }
+
+  async setGuestAffiliation(
+    weddingId: string,
+    guestId: string,
+    affiliationId: string | null,
+  ): Promise<GuestSummary> {
+    const user = await this.requireOnboardedUser();
+    return this.repository.setGuestAffiliation(
+      user.id,
+      weddingId,
+      guestId,
+      affiliationId,
     );
   }
 
@@ -201,9 +280,28 @@ function normalizeGuest(input: CreateGuestInput): CreateGuestInput {
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     throw new DomainValidationError("Invalid guest email");
   }
+  const affiliation = input.affiliationId
+    ? { affiliationId: input.affiliationId }
+    : {};
   return email
-    ? { name, email, allowedPartySize: input.allowedPartySize }
-    : { name, allowedPartySize: input.allowedPartySize };
+    ? { name, email, allowedPartySize: input.allowedPartySize, ...affiliation }
+    : { name, allowedPartySize: input.allowedPartySize, ...affiliation };
+}
+
+function normalizeGuestAffiliation(
+  input: CreateGuestAffiliationInput,
+): CreateGuestAffiliationInput {
+  const name = input.name.trim();
+  if (!name || Array.from(name).length > 80) {
+    throw new DomainValidationError(
+      "Guest affiliation name must be 1–80 characters",
+    );
+  }
+  const color = input.color.toLowerCase();
+  if (!/^#[0-9a-f]{6}$/.test(color)) {
+    throw new DomainValidationError("Guest affiliation color is invalid");
+  }
+  return { name, color };
 }
 
 function assertTokenShape(token: string): void {

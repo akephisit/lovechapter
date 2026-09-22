@@ -1,13 +1,16 @@
 import type {
   AuthenticatedUser,
+  CreateGuestAffiliationInput,
   CreateGuestInput,
   CreateWeddingInput,
+  GuestAffiliation,
   GuestSummary,
   InvitationCreated,
   Page,
   PublicInvitation,
   RsvpResponse,
   SubmitRsvpInput,
+  UpdateGuestAffiliationInput,
   UpdateProfileInput,
   WeddingSummary,
 } from "@lovechapter/contracts";
@@ -49,6 +52,32 @@ export interface LoveChapterRepository {
     id: string,
     input: CreateWeddingInput,
   ): Promise<WeddingSummary>;
+  listGuestAffiliations(
+    userId: string,
+    weddingId: string,
+  ): Promise<GuestAffiliation[]>;
+  createGuestAffiliation(
+    userId: string,
+    weddingId: string,
+    id: string,
+    input: CreateGuestAffiliationInput,
+  ): Promise<GuestAffiliation>;
+  updateGuestAffiliation(
+    userId: string,
+    weddingId: string,
+    affiliationId: string,
+    input: UpdateGuestAffiliationInput,
+  ): Promise<GuestAffiliation>;
+  reorderGuestAffiliations(
+    userId: string,
+    weddingId: string,
+    affiliationIds: string[],
+  ): Promise<GuestAffiliation[]>;
+  deleteGuestAffiliation(
+    userId: string,
+    weddingId: string,
+    affiliationId: string,
+  ): Promise<void>;
   listGuests(
     userId: string,
     weddingId: string,
@@ -59,6 +88,12 @@ export interface LoveChapterRepository {
     weddingId: string,
     id: string,
     input: CreateGuestInput,
+  ): Promise<GuestSummary>;
+  setGuestAffiliation(
+    userId: string,
+    weddingId: string,
+    guestId: string,
+    affiliationId: string | null,
   ): Promise<GuestSummary>;
   createInvitation(
     input: CreateInvitationRecord,

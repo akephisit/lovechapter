@@ -118,6 +118,40 @@ export const weddingMembers = pgTable(
   ],
 );
 
+export const guestAffiliations = pgTable(
+  "guest_affiliations",
+  {
+    id: uuid("id").notNull(),
+    weddingId: uuid("wedding_id")
+      .notNull()
+      .references(() => weddings.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 80 }).notNull(),
+    color: varchar("color", { length: 7 }).notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    ...timestamps,
+  },
+  (table) => [
+    primaryKey({
+      name: "guest_affiliations_pkey",
+      columns: [table.weddingId, table.id],
+    }),
+    uniqueIndex("guest_affiliations_wedding_name_unique").on(
+      table.weddingId,
+      sql`lower(${table.name})`,
+    ),
+    index("guest_affiliations_wedding_order_idx").on(
+      table.weddingId,
+      table.sortOrder,
+      table.id,
+    ),
+    check(
+      "guest_affiliations_color_check",
+      sql`${table.color} ~ '^#[0-9a-f]{6}$'`,
+    ),
+    check("guest_affiliations_sort_order_check", sql`${table.sortOrder} >= 0`),
+  ],
+);
+
 export const guests = pgTable(
   "guests",
   {
@@ -128,6 +162,7 @@ export const guests = pgTable(
     name: varchar("name", { length: 120 }).notNull(),
     email: varchar("email", { length: 320 }),
     allowedPartySize: integer("allowed_party_size").notNull().default(1),
+    affiliationId: uuid("affiliation_id"),
     ...timestamps,
   },
   (table) => [
@@ -136,11 +171,19 @@ export const guests = pgTable(
       "guests_allowed_party_size_check",
       sql`${table.allowedPartySize} between 1 and 20`,
     ),
+    foreignKey({
+      name: "guests_affiliation_scope_fk",
+      columns: [table.weddingId, table.affiliationId],
+      foreignColumns: [guestAffiliations.weddingId, guestAffiliations.id],
+    }).onDelete("restrict"),
     index("guests_wedding_created_idx").on(
       table.weddingId,
       table.createdAt.desc(),
       table.id.desc(),
     ),
+    index("guests_wedding_affiliation_idx")
+      .on(table.weddingId, table.affiliationId)
+      .where(sql`${table.affiliationId} is not null`),
   ],
 );
 

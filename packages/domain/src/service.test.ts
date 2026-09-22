@@ -189,6 +189,60 @@ describe("LoveChapterService", () => {
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 
+  it("assigns existing guests only to affiliations from the same wedding", async () => {
+    const repository = new InMemoryLoveChapterRepository();
+    const coupleService = service(repository);
+    const first = await coupleService.createWedding({
+      name: "First",
+      timeZone: "UTC",
+      locale: "en",
+    });
+    const second = await coupleService.createWedding({
+      name: "Second",
+      timeZone: "UTC",
+      locale: "en",
+    });
+    const affiliation = await coupleService.createGuestAffiliation(first.id, {
+      name: "Family",
+      color: "#a855f7",
+    });
+    const guest = await coupleService.addGuest(second.id, {
+      name: "Nok",
+      allowedPartySize: 1,
+    });
+
+    await expect(
+      coupleService.setGuestAffiliation(second.id, guest.id, affiliation.id),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      coupleService.setGuestAffiliation(second.id, guest.id, null),
+    ).resolves.toMatchObject({ id: guest.id, affiliation: null });
+  });
+
+  it("limits each wedding to 100 guest affiliations", async () => {
+    const repository = new InMemoryLoveChapterRepository();
+    const coupleService = service(repository);
+    const wedding = await coupleService.createWedding({
+      name: "Mali & Arun",
+      timeZone: "UTC",
+      locale: "en",
+    });
+
+    for (let index = 0; index < 100; index += 1) {
+      await coupleService.createGuestAffiliation(wedding.id, {
+        name: `Affiliation ${index}`,
+        color: "#a855f7",
+      });
+    }
+
+    await expect(
+      coupleService.createGuestAffiliation(wedding.id, {
+        name: "One too many",
+        color: "#a855f7",
+      }),
+    ).rejects.toBeInstanceOf(DomainValidationError);
+  });
+
   it("rejects an expired invitation without disclosing guest data", async () => {
     const repository = new InMemoryLoveChapterRepository();
     const coupleService = service(repository);

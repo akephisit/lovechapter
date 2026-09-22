@@ -129,6 +129,61 @@ describe("LoveChapter API client", () => {
     );
   });
 
+  it("exposes wedding-scoped guest affiliation operations", async () => {
+    const weddingId = "wedding/with spaces";
+    const affiliationId = "affiliation/one";
+    const guestId = "guest/one";
+    const clientFetch = vi.fn<typeof fetch>(async (_input, init) =>
+      init?.method === "DELETE"
+        ? new Response(null, { status: 204 })
+        : jsonResponse([]),
+    );
+    vi.stubGlobal("fetch", clientFetch);
+    const api = createLoveChapterApi(vi.fn());
+
+    await api.listGuestAffiliations(weddingId);
+    await api.createGuestAffiliation(weddingId, {
+      name: "Family",
+      color: "#a855f7",
+    });
+    await api.updateGuestAffiliation(weddingId, affiliationId, {
+      name: "Close family",
+      color: "#a855f7",
+    });
+    await api.reorderGuestAffiliations(weddingId, [affiliationId]);
+    await api.setGuestAffiliation(weddingId, guestId, { affiliationId });
+    await api.deleteGuestAffiliation(weddingId, affiliationId);
+
+    expect(
+      clientFetch.mock.calls.map(([url, init]) => [url, init?.method ?? "GET"]),
+    ).toEqual([
+      ["/api/v1/weddings/wedding%2Fwith%20spaces/guest-affiliations", "GET"],
+      ["/api/v1/weddings/wedding%2Fwith%20spaces/guest-affiliations", "POST"],
+      [
+        "/api/v1/weddings/wedding%2Fwith%20spaces/guest-affiliations/affiliation%2Fone",
+        "PATCH",
+      ],
+      [
+        "/api/v1/weddings/wedding%2Fwith%20spaces/guest-affiliations/order",
+        "PUT",
+      ],
+      [
+        "/api/v1/weddings/wedding%2Fwith%20spaces/guests/guest%2Fone/affiliation",
+        "PATCH",
+      ],
+      [
+        "/api/v1/weddings/wedding%2Fwith%20spaces/guest-affiliations/affiliation%2Fone",
+        "DELETE",
+      ],
+    ]);
+    expect(clientFetch.mock.calls[3]?.[1]?.body).toBe(
+      JSON.stringify({ ids: [affiliationId] }),
+    );
+    expect(clientFetch.mock.calls[4]?.[1]?.body).toBe(
+      JSON.stringify({ affiliationId }),
+    );
+  });
+
   it("keeps public invitation requests on the same-origin proxy", async () => {
     const clientFetch = vi.fn<typeof fetch>(async () =>
       jsonResponse(invitationFixture()),

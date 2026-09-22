@@ -288,6 +288,137 @@ describe("LoveChapter API", () => {
     );
     expect(rsvp.status).toBe(200);
   });
+
+  it("manages wedding-defined guest affiliations without seeded categories", async () => {
+    const fixture = testFixture({ principal: couple("affiliations") });
+    const weddingResponse = await fixture.app.handle(
+      jsonRequest("/v1/weddings", "POST", {
+        name: "Mali & Arun",
+        timeZone: "Asia/Bangkok",
+        locale: "en",
+      }),
+    );
+    const wedding = (await weddingResponse.json()) as { id: string };
+
+    const initiallyEmpty = await fixture.app.handle(
+      trustedRequest(`/v1/weddings/${wedding.id}/guest-affiliations`),
+    );
+    expect(initiallyEmpty.status).toBe(200);
+    await expect(initiallyEmpty.json()).resolves.toEqual([]);
+
+    const familyResponse = await fixture.app.handle(
+      jsonRequest(`/v1/weddings/${wedding.id}/guest-affiliations`, "POST", {
+        name: "  Family  ",
+        color: "#A855F7",
+      }),
+    );
+    const friendsResponse = await fixture.app.handle(
+      jsonRequest(`/v1/weddings/${wedding.id}/guest-affiliations`, "POST", {
+        name: "Friends",
+        color: "#0EA5E9",
+      }),
+    );
+    expect(familyResponse.status).toBe(201);
+    expect(friendsResponse.status).toBe(201);
+    const family = (await familyResponse.json()) as {
+      id: string;
+      name: string;
+    };
+    const friends = (await friendsResponse.json()) as { id: string };
+    expect(family.name).toBe("Family");
+
+    const renamed = await fixture.app.handle(
+      jsonRequest(
+        `/v1/weddings/${wedding.id}/guest-affiliations/${family.id}`,
+        "PATCH",
+        { name: "Bride's family", color: "#DB2777" },
+      ),
+    );
+    expect(renamed.status).toBe(200);
+    await expect(renamed.json()).resolves.toMatchObject({
+      id: family.id,
+      name: "Bride's family",
+      color: "#db2777",
+    });
+
+    const reordered = await fixture.app.handle(
+      jsonRequest(
+        `/v1/weddings/${wedding.id}/guest-affiliations/order`,
+        "PUT",
+        { ids: [friends.id, family.id] },
+      ),
+    );
+    expect(reordered.status).toBe(200);
+    await expect(reordered.json()).resolves.toMatchObject([
+      { id: friends.id, sortOrder: 0 },
+      { id: family.id, sortOrder: 1 },
+    ]);
+  });
+
+  it("unassigns guests instead of deleting them when an affiliation is deleted", async () => {
+    const fixture = testFixture({ principal: couple("safe-delete") });
+    const weddingResponse = await fixture.app.handle(
+      jsonRequest("/v1/weddings", "POST", {
+        name: "Mali & Arun",
+        timeZone: "UTC",
+        locale: "en",
+      }),
+    );
+    const wedding = (await weddingResponse.json()) as { id: string };
+    const affiliationResponse = await fixture.app.handle(
+      jsonRequest(`/v1/weddings/${wedding.id}/guest-affiliations`, "POST", {
+        name: "Work friends",
+        color: "#475569",
+      }),
+    );
+    const affiliation = (await affiliationResponse.json()) as { id: string };
+
+    const guestResponse = await fixture.app.handle(
+      jsonRequest(`/v1/weddings/${wedding.id}/guests`, "POST", {
+        name: "Nok",
+        allowedPartySize: 1,
+      }),
+    );
+    expect(guestResponse.status).toBe(201);
+    await expect(guestResponse.json()).resolves.toMatchObject({
+      name: "Nok",
+      affiliation: null,
+    });
+    const guest = (await fixture.app
+      .handle(trustedRequest(`/v1/weddings/${wedding.id}/guests`))
+      .then((response) => response.json())) as {
+      items: [{ id: string }];
+    };
+
+    const assigned = await fixture.app.handle(
+      jsonRequest(
+        `/v1/weddings/${wedding.id}/guests/${guest.items[0].id}/affiliation`,
+        "PATCH",
+        { affiliationId: affiliation.id },
+      ),
+    );
+    expect(assigned.status).toBe(200);
+    await expect(assigned.json()).resolves.toMatchObject({
+      name: "Nok",
+      affiliation: { id: affiliation.id, name: "Work friends" },
+    });
+
+    const removed = await fixture.app.handle(
+      jsonRequest(
+        `/v1/weddings/${wedding.id}/guest-affiliations/${affiliation.id}`,
+        "DELETE",
+        {},
+      ),
+    );
+    expect(removed.status).toBe(204);
+
+    const guests = await fixture.app.handle(
+      trustedRequest(`/v1/weddings/${wedding.id}/guests`),
+    );
+    await expect(guests.json()).resolves.toMatchObject({
+      items: [{ name: "Nok", affiliation: null }],
+    });
+  });
 });
 
 type Fixture = ReturnType<typeof testFixture>;
