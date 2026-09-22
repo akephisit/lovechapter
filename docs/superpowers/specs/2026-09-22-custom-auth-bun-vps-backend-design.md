@@ -1,10 +1,10 @@
-# LoveChapter Custom Authentication and Dual-Runtime Backend Design
+# LoveChapter Custom Authentication and Bun/VPS Backend Design
 
 **Date:** 2026-09-22
 
 **Status:** Approved conversational design; written specification awaiting owner review
 
-**Scope:** Replace Clerk with first-party email/password authentication and make the Elysia API deployable to either Cloudflare Workers or Bun on a VPS
+**Scope:** Replace Clerk with first-party email/password authentication and move the Elysia API production runtime to Bun on a VPS
 
 ## 1. Objective
 
@@ -15,14 +15,11 @@ sessions. Guests remain account-free and continue to use high-entropy invitation
 links.
 
 The frontend remains a Next.js/vinext Cloudflare Worker. The Elysia 2 backend
-becomes a portable application with two supported production entrypoints:
+runs as an always-on Bun application on a VPS. A separate Bun process on the
+same deployment drains background jobs and performs scheduled maintenance.
 
-- Cloudflare Workers;
-- Bun on a VPS.
-
-Each deployed environment selects exactly one backend runtime. Running the two
-backend targets active-active in one environment is outside this design and
-requires a new architecture decision.
+Cloudflare Workers are not a backend production target. Hyperdrive, Worker Cron,
+Worker Queues, and backend Service Bindings are not part of this design.
 
 This specification explicitly supersedes the Clerk direction in ADR-015 and
 the Cloudflare-only backend-runtime portions of ADR-004 and ADR-005. It does not
@@ -43,13 +40,13 @@ The slice is complete when:
 - the browser holds the session only in a secure HTTP-only cookie;
 - protected wedding access continues to be authorized from local PostgreSQL
   membership data;
-- the same Elysia application passes the contract suite and production build for
-  Cloudflare Workers and Bun;
+- the Elysia application passes its contract suite and production build on the
+  pinned Bun runtime;
 - asynchronous and parallel work is bounded, idempotent where retried, and does
   not introduce N+1 database access;
 - Clerk code, packages, and configuration are removed;
-- project rules and deployment documentation describe both supported backend
-  targets without weakening the frontend Worker decision.
+- project rules and deployment documentation lock Bun/VPS as the backend while
+  preserving the frontend Worker decision.
 
 ## 3. Non-goals
 
@@ -63,7 +60,7 @@ This slice does not add:
 - email-address changes;
 - device/session management UI;
 - admin impersonation or support access;
-- active-active Worker/VPS API deployment;
+- a Cloudflare Worker API or a second backend runtime;
 - Kubernetes, Redis, or a new microservice;
 - an external authentication framework or managed authentication service.
 
@@ -71,65 +68,75 @@ Better Auth Infrastructure and similar managed extensions are not used.
 
 ## 4. Runtime architecture
 
-### 4.1 Shared application core
+### 4.1 Application core
 
 One `createApp(dependencies)` factory constructs the Elysia application. Routes,
 validation, authentication, authorization, domain services, and repositories are
-shared. Runtime entrypoints are thin adapters and may not duplicate application
-logic.
+shared by the HTTP and job processes and may not be duplicated between them.
 
-The shared core uses Web Standard `Request`, `Response`, `fetch`, and crypto APIs
-where practical. Bun-only and Cloudflare-only APIs are confined to their runtime
-packages or entrypoint modules.
+The shared core uses Web Standard `Request`, `Response`, and `fetch` where
+practical. Bun-only APIs are confined to server/bootstrap modules. Domain,
+authentication, and repository logic remains small and explicit even though Bun
+is the sole backend runtime.
 
-### 4.2 Cloudflare Workers target
-
-The Worker entrypoint:
-
-- receives Wrangler bindings;
-- obtains PostgreSQL connections through Hyperdrive and `pg`;
-- exposes the Elysia Web Standard fetch handler;
-- maps `ExecutionContext.waitUntil` and Scheduled events into the background-task
-  interfaces;
-- supplies trusted Cloudflare request metadata without accepting spoofable browser
-  headers as identity or rate-limit inputs.
-
-### 4.3 Bun/VPS target
+### 4.2 Bun/VPS HTTP process
 
 The Bun entrypoint:
 
 - starts the same Elysia application with Bun's HTTP server adapter;
 - uses a process-wide bounded `pg.Pool` connected directly to Neon or PostgreSQL;
-- maps Bun server request metadata into the same trusted request-context interface;
-- runs the email-outbox worker as a separately controlled background loop;
-- implements graceful startup and shutdown, including stopping job claims and
-  draining or closing the database pool.
+- maps Bun server request metadata into a trusted request-context interface;
+- implements graceful startup and shutdown, including refusing new traffic,
+  draining in-flight requests, and closing the database pool.
 
 The repository pins one validated Bun release for repeatable production builds.
 Upgrades repeat the Bun runtime, Elysia, crypto, database, and contract checks.
+The initial supported VPS floor is 2 vCPU and 2 GiB RAM; a smaller host requires
+fresh auth-hashing, pool, and concurrent-request validation before use.
 
-Bun-specific APIs are allowed only in this adapter. Domain and authentication
-modules must remain usable without Bun.
+Bun-specific server lifecycle APIs are isolated from domain and authentication
+rules so request handlers remain directly testable.
 
-### 4.4 One backend runtime per environment
+### 4.3 Bun/VPS job process
 
-Deployment configuration must state `worker` or `bun`; there is no implicit
-fallback. A staging or production environment must not expose both backend
-entrypoints against the same public application origin unless a later ADR defines
-traffic routing, distributed rate limiting, deployment coordination, and job
-deduplication.
+A second systemd service runs the background-job entrypoint on the same VPS
+deployment. It:
+
+- uses a separately bounded `pg.Pool`;
+- claims durable email-outbox jobs in bounded batches;
+- sends independent jobs with an explicit concurrency limit;
+- retries with backoff and idempotency;
+- performs bounded expired-session, action-token, rate-limit, and completed-job
+  cleanup;
+- stops claiming work and drains in-flight work during graceful shutdown.
+
+It is a separate process for failure and resource isolation, not a microservice.
+The API process never runs an unbounded background loop and does not depend on
+in-memory jobs surviving a restart.
+
+### 4.4 VPS process and network boundary
+
+The initial deployment uses two unprivileged systemd services:
+
+- `lovechapter-api` for HTTP;
+- `lovechapter-jobs` for background and scheduled work.
+
+A host-level HTTPS reverse proxy terminates TLS and forwards only the configured
+backend hostname to the API process on a private loopback port. The firewall
+exposes only required administration and HTTPS ports. Docker, Kubernetes, and
+Redis are not introduced.
+
+The API validates a rotatable private ingress credential supplied by the frontend
+proxy. It does not treat that credential as user identity. Health endpoints are
+minimal, disclose no secrets, and have an explicit access policy.
 
 ### 4.5 Same-origin browser boundary
 
 The browser calls only the public web origin. The frontend Worker proxies API
-paths to the selected backend:
-
-- through a Cloudflare Service Binding when the API target is a Worker;
-- through an explicitly configured HTTPS backend origin when the API target is
-  Bun/VPS.
+paths to one explicitly configured HTTPS VPS backend origin.
 
 The proxy preserves approved request/response headers and `Set-Cookie` while
-dropping unapproved forwarding headers. A runtime-specific private ingress
+dropping unapproved forwarding headers. A private ingress
 credential authenticates the web proxy to the API; it is never included in
 browser assets. The API still performs normal session authorization and does not
 treat the proxy credential as a user identity.
@@ -138,8 +145,11 @@ This boundary keeps the session cookie first-party on `*.workers.dev` before a
 custom domain exists and avoids relying on cross-site third-party cookies. Local
 development provides the same path shape through an explicit development proxy.
 
-Origins and upstream URLs remain configuration. The candidate domain
-`lovechapter.tech` is not hardcoded.
+Origins and upstream URLs remain configuration. The owner intends to register
+`lovechapter.net`, but ownership is not yet confirmed. Until registration is
+confirmed, it remains a candidate and must not be hardcoded. Production VPS
+deployment is blocked until a stable, trusted HTTPS hostname exists for the
+frontend Worker to reach; a bare IP or self-signed certificate is not accepted.
 
 ## 5. Authentication boundaries
 
@@ -253,10 +263,10 @@ to drain jobs and expire tokens created with their version.
 - `expires_at`;
 - composite primary key over `scope`, `key_hash`, and `bucket_started_at`.
 
-The portable implementation is PostgreSQL-backed. It uses atomic bounded upserts
-and expiry indexes. It never persists a raw IP address. Runtime adapters supply a
-trusted client address/fingerprint and never accept an arbitrary forwarded header
-from the public request.
+The implementation is PostgreSQL-backed. It uses atomic bounded upserts and
+expiry indexes. It never persists a raw IP address. The Bun ingress layer derives
+a trusted client address/fingerprint only from the configured reverse-proxy
+boundary and never accepts an arbitrary forwarded header from the public request.
 
 ### 6.5 `auth_email_jobs`
 
@@ -290,10 +300,9 @@ Passwords accept 12 to 128 Unicode code points. They are not trimmed, silently
 normalized, truncated, or subjected to arbitrary uppercase/symbol composition
 rules. The exact UTF-8 bytes are hashed.
 
-`PasswordHasher` is a small interface. Its initial implementation uses the
-asynchronous `node:crypto.scrypt` available in Cloudflare Workers and Bun/Node.
-The versioned envelope records the algorithm, policy version, parameters, salt,
-and derived key.
+`PasswordHasher` is a small interface. Its initial implementation uses Bun's
+asynchronous Node-compatible `node:crypto.scrypt`. The versioned envelope records
+the algorithm, policy version, parameters, salt, and derived key.
 
 The initial production policy is:
 
@@ -303,8 +312,11 @@ The initial production policy is:
 - sufficient explicit `maxmem` for the selected parameters and runtime overhead.
 
 This is an OWASP-published scrypt-equivalent parameter set. It must be benchmarked
-in both production targets before deployment. If either target cannot execute it
-within its production resource limits, implementation stops for a reviewed design
+on the pinned production Bun release and representative VPS class before
+deployment. With password-hash concurrency capped at two on the initial 2-vCPU
+VPS floor, a production-policy hash must complete within 750 ms at p95 without
+memory pressure or material request-loop delay. If the selected VPS cannot meet
+that gate, the host is increased or implementation stops for a reviewed design
 change; parameters are not silently weakened.
 
 Verification uses a timing-safe comparison. A successful sign-in rehashes the
@@ -414,10 +426,11 @@ keys are secrets.
 
 Creating an auth token and its email job is atomic. Sending happens after commit:
 
-- Worker requests may ask `waitUntil` to process an immediately available bounded
-  batch; a Scheduled handler performs durable retry scans;
-- Bun runs the same processor in a controlled background runner separate from the
-  HTTP request lifecycle.
+- the API transaction persists the work but does not send the email;
+- the `lovechapter-jobs` Bun process continuously polls for due work with adaptive
+  idle backoff and no busy loop;
+- periodic cleanup work uses the same durable job/lease mechanism or an explicit
+  systemd timer when it does not require queue semantics.
 
 The processor claims jobs with a lease, sends independent claimed jobs with a
 small configured concurrency limit, and marks results individually. A process
@@ -477,7 +490,7 @@ and complete email addresses.
 - background retry/backoff and concurrency limits.
 
 Expensive hashing tests may inject a test policy, but at least one compatibility
-test per runtime executes the production policy.
+test on the pinned Bun release executes the production policy.
 
 ### 13.2 Database and concurrency tests
 
@@ -503,19 +516,16 @@ checks are recorded when a development/staging PostgreSQL database exists.
 - account-free guest RSVP remains unchanged;
 - forms and copy handle Unicode and future localization expansion.
 
-### 13.4 Runtime matrix
-
-The same contract suite runs against:
-
-- the Wrangler/Worker entrypoint;
-- the Bun/VPS entrypoint.
+### 13.4 Production-target validation
 
 Completion also requires format, lint, TypeScript checks, all tests, database
-schema checks, Worker dry-run build, Bun production build/start smoke, native
+schema checks, Bun API build/start smoke, Bun job-runner build/start smoke, native
 Next build, vinext compatibility/build, and frontend Worker dry-run deployment.
 
-Scrypt is benchmarked on both targets with the production policy. Results and any
-runtime-specific workaround are recorded before deployment.
+Scrypt is benchmarked on the pinned Bun release and representative VPS class with
+the production policy. API proxying, graceful restart, job recovery after process
+termination, reverse-proxy timeouts, and database-pool exhaustion behavior are
+exercised in staging. Results and any workaround are recorded before deployment.
 
 ## 14. Migration and rollout
 
@@ -524,19 +534,21 @@ does not migrate external users.
 
 Implementation order is:
 
-1. add runtime-neutral backend dependency seams and Bun entrypoint without
-   changing auth behavior;
+1. replace the API Worker entrypoint with pinned Bun HTTP and job-process
+   entrypoints without changing domain behavior;
 2. add auth schema, repositories, crypto, rate limiting, and email outbox through
    tests;
 3. add local auth routes and the Resend adapter;
 4. replace the Clerk web UI/session client with first-party forms and cookies;
-5. add the same-origin proxy for both API targets;
-6. pass both runtime matrices;
+5. add the frontend-to-VPS same-origin proxy and private ingress validation;
+6. pass the Bun/VPS backend and frontend Worker validation suites;
 7. remove Clerk code and dependencies;
-8. update all architecture, deployment, progress, open-question, database-review,
+8. remove API Wrangler/Hyperdrive configuration and unused Cloudflare backend
+   dependencies;
+9. update all architecture, deployment, progress, open-question, database-review,
    and environment-example documentation;
-9. provision Neon, Resend, and the selected backend target only after local and
-   staging validation.
+10. provision Neon, Resend, the HTTPS hostname, and VPS only after local and
+    staging validation.
 
 `AUTH_MODE` stays `disabled` by default. Production changes to `local` only after
 database migrations, cryptographic secrets, exact public origins, ingress
@@ -546,21 +558,20 @@ credentials, and Resend configuration exist.
 
 Implementation updates these files consistently:
 
-- `AGENTS.md`: frontend Worker lock, dual Worker/Bun production backend targets,
-  one target per environment, portable shared logic, and bounded asynchronous
-  concurrency rules;
+- `AGENTS.md`: frontend Worker lock, Bun/VPS-only production backend, process
+  separation, and bounded asynchronous concurrency rules;
 - `PROJECT_CONTEXT.md`: replace Cloudflare-only backend language while keeping the
-  frontend Worker direction and avoiding VPS-first-only architecture;
+  frontend Worker direction;
 - `docs/DECISIONS.md`: supersede the affected portions of ADR-004/ADR-005 and all
   of ADR-015 with explicit replacement ADRs;
-- `docs/DEPLOYMENT.md`: separate Worker and Bun/VPS backend procedures plus the
-  shared frontend proxy/origin model;
+- `docs/DEPLOYMENT.md`: Bun/VPS API and job services, reverse proxy/TLS, direct
+  PostgreSQL pooling, secrets, and the frontend proxy/origin model;
 - `docs/DATABASE_GUIDELINES.md` and `docs/QUERY_REVIEW.md`: document auth query and
   index review;
 - `docs/OPEN_QUESTIONS.md`: remove the provider decision and retain MFA,
   admin/support auth, email-change, and internationalized-email delivery questions;
-- `docs/PROGRESS.md`: replace the Clerk-complete status with verified custom-auth
-  and dual-runtime results.
+- `docs/PROGRESS.md`: replace the Clerk/Worker-API status with verified custom-auth
+  and Bun/VPS results.
 
 Historical Clerk design and plan documents remain in history as superseded
 records; they are not rewritten to pretend the earlier decision never existed.
@@ -570,14 +581,15 @@ records; they are not rewritten to pretend the earlier decision never existed.
 Deployment is blocked if any of these are missing:
 
 - reviewed migrations and required unique/index constraints;
-- successful production-policy scrypt execution on the selected runtime;
+- successful production-policy scrypt execution on the pinned Bun/VPS target;
 - HTTPS public origins and production cookie enforcement;
+- a confirmed stable backend hostname with a publicly trusted certificate;
 - high-entropy, non-committed action-token-HMAC, fingerprint-HMAC, proxy-ingress,
   and Resend secrets;
 - generic enumeration-resistant responses;
 - bounded rate limiting and outbox processing;
-- passing Worker and Bun contract/build validation;
-- a smoke test of the selected deployment target;
+- passing Bun API/job and frontend Worker contract/build validation;
+- a smoke test of the staged VPS deployment, restart, and job recovery;
 - secret-safe logging verification.
 
 The implementation must not weaken these gates merely to make a deployment pass.
@@ -586,9 +598,5 @@ The implementation must not weaken these gates merely to make a deployment pass.
 
 - OWASP Password Storage Cheat Sheet:
   <https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html>
-- Cloudflare Workers Node.js crypto support:
-  <https://developers.cloudflare.com/workers/runtime-apis/nodejs/crypto/>
-- Cloudflare Workers Web Crypto API:
-  <https://developers.cloudflare.com/workers/runtime-apis/web-crypto/>
 - Bun Node.js compatibility:
   <https://bun.sh/docs/runtime/nodejs-compat>
