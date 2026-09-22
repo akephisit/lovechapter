@@ -26,6 +26,11 @@ export const attendanceStatus = pgEnum("attendance_status", [
   "declined",
 ]);
 
+export const authTokenPurpose = pgEnum("auth_token_purpose", [
+  "verify_email",
+  "reset_password",
+]);
+
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
     .notNull()
@@ -202,6 +207,189 @@ export const rsvps = pgTable(
     check(
       "rsvps_party_size_check",
       sql`(${table.attendance} = 'attending' and ${table.partySize} between 1 and 20) or (${table.attendance} = 'declined' and ${table.partySize} = 0)`,
+    ),
+  ],
+);
+
+export const authAccounts = pgTable(
+  "auth_accounts",
+  {
+    id: uuid("id").primaryKey(),
+    email: varchar("email", { length: 320 }).notNull(),
+    emailKey: varchar("email_key", { length: 320 }).notNull(),
+    passwordHash: varchar("password_hash", { length: 255 }).notNull(),
+    emailVerifiedAt: timestamp("email_verified_at", {
+      withTimezone: true,
+      mode: "string",
+    }),
+    credentialVersion: integer("credential_version").notNull().default(1),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("auth_accounts_email_key_unique").on(table.emailKey),
+    check(
+      "auth_accounts_credential_version_check",
+      sql`${table.credentialVersion} > 0`,
+    ),
+  ],
+);
+
+export const authSessions = pgTable(
+  "auth_sessions",
+  {
+    id: uuid("id").primaryKey(),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => authAccounts.id, { onDelete: "cascade" }),
+    tokenHash: varchar("token_hash", { length: 64 }).notNull(),
+    idleExpiresAt: timestamp("idle_expires_at", {
+      withTimezone: true,
+      mode: "string",
+    }).notNull(),
+    absoluteExpiresAt: timestamp("absolute_expires_at", {
+      withTimezone: true,
+      mode: "string",
+    }).notNull(),
+    lastSeenAt: timestamp("last_seen_at", {
+      withTimezone: true,
+      mode: "string",
+    }).notNull(),
+    revokedAt: timestamp("revoked_at", {
+      withTimezone: true,
+      mode: "string",
+    }),
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+      mode: "string",
+    })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("auth_sessions_token_hash_unique").on(table.tokenHash),
+    index("auth_sessions_account_active_idx")
+      .on(table.accountId)
+      .where(sql`${table.revokedAt} is null`),
+    index("auth_sessions_active_expiry_idx")
+      .on(table.idleExpiresAt, table.absoluteExpiresAt, table.id)
+      .where(sql`${table.revokedAt} is null`),
+    index("auth_sessions_revoked_cleanup_idx")
+      .on(table.revokedAt, table.id)
+      .where(sql`${table.revokedAt} is not null`),
+    check(
+      "auth_sessions_expiry_order_check",
+      sql`${table.idleExpiresAt} <= ${table.absoluteExpiresAt}`,
+    ),
+  ],
+);
+
+export const authTokens = pgTable(
+  "auth_tokens",
+  {
+    id: uuid("id").primaryKey(),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => authAccounts.id, { onDelete: "cascade" }),
+    purpose: authTokenPurpose("purpose").notNull(),
+    tokenHash: varchar("token_hash", { length: 64 }).notNull(),
+    signingKeyVersion: integer("signing_key_version").notNull(),
+    expiresAt: timestamp("expires_at", {
+      withTimezone: true,
+      mode: "string",
+    }).notNull(),
+    consumedAt: timestamp("consumed_at", {
+      withTimezone: true,
+      mode: "string",
+    }),
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+      mode: "string",
+    })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("auth_tokens_token_hash_unique").on(table.tokenHash),
+    index("auth_tokens_account_purpose_active_idx")
+      .on(
+        table.accountId,
+        table.purpose,
+        table.createdAt.desc(),
+        table.id.desc(),
+      )
+      .where(sql`${table.consumedAt} is null`),
+    index("auth_tokens_expiry_cleanup_idx").on(table.expiresAt, table.id),
+    check(
+      "auth_tokens_signing_key_version_check",
+      sql`${table.signingKeyVersion} > 0`,
+    ),
+  ],
+);
+
+export const authRateLimits = pgTable(
+  "auth_rate_limits",
+  {
+    scope: varchar("scope", { length: 64 }).notNull(),
+    keyHash: varchar("key_hash", { length: 64 }).notNull(),
+    bucketStartedAt: timestamp("bucket_started_at", {
+      withTimezone: true,
+      mode: "string",
+    }).notNull(),
+    count: integer("count").notNull().default(1),
+    expiresAt: timestamp("expires_at", {
+      withTimezone: true,
+      mode: "string",
+    }).notNull(),
+  },
+  (table) => [
+    primaryKey({
+      name: "auth_rate_limits_pkey",
+      columns: [table.scope, table.keyHash, table.bucketStartedAt],
+    }),
+    index("auth_rate_limits_expiry_cleanup_idx").on(
+      table.expiresAt,
+      table.scope,
+      table.keyHash,
+    ),
+    check("auth_rate_limits_count_check", sql`${table.count} > 0`),
+  ],
+);
+
+export const authEmailJobs = pgTable(
+  "auth_email_jobs",
+  {
+    id: uuid("id").primaryKey(),
+    kind: authTokenPurpose("kind").notNull(),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => authAccounts.id, { onDelete: "cascade" }),
+    authTokenId: uuid("auth_token_id")
+      .notNull()
+      .references(() => authTokens.id, { onDelete: "cascade" }),
+    idempotencyKey: varchar("idempotency_key", { length: 255 }).notNull(),
+    availableAt: timestamp("available_at", {
+      withTimezone: true,
+      mode: "string",
+    }).notNull(),
+    leasedUntil: timestamp("leased_until", {
+      withTimezone: true,
+      mode: "string",
+    }),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    sentAt: timestamp("sent_at", { withTimezone: true, mode: "string" }),
+    lastErrorCode: varchar("last_error_code", { length: 64 }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("auth_email_jobs_idempotency_key_unique").on(
+      table.idempotencyKey,
+    ),
+    index("auth_email_jobs_due_idx")
+      .on(table.availableAt, table.id)
+      .where(sql`${table.sentAt} is null and ${table.attemptCount} < 10`),
+    check(
+      "auth_email_jobs_attempt_count_check",
+      sql`${table.attemptCount} between 0 and 10`,
     ),
   ],
 );

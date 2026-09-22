@@ -3,6 +3,10 @@ import type { SQL } from "drizzle-orm";
 import { Client, Pool, type PoolConfig } from "pg";
 
 import {
+  PostgresAuthRepository,
+  PostgresEmailJobStore,
+} from "./auth-repository";
+import {
   PostgresLoveChapterRepository,
   type QueryExecutor,
 } from "./repository";
@@ -36,6 +40,8 @@ export type PostgresRuntimeConfig = {
 export type PostgresRuntime = {
   pool: Pool;
   loveChapterRepository: PostgresLoveChapterRepository;
+  authRepository: PostgresAuthRepository;
+  emailJobStore: PostgresEmailJobStore;
   close(): Promise<void>;
 };
 
@@ -74,6 +80,8 @@ export function createPostgresRuntime(
   return {
     pool,
     loveChapterRepository: new PostgresLoveChapterRepository(executor),
+    authRepository: new PostgresAuthRepository(executor),
+    emailJobStore: new PostgresEmailJobStore(executor),
     close: () => pool.end(),
   };
 }

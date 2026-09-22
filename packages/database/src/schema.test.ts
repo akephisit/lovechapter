@@ -2,6 +2,11 @@ import { getTableConfig } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
 import {
+  authAccounts,
+  authEmailJobs,
+  authRateLimits,
+  authSessions,
+  authTokens,
   guests,
   invitations,
   rsvps,
@@ -11,12 +16,29 @@ import {
 } from "./schema";
 
 describe("MVP PostgreSQL schema", () => {
-  it("defines only the six tables needed by the first vertical slice", () => {
+  it("defines the business and local-auth tables needed by the vertical slice", () => {
     expect(
-      [users, weddings, weddingMembers, guests, invitations, rsvps]
+      [
+        users,
+        weddings,
+        weddingMembers,
+        guests,
+        invitations,
+        rsvps,
+        authAccounts,
+        authSessions,
+        authTokens,
+        authRateLimits,
+        authEmailJobs,
+      ]
         .map((table) => getTableConfig(table).name)
         .toSorted(),
     ).toEqual([
+      "auth_accounts",
+      "auth_email_jobs",
+      "auth_rate_limits",
+      "auth_sessions",
+      "auth_tokens",
       "guests",
       "invitations",
       "rsvps",
@@ -24,6 +46,51 @@ describe("MVP PostgreSQL schema", () => {
       "wedding_members",
       "weddings",
     ]);
+  });
+
+  it("defines the five approved auth tables and access-pattern indexes", () => {
+    const authTableNames = [
+      authAccounts,
+      authEmailJobs,
+      authRateLimits,
+      authSessions,
+      authTokens,
+    ]
+      .map((table) => getTableConfig(table).name)
+      .toSorted();
+
+    expect(authTableNames).toEqual([
+      "auth_accounts",
+      "auth_email_jobs",
+      "auth_rate_limits",
+      "auth_sessions",
+      "auth_tokens",
+    ]);
+    expect(indexNames(authAccounts)).toContain(
+      "auth_accounts_email_key_unique",
+    );
+    expect(indexNames(authSessions)).toEqual(
+      expect.arrayContaining([
+        "auth_sessions_token_hash_unique",
+        "auth_sessions_account_active_idx",
+        "auth_sessions_active_expiry_idx",
+        "auth_sessions_revoked_cleanup_idx",
+      ]),
+    );
+    expect(indexNames(authTokens)).toEqual(
+      expect.arrayContaining([
+        "auth_tokens_token_hash_unique",
+        "auth_tokens_account_purpose_active_idx",
+        "auth_tokens_expiry_cleanup_idx",
+      ]),
+    );
+    expect(indexNames(authEmailJobs)).toEqual(
+      expect.arrayContaining([
+        "auth_email_jobs_idempotency_key_unique",
+        "auth_email_jobs_due_idx",
+      ]),
+    );
+    expect(getTableConfig(authRateLimits).primaryKeys).toHaveLength(1);
   });
 
   it("enforces unique external identities and membership access order", () => {
@@ -97,3 +164,9 @@ describe("MVP PostgreSQL schema", () => {
     ).toEqual(["wedding_id", "guest_id", "id"]);
   });
 });
+
+function indexNames(table: Parameters<typeof getTableConfig>[0]): string[] {
+  return getTableConfig(table)
+    .indexes.map((index) => index.config.name)
+    .filter((name): name is string => name !== undefined);
+}
