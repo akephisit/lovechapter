@@ -9,6 +9,10 @@ export type ApiRuntimeConfig = {
   databasePoolMax: number;
   publicWebOrigin: string;
   authMode: "disabled" | "development" | "local";
+  proxyCredential: string;
+  rateLimitHmacKey: Uint8Array;
+  authTokenActiveKeyVersion: number;
+  authTokenHmacKeys: ReadonlyMap<number, Uint8Array>;
 };
 
 export type ApiRuntimeEnvironment = Record<string, string | undefined>;
@@ -31,6 +35,20 @@ export function parseApiRuntimeConfig(
     throw new Error("AUTH_MODE=development is forbidden in production");
   }
 
+  const authTokenActiveKeyVersion = positiveInteger(
+    environment.AUTH_TOKEN_ACTIVE_KEY_VERSION,
+    "AUTH_TOKEN_ACTIVE_KEY_VERSION",
+  );
+  const authTokenHmacKeys = secretMap(
+    environment.AUTH_TOKEN_HMAC_KEYS,
+    "AUTH_TOKEN_HMAC_KEYS",
+  );
+  if (!authTokenHmacKeys.has(authTokenActiveKeyVersion)) {
+    throw new Error(
+      "AUTH_TOKEN_ACTIVE_KEY_VERSION must identify a key in AUTH_TOKEN_HMAC_KEYS",
+    );
+  }
+
   return {
     bunVersion: approvedBunVersion,
     nodeEnvironment,
@@ -46,7 +64,78 @@ export function parseApiRuntimeConfig(
     ),
     publicWebOrigin: httpOrigin(environment.PUBLIC_WEB_ORIGIN),
     authMode,
+    proxyCredential: secretString(
+      environment.WEB_PROXY_SHARED_SECRET,
+      "WEB_PROXY_SHARED_SECRET",
+    ),
+    rateLimitHmacKey: secretBytes(
+      environment.RATE_LIMIT_HMAC_KEY,
+      "RATE_LIMIT_HMAC_KEY",
+    ),
+    authTokenActiveKeyVersion,
+    authTokenHmacKeys,
   };
+}
+
+function positiveInteger(value: string | undefined, name: string): number {
+  const candidate = Number(required(value, name));
+  if (!Number.isSafeInteger(candidate) || candidate < 1) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return candidate;
+}
+
+function secretMap(
+  value: string | undefined,
+  name: string,
+): ReadonlyMap<number, Uint8Array> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(required(value, name));
+  } catch {
+    throw new Error(`${name} must be a JSON object of signing keys`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`${name} must be a JSON object of signing keys`);
+  }
+  const entries = Object.entries(parsed);
+  if (entries.length === 0) {
+    throw new Error(`${name} must contain at least one signing key`);
+  }
+  const keys = new Map<number, Uint8Array>();
+  for (const [rawVersion, rawKey] of entries) {
+    const version = Number(rawVersion);
+    if (
+      !Number.isSafeInteger(version) ||
+      version < 1 ||
+      String(version) !== rawVersion ||
+      typeof rawKey !== "string"
+    ) {
+      throw new Error(
+        `${name} keys must be canonical positive integer versions`,
+      );
+    }
+    keys.set(version, secretBytes(rawKey, name));
+  }
+  return keys;
+}
+
+function secretString(value: string | undefined, name: string): string {
+  const secret = required(value, name);
+  secretBytes(secret, name);
+  return secret;
+}
+
+function secretBytes(value: string | undefined, name: string): Uint8Array {
+  const secret = required(value, name);
+  if (!/^[A-Za-z0-9_-]{43}$/.test(secret)) {
+    throw new Error(`${name} must be 32 random base64url bytes`);
+  }
+  const bytes = Buffer.from(secret, "base64url");
+  if (bytes.byteLength !== 32 || bytes.toString("base64url") !== secret) {
+    throw new Error(`${name} must be 32 random base64url bytes`);
+  }
+  return new Uint8Array(bytes);
 }
 
 function enumValue<const T extends readonly string[]>(

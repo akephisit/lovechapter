@@ -7,14 +7,29 @@ import {
 
 assertApprovedBunVersion(Bun.version);
 
+const rejectApplicationTraffic = async (): Promise<never> => {
+  throw new Error("The Bun smoke test must not run application traffic");
+};
+
 const app = createApiApp({
+  authService: {
+    signUp: rejectApplicationTraffic,
+    resendVerificationEmail: rejectApplicationTraffic,
+    verifyEmail: rejectApplicationTraffic,
+    signIn: rejectApplicationTraffic,
+    resolveSession: rejectApplicationTraffic,
+    signOut: rejectApplicationTraffic,
+    forgotPassword: rejectApplicationTraffic,
+    resetPassword: rejectApplicationTraffic,
+  },
+  nodeEnvironment: "test",
   publicWebOrigin: "http://localhost:3000",
+  proxyCredential: "proxy-credential-that-is-at-least-32-bytes",
+  fingerprintKey: new Uint8Array(32),
   readiness: async () => {
     throw new Error("The Bun smoke test must not connect to PostgreSQL");
   },
-  run: async () => {
-    throw new Error("The Bun smoke test must not run application traffic");
-  },
+  run: rejectApplicationTraffic,
 }).compile();
 let closed = false;
 const lifecycle = createGracefulHttpLifecycle({
