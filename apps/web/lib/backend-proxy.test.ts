@@ -101,6 +101,10 @@ describe("same-origin backend proxy", () => {
 
   it.each([
     ["API_UPSTREAM_ORIGIN", { apiUpstreamOrigin: "not-a-url" }],
+    [
+      "API_UPSTREAM_ORIGIN",
+      { apiUpstreamOrigin: "http://api-origin.example.test" },
+    ],
     ["WEB_PROXY_SHARED_SECRET", { proxySharedSecret: "" }],
   ] as const)("rejects invalid %s configuration", async (name, override) => {
     await expect(
@@ -170,6 +174,23 @@ describe("same-origin backend proxy", () => {
     expect(response.headers.get("retry-after")).toBe("15");
     expect(response.headers.get("connection")).toBeNull();
     expect(response.headers.get("x-provider-detail")).toBeNull();
+    expect(response.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("allows a loopback HTTP upstream for local development", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      expect((input as Request).url).toBe("http://127.0.0.1:3001/v1/me");
+      return new Response(null, { status: 204 });
+    });
+
+    await proxyApiRequest(
+      new Request("http://localhost:3000/api/v1/me"),
+      ["v1", "me"],
+      {
+        ...environment(fetchMock),
+        apiUpstreamOrigin: "http://127.0.0.1:3001",
+      },
+    );
   });
 });
 

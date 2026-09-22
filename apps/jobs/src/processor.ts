@@ -33,11 +33,13 @@ export type EmailProcessorOptions = {
   fromEmail: string;
   clock?: Clock;
   log?: SafeLog;
+  signal?: AbortSignal;
 };
 
 export async function processEmailBatch(
   options: EmailProcessorOptions,
 ): Promise<number> {
+  if (options.signal?.aborted) return 0;
   const now = (options.clock ?? systemClock).now();
   const jobs = await options.store.claimEmailJobs({
     now,
@@ -48,7 +50,7 @@ export async function processEmailBatch(
   const workers = Array.from(
     { length: Math.min(SEND_CONCURRENCY, jobs.length) },
     async () => {
-      while (nextIndex < jobs.length) {
+      while (!options.signal?.aborted && nextIndex < jobs.length) {
         const job = jobs[nextIndex];
         nextIndex += 1;
         if (job) await processJob(job, options, now);
@@ -90,6 +92,7 @@ export async function runJobLoop(
       });
     }
 
+    if (options.signal.aborted) return;
     const processed = await processEmailBatch(options);
     if (options.signal.aborted) return;
     if (processed > 0) {
@@ -122,7 +125,7 @@ async function processJob(
   try {
     await options.sender.send(
       emailMessage(job, rawToken, options.publicWebOrigin, options.fromEmail),
-      `auth-email/${job.id}`,
+      job.idempotencyKey,
     );
     await options.store.markEmailJobSent({
       id: job.id,

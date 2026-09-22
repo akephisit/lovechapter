@@ -32,6 +32,18 @@ describe("authentication SQL contracts", () => {
     expect(`${signInSql}\n${sessionSql}`).not.toMatch(/select\s+\*/i);
   });
 
+  it("refreshes an idle session only after the 24-hour write threshold", () => {
+    const sessionSql = sqlOf(buildResolveSessionQuery("a".repeat(64), now));
+
+    expect(sessionSql).toMatch(
+      /update "auth_sessions"[\s\S]*where[\s\S]*"last_seen_at" <= \$\d+ - interval '24 hours'/i,
+    );
+    expect(sessionSql).toMatch(
+      /select "account_id", "email" from "refreshed_session"[\s\S]*union all[\s\S]*not exists/i,
+    );
+    expect(sessionSql).not.toMatch(/set[\s\S]*case/i);
+  });
+
   it("claims a bounded deterministic email batch with skip-locked leases", () => {
     const query = dialect.sqlToQuery(
       buildClaimEmailJobsQuery({ now, limit: 10, leaseSeconds: 60 }),

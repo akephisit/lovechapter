@@ -125,6 +125,7 @@ function httpOrigin(value: string | undefined): string {
   }
   if (
     !["http:", "https:"].includes(url.protocol) ||
+    (url.protocol === "http:" && !isLoopback(url.hostname)) ||
     url.username ||
     url.password ||
     url.pathname !== "/" ||
@@ -134,6 +135,12 @@ function httpOrigin(value: string | undefined): string {
     throw originError();
   }
   return url.origin;
+}
+
+function isLoopback(hostname: string): boolean {
+  return ["localhost", "127.0.0.1", "[::1]", "::1"].includes(
+    hostname.toLowerCase(),
+  );
 }
 
 function emailAddress(value: string | undefined): string {
@@ -151,5 +158,7 @@ function required(value: string | undefined, name: string): string {
 }
 
 function originError(): Error {
-  return new Error("PUBLIC_WEB_ORIGIN must be an absolute HTTP(S) origin");
+  return new Error(
+    "PUBLIC_WEB_ORIGIN must be an absolute HTTPS origin or loopback HTTP origin",
+  );
 }

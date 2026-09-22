@@ -50,8 +50,8 @@ one statement and no account identity.
 Registration keeps account, seeded local user, token invalidation/replacement,
 and outbox insertion atomic. Password reset locks token consumption, credential
 version change, and all-session revocation together. No transaction contains a
-network call. Resend happens only after commit, using the persisted job ID as
-its idempotency key.
+network call. Resend happens only after commit, using the persisted
+`idempotency_key` value for its provider idempotency header.
 
 ## Index and migration review
 

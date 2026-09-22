@@ -109,6 +109,48 @@ describe("durable email processor", () => {
     expect(store.retriedJobs).toHaveLength(0);
   });
 
+  it("uses the durable job idempotency key for provider delivery", async () => {
+    const codec = tokenCodec();
+    const [job] = jobs(codec, 1);
+    if (!job) throw new Error("Missing test job");
+    job.idempotencyKey = "persisted-idempotency-key";
+    const store = new FakeJobStore([job]);
+    const sender = {
+      send: vi.fn(async () => ({ providerMessageId: "email_123" })),
+    } satisfies EmailSender;
+
+    await processEmailBatch(processorOptions(store, sender, codec));
+
+    expect(sender.send).toHaveBeenCalledWith(
+      expect.any(Object),
+      "persisted-idempotency-key",
+    );
+  });
+
+  it("stops dequeuing claimed jobs after shutdown and drains in-flight sends", async () => {
+    const codec = tokenCodec();
+    const store = new FakeJobStore(jobs(codec, 10));
+    const controller = new AbortController();
+    const releases: Array<() => void> = [];
+    const sender: EmailSender = {
+      async send() {
+        await new Promise<void>((resolve) => releases.push(resolve));
+        return { providerMessageId: crypto.randomUUID() };
+      },
+    };
+
+    const processing = processEmailBatch({
+      ...processorOptions(store, sender, codec),
+      signal: controller.signal,
+    });
+    await waitUntil(() => releases.length === 3);
+    controller.abort();
+    for (const release of releases) release();
+    await processing;
+
+    expect(store.sentJobs).toHaveLength(3);
+  });
+
   it("backs off only on empty queues and exits when aborted", async () => {
     const codec = tokenCodec();
     const store = new FakeJobStore([]);
@@ -235,4 +277,12 @@ function jobs(codec: ActionTokenCodec, count: number): ClaimedEmailJob[] {
       token,
     };
   });
+}
+
+async function waitUntil(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+  throw new Error("Timed out waiting for test condition");
 }

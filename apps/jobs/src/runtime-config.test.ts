@@ -56,4 +56,22 @@ describe("jobs runtime configuration", () => {
       }),
     ).toThrow("AUTH_TOKEN_ACTIVE_KEY_VERSION");
   });
+
+  it("rejects a plaintext non-loopback public origin", () => {
+    expect(() =>
+      parseJobsRuntimeConfig({
+        ...validEnvironment,
+        PUBLIC_WEB_ORIGIN: "http://web.example.test",
+      }),
+    ).toThrow("PUBLIC_WEB_ORIGIN");
+  });
+
+  it("allows a loopback HTTP public origin for local development", () => {
+    expect(
+      parseJobsRuntimeConfig({
+        ...validEnvironment,
+        PUBLIC_WEB_ORIGIN: "http://127.0.0.1:3000",
+      }).publicWebOrigin,
+    ).toBe("http://127.0.0.1:3000");
+  });
 });

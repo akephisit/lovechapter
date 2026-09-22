@@ -211,20 +211,18 @@ export function buildResolveSessionQuery(tokenHash: string, now: Date): SQL {
       limit 1
     ), "refreshed_session" as (
       update ${authSessions}
-      set ${authSessions.lastSeenAt} = case
-            when ${authSessions.lastSeenAt} <= ${now} - interval '24 hours' then ${now}
-            else ${authSessions.lastSeenAt}
-          end,
-          ${authSessions.idleExpiresAt} = case
-            when ${authSessions.lastSeenAt} <= ${now} - interval '24 hours'
-              then least(${now} + interval '7 days', ${authSessions.absoluteExpiresAt})
-            else ${authSessions.idleExpiresAt}
-          end
+      set ${authSessions.lastSeenAt} = ${now},
+          ${authSessions.idleExpiresAt} = least(${now} + interval '7 days', ${authSessions.absoluteExpiresAt})
       from "valid_session"
       where ${authSessions.id} = "valid_session"."session_id"
+        and ${authSessions.lastSeenAt} <= ${now} - interval '24 hours'
       returning "valid_session"."account_id", "valid_session"."email"
     )
-    select "account_id", "email" from "refreshed_session"`;
+    select "account_id", "email" from "refreshed_session"
+    union all
+    select "account_id", "email" from "valid_session"
+    where not exists (select 1 from "refreshed_session")
+    limit 1`;
 }
 
 export function buildRevokeSessionQuery(tokenHash: string, now: Date): SQL {

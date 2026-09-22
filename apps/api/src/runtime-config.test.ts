@@ -81,4 +81,24 @@ describe("API runtime configuration", () => {
       }),
     ).toThrow("AUTH_TOKEN_ACTIVE_KEY_VERSION");
   });
+
+  it("rejects a plaintext non-loopback public origin", () => {
+    expect(() =>
+      parseApiRuntimeConfig({
+        ...validEnvironment,
+        PUBLIC_WEB_ORIGIN: "http://web.example.test",
+      }),
+    ).toThrow("PUBLIC_WEB_ORIGIN");
+  });
+
+  it("allows a loopback HTTP public origin for local development", () => {
+    expect(
+      parseApiRuntimeConfig({
+        ...validEnvironment,
+        NODE_ENV: "development",
+        AUTH_MODE: "disabled",
+        PUBLIC_WEB_ORIGIN: "http://localhost:3000",
+      }).publicWebOrigin,
+    ).toBe("http://localhost:3000");
+  });
 });

@@ -26,7 +26,8 @@ claimed.
   access-pattern indexes
 - Bounded direct PostgreSQL pools: API maximum 6, jobs maximum 2
 - Next.js/vinext same-origin server proxy with strict path/header policy, body
-  cap, cookie forwarding, and server-only upstream credentials
+  cap, cookie forwarding, server-only upstream credentials, HTTPS-only remote
+  origins, and `no-store` API responses
 - Account/session provider, sign-up/sign-in/verification/reset UI, Unicode-safe
   password handling, and immediate fragment scrubbing
 - Wedding, guest, private invitation, account-free RSVP, and couple-visible
@@ -74,6 +75,16 @@ vinext compatibility/build, Cloudflare deployment dry-run, and
 `git diff --check`. `systemd-analyze verify` accepted both unit structures and
 reported only that the deployment-path `/usr/local/bin/bun` is intentionally
 absent on this development runner.
+
+Task 12's whole-branch review found and fixed session refresh write
+amplification, durable-email shutdown dequeueing, persisted idempotency-key
+use, and plaintext remote-origin acceptance. Focused regression coverage and
+the final release gate passed on 2026-09-22: formatting, lint, every workspace
+typecheck, 46 test files / 229 tests, Drizzle snapshot validation, API/jobs and
+vinext builds, Bun runtime smoke, native Next build, vinext compatibility at
+94% with zero issues, and Cloudflare deployment dry-run. The final benchmark
+reported p50 `279.59 ms`, p95 `362.25 ms`, maximum `378.92 ms`, concurrency 2,
+and RSS `48.7 MiB`, within the 750 ms p95 budget.
 
 The benchmark numbers describe only the current development runner. No
 `TEST_DATABASE_URL` or confirmation flag was configured, so the live PostgreSQL

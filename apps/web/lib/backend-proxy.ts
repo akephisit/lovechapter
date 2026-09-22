@@ -81,9 +81,7 @@ export async function proxyApiRequest(
   for (const cookie of upstreamResponse.headers.getSetCookie()) {
     responseHeaders.append("set-cookie", cookie);
   }
-  if (safePath[0] === "v1" && safePath[1] === "auth") {
-    responseHeaders.set("cache-control", "no-store");
-  }
+  responseHeaders.set("cache-control", "no-store");
   return new Response(
     responseMayHaveBody(upstreamResponse.status) ? upstreamResponse.body : null,
     {
@@ -105,6 +103,7 @@ function parseUpstreamOrigin(value: string): string {
   if (
     !configured ||
     !["http:", "https:"].includes(url.protocol) ||
+    (url.protocol === "http:" && !isLoopback(url.hostname)) ||
     url.username ||
     url.password ||
     url.pathname !== "/" ||
@@ -114,6 +113,12 @@ function parseUpstreamOrigin(value: string): string {
     throw upstreamError();
   }
   return url.origin;
+}
+
+function isLoopback(hostname: string): boolean {
+  return ["localhost", "127.0.0.1", "[::1]", "::1"].includes(
+    hostname.toLowerCase(),
+  );
 }
 
 function validateProxySecret(value: string): void {
@@ -199,5 +204,7 @@ function errorResponse(status: number, code: string): Response {
 }
 
 function upstreamError(): Error {
-  return new Error("API_UPSTREAM_ORIGIN must be an absolute HTTP(S) origin");
+  return new Error(
+    "API_UPSTREAM_ORIGIN must be an absolute HTTPS origin or loopback HTTP origin",
+  );
 }
