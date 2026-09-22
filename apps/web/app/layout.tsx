@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 
+import { AuthErrorBoundary } from "../components/auth-error-boundary";
+import { AuthSessionProvider } from "../components/auth-session-provider";
 import { PwaRegister } from "../components/pwa-register";
 
 import "./globals.css";
@@ -27,7 +29,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body>
-        {children}
+        <AuthErrorBoundary>
+          <AuthSessionProvider>{children}</AuthSessionProvider>
+        </AuthErrorBoundary>
         <PwaRegister />
       </body>
     </html>

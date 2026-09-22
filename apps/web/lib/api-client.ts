@@ -68,16 +68,11 @@ export async function apiRequest<T>(
   return response.json() as Promise<T>;
 }
 
-export type TokenProvider = () => Promise<string | null>;
 export type AuthenticationRequiredHandler = () => void | Promise<void>;
 
 export function createLoveChapterApi(
-  handlerOrLegacyTokenProvider: AuthenticationRequiredHandler | TokenProvider,
-  legacyHandler?: AuthenticationRequiredHandler,
+  onAuthenticationRequired: AuthenticationRequiredHandler,
 ) {
-  const onAuthenticationRequired =
-    legacyHandler ??
-    (handlerOrLegacyTokenProvider as AuthenticationRequiredHandler);
   const request = <T>(path: string, init?: RequestInit) =>
     authenticatedRequest<T>(onAuthenticationRequired, path, init);
 

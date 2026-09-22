@@ -13,7 +13,6 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@clerk/nextjs": "7.9.4",
     "@lovechapter/contracts": "0.1.0",
     "@tailwindcss/postcss": "4.3.3",
     "class-variance-authority": "0.7.1",

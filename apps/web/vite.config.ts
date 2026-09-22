@@ -3,16 +3,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 import vinext from "vinext";
 
-import { parseClerkPublishableKey } from "./lib/clerk-config.ts";
-
-const clerkPublishableKey = parseClerkPublishableKey(
-  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
-);
 export default defineConfig({
-  define: {
-    "process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY":
-      JSON.stringify(clerkPublishableKey),
-  },
   plugins: [
     tailwindcss(),
     vinext(),
