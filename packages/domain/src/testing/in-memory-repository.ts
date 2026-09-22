@@ -59,7 +59,11 @@ export class InMemoryLoveChapterRepository implements LoveChapterRepository {
       this.usersByIdentity.set(key, updated);
       return updated;
     }
-    const onboardingComplete = principal.provider === "development";
+    // Local registration seeds the user profile and onboarding timestamp in the
+    // same transaction as the auth account. Mirror that production invariant so
+    // in-process vertical-slice tests do not require a second profile step.
+    const onboardingComplete =
+      principal.provider === "development" || principal.provider === "local";
     const user: AuthenticatedUser = principal.email
       ? {
           id: crypto.randomUUID(),

@@ -2,17 +2,29 @@
 
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../lib/api-client";
 import { ResetPasswordForm } from "./reset-password-form";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe("ResetPasswordForm", () => {
   it("scrubs the fragment and submits the exact Unicode password", async () => {
     window.history.replaceState(null, "", "/reset-password#token=reset-secret");
     const historyReplaceState = vi.spyOn(window.history, "replaceState");
-    const resetSubmit = vi.fn(async () => ({ reset: true as const }));
-    render(<ResetPasswordForm submit={resetSubmit} />);
+    const clientFetch = vi.fn<typeof fetch>(
+      async () =>
+        new Response(JSON.stringify({ reset: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", clientFetch);
+    render(<ResetPasswordForm />);
     const user = userEvent.setup();
     const exactUnicodePassword = "  รักกันตลอดไป  ";
 
@@ -33,7 +45,11 @@ describe("ResetPasswordForm", () => {
     );
     await user.click(screen.getByRole("button", { name: "Reset password" }));
 
-    expect(resetSubmit).toHaveBeenCalledWith({
+    const [requestUrl, init] = clientFetch.mock.calls[0] ?? [];
+    expect(requestUrl).toBe("/api/v1/auth/reset-password");
+    expect(String(requestUrl)).not.toContain("reset-secret");
+    expect(String(requestUrl)).not.toContain("#");
+    expect(JSON.parse(String(init?.body))).toEqual({
       token: "reset-secret",
       password: exactUnicodePassword,
     });

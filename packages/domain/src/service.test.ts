@@ -22,9 +22,9 @@ const otherCouple: Principal = {
   displayName: "Other Couple",
 };
 
-const clerkPrincipal: Principal = {
-  provider: "clerk",
-  subject: "user_clerk_1",
+const externalPrincipal: Principal = {
+  provider: "external",
+  subject: "external-user-1",
   displayName: "couple@example.test",
   email: "couple@example.test",
 };
@@ -45,17 +45,17 @@ function service(
 }
 
 describe("LoveChapterService", () => {
-  it("allows profile setup before Clerk onboarding completes", async () => {
-    const clerkService = service(
+  it("allows profile setup before external onboarding completes", async () => {
+    const externalService = service(
       new InMemoryLoveChapterRepository(),
-      clerkPrincipal,
+      externalPrincipal,
     );
 
-    await expect(clerkService.getMe()).resolves.toMatchObject({
+    await expect(externalService.getMe()).resolves.toMatchObject({
       onboardingComplete: false,
     });
     await expect(
-      clerkService.updateMyProfile({ displayName: "  มะลิ & Arun  " }),
+      externalService.updateMyProfile({ displayName: "  มะลิ & Arun  " }),
     ).resolves.toMatchObject({
       displayName: "มะลิ & Arun",
       onboardingComplete: true,
@@ -65,8 +65,8 @@ describe("LoveChapterService", () => {
   it.each([
     [
       "createWedding",
-      (clerkService: LoveChapterService) =>
-        clerkService.createWedding({
+      (externalService: LoveChapterService) =>
+        externalService.createWedding({
           name: "Mali & Arun",
           timeZone: "UTC",
           locale: "en",
@@ -74,34 +74,37 @@ describe("LoveChapterService", () => {
     ],
     [
       "listWeddings",
-      (clerkService: LoveChapterService) =>
-        clerkService.listWeddings({ limit: 20 }),
+      (externalService: LoveChapterService) =>
+        externalService.listWeddings({ limit: 20 }),
     ],
     [
       "addGuest",
-      (clerkService: LoveChapterService) =>
-        clerkService.addGuest(crypto.randomUUID(), {
+      (externalService: LoveChapterService) =>
+        externalService.addGuest(crypto.randomUUID(), {
           name: "Nok",
           allowedPartySize: 1,
         }),
     ],
     [
       "listGuests",
-      (clerkService: LoveChapterService) =>
-        clerkService.listGuests(crypto.randomUUID(), { limit: 20 }),
+      (externalService: LoveChapterService) =>
+        externalService.listGuests(crypto.randomUUID(), { limit: 20 }),
     ],
     [
       "createInvitation",
-      (clerkService: LoveChapterService) =>
-        clerkService.createInvitation(crypto.randomUUID(), crypto.randomUUID()),
+      (externalService: LoveChapterService) =>
+        externalService.createInvitation(
+          crypto.randomUUID(),
+          crypto.randomUUID(),
+        ),
     ],
   ] as const)("blocks %s before onboarding", async (_name, operation) => {
-    const clerkService = service(
+    const externalService = service(
       new InMemoryLoveChapterRepository(),
-      clerkPrincipal,
+      externalPrincipal,
     );
 
-    await expect(operation(clerkService)).rejects.toBeInstanceOf(
+    await expect(operation(externalService)).rejects.toBeInstanceOf(
       OnboardingRequiredError,
     );
   });
@@ -112,7 +115,7 @@ describe("LoveChapterService", () => {
       await expect(
         service(
           new InMemoryLoveChapterRepository(),
-          clerkPrincipal,
+          externalPrincipal,
         ).updateMyProfile({ displayName }),
       ).rejects.toBeInstanceOf(DomainValidationError);
     },

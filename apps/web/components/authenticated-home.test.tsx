@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type { AuthenticatedUser, Page } from "@lovechapter/contracts";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -10,6 +10,7 @@ import {
   type AuthSessionApi,
 } from "./auth-session-provider";
 import { AuthenticatedHome } from "./authenticated-home";
+import { ApiError } from "../lib/api-client";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -80,6 +81,51 @@ describe("AuthenticatedHome", () => {
     expect(
       screen.queryByRole("heading", { name: /plan the chapter/i }),
     ).not.toBeInTheDocument();
+  });
+
+  it("removes protected workspace data after an API session 401", async () => {
+    let finishWorkspaceRequest!: (response: Response) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(
+        () =>
+          new Promise<Response>((resolve) => {
+            finishWorkspaceRequest = resolve;
+          }),
+      ),
+    );
+    const getSession = vi
+      .fn<AuthSessionApi["getSession"]>()
+      .mockResolvedValueOnce({ user: userFixture() })
+      .mockRejectedValueOnce(
+        new ApiError("Authentication required", 401, "authentication_required"),
+      );
+    renderHome(sessionApi(undefined, { getSession }));
+
+    expect(
+      await screen.findByRole("heading", { name: /plan the chapter/i }),
+    ).toBeVisible();
+    expect(screen.getByText("Couple one")).toBeVisible();
+
+    finishWorkspaceRequest(
+      jsonResponse(
+        {
+          error: {
+            code: "authentication_required",
+            message: "Authentication required",
+          },
+        },
+        401,
+      ),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: /plan the chapter/i }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Couple one")).not.toBeInTheDocument();
+    });
+    expect(getSession).toHaveBeenCalledTimes(2);
   });
 });
 

@@ -21,8 +21,8 @@ describe("PostgreSQL query contracts", () => {
     const query = dialect.sqlToQuery(
       buildSyncUserQuery({
         id: userId,
-        provider: "clerk",
-        subject: "user_clerk",
+        provider: "external",
+        subject: "external-user",
         displayName: "couple@example.test",
         email: "couple@example.test",
       }),
