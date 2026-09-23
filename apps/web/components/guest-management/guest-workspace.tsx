@@ -82,15 +82,7 @@ export interface GuestWorkspaceApi {
   getEnvelopePrintData?: EnvelopeApi["getEnvelopePrintData"];
 }
 
-export function GuestWorkspace({
-  weddingId,
-  weddingName,
-  affiliations,
-  initialPage,
-  initialView = "active",
-  api,
-  onAffiliationCreated,
-}: {
+type GuestWorkspaceProps = {
   weddingId: string;
   weddingName: string;
   affiliations: GuestAffiliation[];
@@ -98,7 +90,21 @@ export function GuestWorkspace({
   initialView?: GuestView;
   api: GuestWorkspaceApi;
   onAffiliationCreated?: (affiliation: GuestAffiliation) => void;
-}) {
+};
+
+export function GuestWorkspace(props: GuestWorkspaceProps) {
+  return <WeddingGuestWorkspace key={props.weddingId} {...props} />;
+}
+
+function WeddingGuestWorkspace({
+  weddingId,
+  weddingName,
+  affiliations,
+  initialPage,
+  initialView = "active",
+  api,
+  onAffiliationCreated,
+}: GuestWorkspaceProps) {
   const [guests, setGuests] = useState(initialPage.items);
   const [nextCursor, setNextCursor] = useState(initialPage.nextCursor);
   const [filters, setFilters] = useState<GuestFilters>({
@@ -218,7 +224,23 @@ export function GuestWorkspace({
       const created = await api.addGuest(weddingId, input);
       mutationVersion.current += 1;
       if (filters.view === "active") {
-        setGuests((current) => appendUnique([created], current));
+        const search = filters.search.trim();
+        if (search || filters.affiliation || filters.rsvp) {
+          await loadPage(
+            {
+              limit: 20,
+              view: filters.view,
+              ...(search ? { search } : {}),
+              ...(filters.affiliation
+                ? { affiliation: filters.affiliation }
+                : {}),
+              ...(filters.rsvp ? { rsvp: filters.rsvp } : {}),
+            },
+            false,
+          );
+        } else {
+          setGuests((current) => appendUnique([created], current));
+        }
       }
     } catch (error) {
       setMessage(readableError(error, "We couldn't add that guest."));
@@ -399,9 +421,10 @@ export function GuestWorkspace({
     setDownloading(true);
     setMessage(null);
     try {
+      const search = filters.search.trim();
       await api.downloadGuestCsv(weddingId, {
         view: filters.view,
-        ...(debouncedSearch ? { search: debouncedSearch } : {}),
+        ...(search ? { search } : {}),
         ...(filters.affiliation ? { affiliation: filters.affiliation } : {}),
         ...(filters.rsvp ? { rsvp: filters.rsvp } : {}),
       });

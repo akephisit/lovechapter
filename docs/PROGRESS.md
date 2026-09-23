@@ -194,6 +194,17 @@ concurrency, import transactions, and envelope template/data isolation against
 PostgreSQL. Representative Neon staging query plans, VPS behavior, and one
 physical test envelope remain external acceptance checks.
 
+Guest workspace regression checks on 2026-09-23 caught four UI behaviors:
+exporting immediately after changing a search used the previous search;
+adding a guest to a filtered list showed a nonmatching result; reusing the
+guest workspace for another wedding retained an open guest detail; and a
+delayed detail response could reopen that previous wedding's detail. Export now reads the current input,
+filtered creation reloads the current result set, and wedding changes remount
+the guest workspace, clearing import, selection, detail, and envelope state.
+The focused tests failed for each case before the fixes and then passed.
+Locally, formatting, lint, all workspace typechecks, 59 files / 388 tests, and
+`git diff --check` passed. No physical printer check was performed.
+
 ## External gates
 
 - ownership, DNS, public TLS, and exact origins for the intended domain

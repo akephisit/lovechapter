@@ -13,6 +13,24 @@ afterEach(() => {
 });
 
 describe("GuestWorkspace", () => {
+  it("exports the search the user has typed even before list debounce completes", () => {
+    vi.useFakeTimers();
+    const api = apiFixture();
+    renderWorkspace(api, page([guest()]));
+
+    fireEvent.change(screen.getByLabelText(/search guests/i), {
+      target: { value: "  Nok  " },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /export filtered csv/i }),
+    );
+
+    expect(api.downloadGuestCsv).toHaveBeenCalledWith(weddingId, {
+      view: "active",
+      search: "Nok",
+    });
+  });
+
   it("exports the current filters and leaves selection after a download failure", async () => {
     const api = apiFixture();
     const failure = deferred<void>();
@@ -110,6 +128,72 @@ describe("GuestWorkspace", () => {
     ).not.toBeInTheDocument();
     await user.click(within(dialog).getByLabelText(/include postal address/i));
     expect(within(dialog).getByLabelText(/address line 1/i)).toBeRequired();
+  });
+
+  it("closes a guest detail when switching weddings", async () => {
+    const api = apiFixture();
+    const user = userEvent.setup();
+    const view = renderWorkspace(api, page([guest()]));
+    await user.click(screen.getByRole("button", { name: /edit nok/i }));
+    expect(
+      await screen.findByRole("dialog", { name: /edit nok/i }),
+    ).toBeVisible();
+
+    view.rerender(
+      <GuestWorkspace
+        weddingId="018f0000-0000-7000-8000-000000000003"
+        weddingName="New wedding"
+        affiliations={[]}
+        initialPage={page([])}
+        api={api}
+      />,
+    );
+
+    expect(screen.queryByRole("dialog", { name: /edit nok/i })).toBeNull();
+  });
+
+  it("ignores a guest detail response from the previous wedding", async () => {
+    const pending = deferred<GuestDetail>();
+    const api = apiFixture();
+    api.getGuest = vi.fn(() => pending.promise);
+    const user = userEvent.setup();
+    const view = renderWorkspace(api, page([guest()]));
+    await user.click(screen.getByRole("button", { name: /edit nok/i }));
+
+    view.rerender(
+      <GuestWorkspace
+        weddingId="018f0000-0000-7000-8000-000000000003"
+        weddingName="New wedding"
+        affiliations={[]}
+        initialPage={page([])}
+        api={api}
+      />,
+    );
+    await act(async () => {
+      pending.resolve(detail());
+      await pending.promise;
+    });
+
+    expect(screen.queryByRole("dialog", { name: /edit nok/i })).toBeNull();
+  });
+
+  it("does not show a new guest who does not match the current RSVP filter", async () => {
+    const api = apiFixture();
+    const user = userEvent.setup();
+    renderWorkspace(api);
+
+    await user.selectOptions(
+      screen.getByLabelText(/rsvp status/i),
+      "attending",
+    );
+    await user.type(screen.getByLabelText(/guest name/i), "Nok");
+    await user.click(screen.getByRole("button", { name: /^add guest$/i }));
+
+    expect(api.addGuest).toHaveBeenCalledWith(
+      weddingId,
+      expect.objectContaining({ name: "Nok" }),
+    );
+    expect(screen.queryByRole("button", { name: /edit nok/i })).toBeNull();
   });
 
   it("archives and restores only after confirmation", async () => {
