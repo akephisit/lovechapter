@@ -128,6 +128,8 @@ export async function runApiServer(): Promise<Bun.Server<undefined>> {
           postgres.loveChapterRepository,
           config.publicWebOrigin,
           request,
+          postgres.guestImportRepository,
+          postgres.envelopeRepository,
         ),
       ),
   }).compile();

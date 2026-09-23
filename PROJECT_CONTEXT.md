@@ -121,6 +121,25 @@ Sensitive guest changes may later require email OTP or equivalent verification.
 - Tags or multi-group membership are a separate future capability.
 - A postal address is not required to create or manage a guest.
 
+### Guest management, data exchange, and printing — LOCKED
+
+The approved design lives in
+`docs/superpowers/specs/2026-09-23-guest-management-csv-envelope-design.md`.
+Guest management uses optional contact, envelope name, note, and postal address
+fields; searchable, filterable active/archive lists; transactional invitation
+revocation on archive; restore without reviving links; and bounded atomic bulk
+operations. Address remains optional for RSVP, import/export, and name-only
+envelopes. CSV export streams the authorized filtered set in 500-row pages
+with spreadsheet-formula protection and no invitation secrets. CSV import is
+creation-only: a bounded `text/csv` parser stages normalized rows for 24 hours,
+previews mapping/errors/duplicates, requires explicit inclusion and duplicate
+decisions, and commits once per batch/idempotency key. Expired staging is
+cleaned in 500-batch maintenance runs. Browser envelope printing uses 1–500
+active guest IDs, optional postal addresses, validated DL/C5/C6/custom
+templates, self-hosted Thai fonts, and one text-only page per guest. The
+automated checks do not replace disposable PostgreSQL or physical-printer
+acceptance gates; these remain unverified in this runner.
+
 ---
 
 ## 4. Ownership and billing — LOCKED

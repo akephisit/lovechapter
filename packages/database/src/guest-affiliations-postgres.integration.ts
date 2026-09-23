@@ -1,4 +1,8 @@
-import { DomainValidationError, NotFoundError } from "@lovechapter/domain";
+import {
+  decodeCursor,
+  DomainValidationError,
+  NotFoundError,
+} from "@lovechapter/domain";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
@@ -137,7 +141,7 @@ describe("PostgreSQL guest affiliations", () => {
     const guests = await runtime.loveChapterRepository.listGuests(
       owner.id,
       wedding.id,
-      { limit: 20 },
+      { limit: 20, view: "active" },
     );
     expect(guests.items).toEqual([
       expect.objectContaining({ id: guest.id, affiliation: null }),
@@ -205,10 +209,10 @@ describe("PostgreSQL guest affiliations", () => {
     );
 
     const [assignment, deletion] = await Promise.allSettled([
-      runtime.loveChapterRepository.setGuestAffiliation(
+      runtime.loveChapterRepository.bulkSetGuestAffiliation(
         owner.id,
         wedding.id,
-        guest.id,
+        [guest.id],
         affiliation.id,
       ),
       runtime.loveChapterRepository.deleteGuestAffiliation(
@@ -226,7 +230,7 @@ describe("PostgreSQL guest affiliations", () => {
     const guests = await runtime.loveChapterRepository.listGuests(
       owner.id,
       wedding.id,
-      { limit: 20 },
+      { limit: 20, view: "active" },
     );
     expect(guests.items).toEqual([
       expect.objectContaining({ id: guest.id, affiliation: null }),
@@ -271,13 +275,292 @@ describe("PostgreSQL guest affiliations", () => {
     const guests = await runtime.loveChapterRepository.listGuests(
       owner.id,
       wedding.id,
-      { limit: 20 },
+      { limit: 20, view: "active" },
     );
     expect(guests.items).toEqual(
       creation.status === "fulfilled"
         ? [expect.objectContaining({ id: guestId, affiliation: null })]
         : [],
     );
+  });
+});
+
+describe("PostgreSQL guest management", () => {
+  it("exports the same active/archived and affiliation-filtered order without crossing tenants", async () => {
+    const owner = await createUser("export-owner");
+    const outsider = await createUser("export-outsider");
+    const wedding = await createWedding(owner.id, "Export scope");
+    const affiliation =
+      await runtime.loveChapterRepository.createGuestAffiliation(
+        owner.id,
+        wedding.id,
+        crypto.randomUUID(),
+        { name: "Family", color: "#a855f7" },
+      );
+    const assigned = await runtime.loveChapterRepository.createGuest(
+      owner.id,
+      wedding.id,
+      crypto.randomUUID(),
+      { name: "Som", allowedPartySize: 1, affiliationId: affiliation.id },
+    );
+    const unassigned = await runtime.loveChapterRepository.createGuest(
+      owner.id,
+      wedding.id,
+      crypto.randomUUID(),
+      { name: "Som two", allowedPartySize: 1 },
+    );
+    await runtime.loveChapterRepository.archiveGuest(
+      owner.id,
+      wedding.id,
+      assigned.id,
+    );
+    for (const filter of [
+      { view: "active" as const, affiliation: "unassigned" },
+      { view: "archived" as const, affiliation: affiliation.id },
+    ]) {
+      const list = await runtime.loveChapterRepository.listGuests(
+        owner.id,
+        wedding.id,
+        { ...filter, search: "Som", limit: 20 },
+      );
+      const exported = await runtime.loveChapterRepository.listGuestExportPage(
+        owner.id,
+        wedding.id,
+        { ...filter, search: "Som", limit: 500 },
+      );
+      expect(exported.items.map((row) => row.cursorId)).toEqual(
+        list.items.map((guest) => guest.id),
+      );
+      expect(exported.items.map((row) => row.name)).toEqual(
+        list.items.map((guest) => guest.name),
+      );
+    }
+    const active = await runtime.loveChapterRepository.listGuestExportPage(
+      owner.id,
+      wedding.id,
+      { view: "active", limit: 500 },
+    );
+    expect(active.items.map((row) => row.cursorId)).toEqual([unassigned.id]);
+    await expect(
+      runtime.loveChapterRepository.listGuestExportPage(
+        outsider.id,
+        wedding.id,
+        { view: "active", limit: 500 },
+      ),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+  it("keeps guest detail and mutations inside an authorized wedding", async () => {
+    const owner = await createUser("guest-owner");
+    const outsider = await createUser("guest-outsider");
+    const wedding = await createWedding(owner.id, "Private guests");
+    const guest = await runtime.loveChapterRepository.createGuest(
+      owner.id,
+      wedding.id,
+      crypto.randomUUID(),
+      { name: "Nok", allowedPartySize: 1 },
+    );
+
+    await expect(
+      runtime.loveChapterRepository.getGuest(outsider.id, wedding.id, guest.id),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      runtime.loveChapterRepository.updateGuest(
+        outsider.id,
+        wedding.id,
+        guest.id,
+        { name: "Leaked" },
+      ),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      runtime.loveChapterRepository.archiveGuest(
+        outsider.id,
+        wedding.id,
+        guest.id,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      runtime.loveChapterRepository.restoreGuest(
+        outsider.id,
+        wedding.id,
+        guest.id,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("revokes archived invitations permanently across restore", async () => {
+    const owner = await createUser("archive-owner");
+    const wedding = await createWedding(owner.id, "Archive guests");
+    const guest = await runtime.loveChapterRepository.createGuest(
+      owner.id,
+      wedding.id,
+      crypto.randomUUID(),
+      { name: "Dao", allowedPartySize: 1 },
+    );
+    const tokenHash = "a".repeat(64);
+    const invitation = await runtime.loveChapterRepository.createInvitation({
+      id: crypto.randomUUID(),
+      weddingId: wedding.id,
+      guestId: guest.id,
+      createdByUserId: owner.id,
+      tokenHash,
+    });
+
+    await runtime.loveChapterRepository.archiveGuest(
+      owner.id,
+      wedding.id,
+      guest.id,
+    );
+    await expect(
+      runtime.loveChapterRepository.findPublicInvitation(tokenHash),
+    ).resolves.toBeNull();
+    await runtime.loveChapterRepository.restoreGuest(
+      owner.id,
+      wedding.id,
+      guest.id,
+    );
+    const persisted = await runtime.pool.query<{ revoked_at: Date | null }>(
+      "select revoked_at from invitations where id = $1",
+      [invitation.id],
+    );
+    expect(persisted.rows[0]?.revoked_at).not.toBeNull();
+    await expect(
+      runtime.loveChapterRepository.findPublicInvitation(tokenHash),
+    ).resolves.toBeNull();
+  });
+
+  it("serializes invitation creation behind archive and keeps the restored guest invitation-free", async () => {
+    const owner = await createUser("race-owner");
+    const wedding = await createWedding(owner.id, "Archive race");
+    const guest = await runtime.loveChapterRepository.createGuest(
+      owner.id,
+      wedding.id,
+      crypto.randomUUID(),
+      { name: "Dao", allowedPartySize: 1 },
+    );
+    const blocker = await runtime.pool.connect();
+    let archive!: ReturnType<typeof runtime.loveChapterRepository.archiveGuest>;
+    let creation!: ReturnType<
+      typeof runtime.loveChapterRepository.createInvitation
+    >;
+    try {
+      await blocker.query("begin");
+      await blocker.query("update guests set name = name where id = $1", [
+        guest.id,
+      ]);
+      archive = runtime.loveChapterRepository.archiveGuest(
+        owner.id,
+        wedding.id,
+        guest.id,
+      );
+      void archive.catch(() => {});
+      let archiveWaiting = false;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const result = await runtime.pool.query<{ waiting: boolean }>(
+          `select exists (
+            select 1 from pg_stat_activity
+            where wait_event_type = 'Lock' and query like 'update "guests"%'
+          ) as waiting`,
+        );
+        if (result.rows[0]?.waiting) {
+          archiveWaiting = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(archiveWaiting).toBe(true);
+      const tokenHash = "e".repeat(64);
+      creation = runtime.loveChapterRepository.createInvitation({
+        id: crypto.randomUUID(),
+        weddingId: wedding.id,
+        guestId: guest.id,
+        createdByUserId: owner.id,
+        tokenHash,
+      });
+      void creation.catch(() => {});
+      await blocker.query("rollback");
+      await archive;
+      await expect(creation).rejects.toBeInstanceOf(NotFoundError);
+      await runtime.loveChapterRepository.restoreGuest(
+        owner.id,
+        wedding.id,
+        guest.id,
+      );
+      await expect(
+        runtime.loveChapterRepository.findPublicInvitation(tokenHash),
+      ).resolves.toBeNull();
+    } finally {
+      await blocker.query("rollback").catch(() => {});
+      blocker.release();
+    }
+  });
+
+  it("rejects a mixed-wedding bulk archive without partial changes", async () => {
+    const owner = await createUser("bulk-owner");
+    const first = await createWedding(owner.id, "First bulk wedding");
+    const second = await createWedding(owner.id, "Second bulk wedding");
+    const local = await runtime.loveChapterRepository.createGuest(
+      owner.id,
+      first.id,
+      crypto.randomUUID(),
+      { name: "Local", allowedPartySize: 1 },
+    );
+    const foreign = await runtime.loveChapterRepository.createGuest(
+      owner.id,
+      second.id,
+      crypto.randomUUID(),
+      { name: "Foreign", allowedPartySize: 1 },
+    );
+
+    await expect(
+      runtime.loveChapterRepository.bulkArchiveGuests(owner.id, first.id, [
+        local.id,
+        foreign.id,
+      ]),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      runtime.loveChapterRepository.getGuest(owner.id, first.id, local.id),
+    ).resolves.not.toHaveProperty("archivedAt");
+  });
+
+  it("traverses equal-timestamp filtered pages without duplicates or skips", async () => {
+    const owner = await createUser("cursor-owner");
+    const wedding = await createWedding(owner.id, "Cursor wedding");
+    const guests = await Promise.all(
+      ["Same A", "Same B", "Same C"].map((name) =>
+        runtime.loveChapterRepository.createGuest(
+          owner.id,
+          wedding.id,
+          crypto.randomUUID(),
+          { name, allowedPartySize: 1 },
+        ),
+      ),
+    );
+    await runtime.pool.query(
+      "update guests set created_at = '2026-09-23T00:00:00.000Z' where wedding_id = $1",
+      [wedding.id],
+    );
+
+    const first = await runtime.loveChapterRepository.listGuests(
+      owner.id,
+      wedding.id,
+      { limit: 2, view: "active", search: "Same", rsvp: "pending" },
+    );
+    expect(first.nextCursor).not.toBeNull();
+    if (!first.nextCursor) throw new Error("Expected a second guest page");
+    const second = await runtime.loveChapterRepository.listGuests(
+      owner.id,
+      wedding.id,
+      {
+        limit: 2,
+        view: "active",
+        search: "Same",
+        rsvp: "pending",
+        cursor: decodeCursor(first.nextCursor),
+      },
+    );
+    expect(
+      new Set([...first.items, ...second.items].map((guest) => guest.id)),
+    ).toEqual(new Set(guests.map((guest) => guest.id)));
   });
 });
 

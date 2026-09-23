@@ -287,3 +287,34 @@ affiliation is removed. Postal address is not part of affiliation management
 and is not required for guest creation. Existing guests can be reassigned, and
 each wedding is bounded to 100 affiliations so the complete ordered set remains
 manageable in one operation.
+
+## ADR-021 — Guest CSV import is creation-only and staged
+
+**Status:** Accepted
+
+Uploads use `csv-parse@7.0.2` with strict UTF-8/comma CSV, the existing 1 MiB
+request limit, 5,000 data rows, 40 columns, and 4,096 Unicode characters per
+cell. Original bytes are discarded after parsing. Wedding-scoped normalized
+rows and preview metadata expire after 24 hours; the maintenance job deletes
+up to 500 expired batches every 15 minutes, cascading their rows. Mapping is
+versioned, unknown affiliations must be explicitly mapped or excluded, and
+duplicate warnings require a “create anyway” decision. Commit inserts only
+new guests and optional addresses in one transaction, with an idempotency key
+valid for the remaining batch lifetime. No invitation link is imported or
+created. CSV export and imported dangerous formula prefixes are neutralized.
+
+## ADR-022 — Envelope output is browser print with safe saved templates
+
+**Status:** Accepted
+
+The first release does not generate server PDFs. A scoped query accepts at
+most 500 unique active guest IDs, preserves request order, and fails the
+entire request for a missing, archived, or foreign guest. Name-only printing
+uses the envelope name or guest name without a postal address; address mode
+shows missing-address warnings in preview. Templates are limited to 50 per
+wedding and contain only server-validated integer measurements, enum choices,
+and booleans. Presets are DL, C5, and C6; custom dimensions stay within
+90–330 × 55–480 mm. React emits guest text as text nodes, CSS is generated
+solely from validated values, Thai fonts are self-hosted, and Print waits for
+font readiness. Hardware, driver scaling, feed orientation, and margins are
+external acceptance checks, not inferred from automated tests.

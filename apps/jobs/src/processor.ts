@@ -27,6 +27,12 @@ type SafeLog = (
 
 export type EmailProcessorOptions = {
   store: EmailJobStore;
+  guestImportCleanup?: {
+    cleanupExpiredGuestImports(input: {
+      now: string;
+      limit: 500;
+    }): Promise<number>;
+  };
   sender: EmailSender;
   tokenCodec: ActionTokenCodec;
   publicWebOrigin: string;
@@ -90,6 +96,15 @@ export async function runJobLoop(
           result.sessions +
           result.emailJobs,
       });
+      if (options.signal.aborted) return;
+      if (options.guestImportCleanup) {
+        const removed =
+          await options.guestImportCleanup.cleanupExpiredGuestImports({
+            now: now.toISOString(),
+            limit: CLEANUP_BATCH_SIZE,
+          });
+        options.log?.("guest_import_cleanup", { removed });
+      }
     }
 
     if (options.signal.aborted) return;

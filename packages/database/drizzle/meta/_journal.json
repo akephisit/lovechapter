@@ -29,6 +29,27 @@
       "when": 1790102239986,
       "tag": "0003_worthless_vector",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790125040742,
+      "tag": "0004_mixed_payback",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790133042236,
+      "tag": "0005_tricky_black_panther",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790134874578,
+      "tag": "0006_lazy_namor",
+      "breakpoints": true
     }
   ]
 }

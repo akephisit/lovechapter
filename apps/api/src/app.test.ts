@@ -10,7 +10,11 @@ import {
   LoveChapterService,
   type Principal,
 } from "@lovechapter/domain";
-import { InMemoryLoveChapterRepository } from "@lovechapter/domain/testing";
+import {
+  InMemoryGuestImportRepository,
+  InMemoryEnvelopeRepository,
+  InMemoryLoveChapterRepository,
+} from "@lovechapter/domain/testing";
 import { describe, expect, it, vi } from "vitest";
 
 import { createApiIdentityProvider } from "./api-identity";
@@ -27,6 +31,239 @@ const fingerprintKey = new Uint8Array(32).fill(7);
 const password = "correct horse battery staple";
 
 describe("LoveChapter API", () => {
+  it("rejects unauthenticated CSV upload before reading its bytes", async () => {
+    const fixture = testFixture();
+    const request = trustedRequest(
+      `/v1/weddings/${crypto.randomUUID()}/guest-imports`,
+      {
+        method: "POST",
+        origin: webOrigin,
+        "content-type": "text/csv",
+        body: "name\nNok",
+      },
+    );
+    const read = vi.spyOn(request, "arrayBuffer");
+    const response = await fixture.app.handle(request);
+    expect(response.status).toBe(401);
+    expect(read).not.toHaveBeenCalled();
+  });
+  it("saves scoped print templates and returns name-only data without addresses", async () => {
+    const fixture = testFixture({ principal: couple("envelope-owner") });
+    const weddingResponse = await fixture.app.handle(
+      jsonRequest("/v1/weddings", "POST", {
+        name: "Print",
+        timeZone: "UTC",
+        locale: "en",
+      }),
+    );
+    const wedding = (await weddingResponse.json()) as { id: string };
+    const guestResponse = await fixture.app.handle(
+      jsonRequest(`/v1/weddings/${wedding.id}/guests`, "POST", {
+        name: "Nok",
+        allowedPartySize: 1,
+      }),
+    );
+    const guest = (await guestResponse.json()) as { id: string };
+    const template = {
+      name: "DL",
+      widthMm: 220,
+      heightMm: 110,
+      orientation: "landscape",
+      marginTopMm: 10,
+      marginRightMm: 10,
+      marginBottomMm: 10,
+      marginLeftMm: 10,
+      alignment: "center",
+      fontFamily: "noto-sans-thai",
+      fontSizePt: 18,
+      lineSpacingPercent: 120,
+      showAddress: false,
+    };
+    const created = await fixture.app.handle(
+      jsonRequest(
+        `/v1/weddings/${wedding.id}/envelope-templates`,
+        "POST",
+        template,
+      ),
+    );
+    expect(created.status).toBe(201);
+    const saved = (await created.json()) as { id: string };
+    const list = await fixture.app.handle(
+      trustedRequest(`/v1/weddings/${wedding.id}/envelope-templates`),
+    );
+    expect(await list.json()).toEqual([
+      expect.objectContaining({ id: saved.id }),
+    ]);
+    const printed = await fixture.app.handle(
+      jsonRequest(`/v1/weddings/${wedding.id}/envelope-print-data`, "POST", {
+        guestIds: [guest.id],
+        templateId: saved.id,
+      }),
+    );
+    expect(printed.status).toBe(200);
+    expect(await printed.json()).toMatchObject({
+      guests: [{ id: guest.id, envelopeName: "Nok", postalAddress: null }],
+    });
+    const bad = await fixture.app.handle(
+      jsonRequest(`/v1/weddings/${wedding.id}/envelope-print-data`, "POST", {
+        guestIds: [guest.id],
+        templateId: saved.id,
+        template,
+      }),
+    );
+    expect(bad.status).toBe(400);
+    const deleted = await fixture.app.handle(
+      jsonRequest(
+        `/v1/weddings/${wedding.id}/envelope-templates/${saved.id}`,
+        "DELETE",
+        {},
+      ),
+    );
+    expect(deleted.status).toBe(204);
+  });
+  it("uploads, previews and remaps a bounded guest CSV with version checks", async () => {
+    const fixture = testFixture({ principal: couple("import-owner") });
+    const weddingResponse = await fixture.app.handle(
+      jsonRequest("/v1/weddings", "POST", {
+        name: "CSV wedding",
+        timeZone: "UTC",
+        locale: "en",
+      }),
+    );
+    const wedding = (await weddingResponse.json()) as { id: string };
+    const upload = await fixture.app.handle(
+      trustedRequest(`/v1/weddings/${wedding.id}/guest-imports`, {
+        method: "POST",
+        origin: webOrigin,
+        "content-type": "text/csv",
+        body: "name,affiliation\nNok,unknown\nDao,\n",
+      }),
+    );
+    expect(upload.status).toBe(201);
+    const preview = (await upload.json()) as {
+      batchId: string;
+      mappingVersion: number;
+      mapping: Record<string, number | null>;
+      items: Array<{ id: string }>;
+      totals: { invalid: number };
+    };
+    expect(preview.totals.invalid).toBe(1);
+    const get = await fixture.app.handle(
+      trustedRequest(
+        `/v1/weddings/${wedding.id}/guest-imports/${preview.batchId}`,
+      ),
+    );
+    expect(get.status).toBe(200);
+    const input = {
+      expectedVersion: 1,
+      mapping: preview.mapping,
+      affiliationMappings: {},
+      excludedRowIds: [preview.items[0]!.id],
+    };
+    const changed = await fixture.app.handle(
+      jsonRequest(
+        `/v1/weddings/${wedding.id}/guest-imports/${preview.batchId}/mapping`,
+        "PATCH",
+        input,
+      ),
+    );
+    expect(changed.status).toBe(200);
+    await expect(changed.json()).resolves.toMatchObject({
+      mappingVersion: 2,
+      totals: { excluded: 1 },
+    });
+    const stale = await fixture.app.handle(
+      jsonRequest(
+        `/v1/weddings/${wedding.id}/guest-imports/${preview.batchId}/mapping`,
+        "PATCH",
+        input,
+      ),
+    );
+    expect(stale.status).toBe(409);
+  });
+
+  it("commits reviewed import once and replays the same key without duplicate guests", async () => {
+    const fixture = testFixture({ principal: couple("commit-owner") });
+    const weddingResponse = await fixture.app.handle(
+      jsonRequest("/v1/weddings", "POST", {
+        name: "Commit wedding",
+        timeZone: "UTC",
+        locale: "en",
+      }),
+    );
+    const wedding = (await weddingResponse.json()) as { id: string };
+    const upload = await fixture.app.handle(
+      trustedRequest(`/v1/weddings/${wedding.id}/guest-imports`, {
+        method: "POST",
+        origin: webOrigin,
+        "content-type": "text/csv",
+        body: "name\nNok\n",
+      }),
+    );
+    const preview = (await upload.json()) as {
+      batchId: string;
+      items: Array<{ id: string }>;
+    };
+    const input = {
+      expectedVersion: 1,
+      includedRowIds: [preview.items[0]!.id],
+      createAnywayRowIds: [],
+      idempotencyKey: "commit-1",
+    };
+    const endpoint = `/v1/weddings/${wedding.id}/guest-imports/${preview.batchId}/commit`;
+    const first = await fixture.app.handle(
+      jsonRequest(endpoint, "POST", input),
+    );
+    expect(first.status).toBe(200);
+    const result = await first.json();
+    expect(result).toMatchObject({ created: 1, excluded: 0 });
+    const replay = await fixture.app.handle(
+      jsonRequest(endpoint, "POST", input),
+    );
+    expect(await replay.json()).toEqual(result);
+    const guests = await fixture.app.handle(
+      trustedRequest(`/v1/weddings/${wedding.id}/guests`),
+    );
+    expect(((await guests.json()) as { items: unknown[] }).items).toHaveLength(
+      1,
+    );
+  });
+  it("downloads scoped CSV with no-store and rejects unauthenticated export", async () => {
+    const fixture = testFixture({ principal: couple("csv-owner") });
+    const weddingResponse = await fixture.app.handle(
+      jsonRequest("/v1/weddings", "POST", {
+        name: "CSV wedding",
+        timeZone: "UTC",
+        locale: "en",
+      }),
+    );
+    const wedding = (await weddingResponse.json()) as { id: string };
+    await fixture.app.handle(
+      jsonRequest(`/v1/weddings/${wedding.id}/guests`, "POST", {
+        name: "คุณสมชาย",
+        allowedPartySize: 1,
+      }),
+    );
+    const response = await fixture.app.handle(
+      trustedRequest(
+        `/v1/weddings/${wedding.id}/guests/export.csv?view=active&search=%E0%B8%84%E0%B8%B8%E0%B8%93`,
+      ),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe(
+      "text/csv; charset=utf-8",
+    );
+    expect(response.headers.get("content-disposition")).toBe(
+      'attachment; filename="lovechapter-guests.csv"',
+    );
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await response.text()).toContain("คุณสมชาย");
+    const unauthenticated = testFixture();
+    const blocked = await unauthenticated.app.handle(
+      trustedRequest(`/v1/weddings/${wedding.id}/guests/export.csv`),
+    );
+    expect(blocked.status).toBe(401);
+  });
   it("keeps liveness credential-free and protects bounded readiness", async () => {
     const readiness = vi.fn(async () => undefined);
     const fixture = testFixture({ readiness });
@@ -419,6 +656,199 @@ describe("LoveChapter API", () => {
       items: [{ name: "Nok", affiliation: null }],
     });
   });
+
+  it("manages guest detail, archive, restore, and bounded bulk actions", async () => {
+    const fixture = testFixture({ principal: couple("guest-management") });
+    const weddingResponse = await fixture.app.handle(
+      jsonRequest("/v1/weddings", "POST", {
+        name: "Mali & Arun",
+        timeZone: "UTC",
+        locale: "en",
+      }),
+    );
+    const wedding = (await weddingResponse.json()) as { id: string };
+    const affiliationResponse = await fixture.app.handle(
+      jsonRequest(`/v1/weddings/${wedding.id}/guest-affiliations`, "POST", {
+        name: "Family",
+        color: "#a855f7",
+      }),
+    );
+    const affiliation = (await affiliationResponse.json()) as { id: string };
+    const firstResponse = await fixture.app.handle(
+      jsonRequest(`/v1/weddings/${wedding.id}/guests`, "POST", {
+        name: "สมชาย",
+        email: "somchai@example.test",
+        phone: "+66 80 000 0000",
+        allowedPartySize: 2,
+        envelopeName: "คุณสมชายและครอบครัว",
+        note: "Vegetarian",
+        postalAddress: {
+          addressLine1: "1 Main Street",
+          locality: "Bangkok",
+          countryCode: "TH",
+        },
+      }),
+    );
+    const first = (await firstResponse.json()) as { id: string };
+    const secondResponse = await fixture.app.handle(
+      jsonRequest(`/v1/weddings/${wedding.id}/guests`, "POST", {
+        name: "Suda",
+        allowedPartySize: 1,
+      }),
+    );
+    const second = (await secondResponse.json()) as { id: string };
+
+    const filtered = await fixture.app.handle(
+      trustedRequest(
+        `/v1/weddings/${wedding.id}/guests?limit=20&view=active&rsvp=pending&affiliation=unassigned&search=${encodeURIComponent("สม")}`,
+      ),
+    );
+    expect(filtered.status).toBe(200);
+    await expect(filtered.json()).resolves.toMatchObject({
+      items: [{ id: first.id, phone: "+66 80 000 0000" }],
+    });
+
+    const detail = await fixture.app.handle(
+      trustedRequest(`/v1/weddings/${wedding.id}/guests/${first.id}`),
+    );
+    expect(detail.status).toBe(200);
+    await expect(detail.json()).resolves.toMatchObject({
+      envelopeName: "คุณสมชายและครอบครัว",
+      note: "Vegetarian",
+      postalAddress: { addressLine1: "1 Main Street" },
+    });
+
+    const updated = await fixture.app.handle(
+      jsonRequest(`/v1/weddings/${wedding.id}/guests/${first.id}`, "PATCH", {
+        phone: " ",
+        postalAddress: null,
+      }),
+    );
+    expect(updated.status).toBe(200);
+    await expect(updated.json()).resolves.toMatchObject({
+      postalAddress: null,
+    });
+
+    const bulkAffiliation = await fixture.app.handle(
+      jsonRequest(
+        `/v1/weddings/${wedding.id}/guests/bulk-affiliation`,
+        "PATCH",
+        { guestIds: [first.id, second.id], affiliationId: affiliation.id },
+      ),
+    );
+    expect(bulkAffiliation.status).toBe(200);
+    await expect(bulkAffiliation.json()).resolves.toEqual({ affected: 2 });
+
+    const archived = await fixture.app.handle(
+      jsonRequest(
+        `/v1/weddings/${wedding.id}/guests/${first.id}/archive`,
+        "POST",
+        {},
+      ),
+    );
+    expect(archived.status).toBe(200);
+    await expect(archived.json()).resolves.toHaveProperty("archivedAt");
+    const archivedList = await fixture.app.handle(
+      trustedRequest(`/v1/weddings/${wedding.id}/guests?view=archived`),
+    );
+    await expect(archivedList.json()).resolves.toMatchObject({
+      items: [{ id: first.id }],
+    });
+
+    const restored = await fixture.app.handle(
+      jsonRequest(
+        `/v1/weddings/${wedding.id}/guests/${first.id}/restore`,
+        "POST",
+        {},
+      ),
+    );
+    expect(restored.status).toBe(200);
+    await expect(restored.json()).resolves.not.toHaveProperty("archivedAt");
+
+    const bulkArchived = await fixture.app.handle(
+      jsonRequest(`/v1/weddings/${wedding.id}/guests/bulk-archive`, "POST", {
+        guestIds: [first.id, second.id],
+      }),
+    );
+    expect(bulkArchived.status).toBe(200);
+    await expect(bulkArchived.json()).resolves.toEqual({ affected: 2 });
+  });
+
+  it("rejects invalid guest filters, patches, and bulk bodies", async () => {
+    const fixture = testFixture({ principal: couple("guest-validation") });
+    const weddingResponse = await fixture.app.handle(
+      jsonRequest("/v1/weddings", "POST", {
+        name: "Mali & Arun",
+        timeZone: "UTC",
+        locale: "en",
+      }),
+    );
+    const wedding = (await weddingResponse.json()) as { id: string };
+    const guestResponse = await fixture.app.handle(
+      jsonRequest(`/v1/weddings/${wedding.id}/guests`, "POST", {
+        name: "Nok",
+        allowedPartySize: 1,
+      }),
+    );
+    const guest = (await guestResponse.json()) as { id: string };
+    const invalidRequests = [
+      trustedRequest(`/v1/weddings/${wedding.id}/guests?limit=101`),
+      trustedRequest(`/v1/weddings/${wedding.id}/guests?view=deleted`),
+      trustedRequest(`/v1/weddings/${wedding.id}/guests?rsvp=maybe`),
+      trustedRequest(`/v1/weddings/${wedding.id}/guests?affiliation=bad`),
+      trustedRequest(`/v1/weddings/${wedding.id}/guests?cursor=bad`),
+      jsonRequest(`/v1/weddings/${wedding.id}/guests/${guest.id}`, "PATCH", {
+        unknown: true,
+      }),
+      jsonRequest(
+        `/v1/weddings/${wedding.id}/guests/bulk-affiliation`,
+        "PATCH",
+        { guestIds: [], affiliationId: null },
+      ),
+      jsonRequest(`/v1/weddings/${wedding.id}/guests/bulk-archive`, "POST", {
+        guestIds: [guest.id, guest.id],
+      }),
+      jsonRequest(`/v1/weddings/${wedding.id}/guests/bulk-archive`, "POST", {
+        guestIds: Array.from({ length: 201 }, () => crypto.randomUUID()),
+      }),
+    ];
+
+    for (const request of invalidRequests) {
+      const response = await fixture.app.handle(request);
+      expect(response.status).toBe(400);
+    }
+  });
+
+  it("maps cross-wedding guest operations to a non-disclosing 404", async () => {
+    const fixture = testFixture({ principal: couple("guest-scope") });
+    const createWedding = async (name: string) => {
+      const response = await fixture.app.handle(
+        jsonRequest("/v1/weddings", "POST", {
+          name,
+          timeZone: "UTC",
+          locale: "en",
+        }),
+      );
+      return (await response.json()) as { id: string };
+    };
+    const first = await createWedding("First");
+    const second = await createWedding("Second");
+    const guestResponse = await fixture.app.handle(
+      jsonRequest(`/v1/weddings/${first.id}/guests`, "POST", {
+        name: "Nok",
+        allowedPartySize: 1,
+      }),
+    );
+    const guest = (await guestResponse.json()) as { id: string };
+
+    const response = await fixture.app.handle(
+      trustedRequest(`/v1/weddings/${second.id}/guests/${guest.id}`),
+    );
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error: { code: "not_found", message: "Resource not found" },
+    });
+  });
 });
 
 type Fixture = ReturnType<typeof testFixture>;
@@ -455,6 +885,10 @@ function testFixture(
         { authService, nodeEnvironment: "test" },
       );
   const domainRepository = new InMemoryLoveChapterRepository();
+  const guestImportRepository = new InMemoryGuestImportRepository(
+    domainRepository,
+  );
+  const envelopeRepository = new InMemoryEnvelopeRepository(domainRepository);
   const app = createApiApp({
     authService,
     nodeEnvironment: "test",
@@ -464,7 +898,14 @@ function testFixture(
     readiness: options.readiness ?? (async () => undefined),
     run: (request, operation) =>
       operation(
-        new LoveChapterService(identity, domainRepository, webOrigin, request),
+        new LoveChapterService(
+          identity,
+          domainRepository,
+          webOrigin,
+          request,
+          guestImportRepository,
+          envelopeRepository,
+        ),
       ),
   }).compile();
   return {

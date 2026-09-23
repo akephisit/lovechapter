@@ -17,6 +17,7 @@ const REQUEST_HEADER_ALLOWLIST = [
 ] as const;
 const RESPONSE_HEADER_ALLOWLIST = [
   "content-type",
+  "content-disposition",
   "cache-control",
   "etag",
   "retry-after",

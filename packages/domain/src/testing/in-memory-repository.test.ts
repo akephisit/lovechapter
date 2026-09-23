@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { InMemoryLoveChapterRepository } from "./in-memory-repository";
+import { NotFoundError } from "../errors";
 
 describe("InMemoryLoveChapterRepository user profiles", () => {
   it("keeps development users usable and requires external onboarding", async () => {
@@ -60,5 +61,41 @@ describe("InMemoryLoveChapterRepository user profiles", () => {
       displayName: "คู่รัก",
       onboardingComplete: true,
     });
+  });
+});
+
+describe("InMemoryLoveChapterRepository guest bulk actions", () => {
+  it("validates the complete guest set before changing any record", async () => {
+    const repository = new InMemoryLoveChapterRepository();
+    const user = await repository.syncUser({
+      provider: "development",
+      subject: "owner",
+      displayName: "Owner",
+    });
+    const wedding = await repository.createWedding(
+      user.id,
+      crypto.randomUUID(),
+      {
+        name: "Wedding",
+        timeZone: "UTC",
+        locale: "en",
+      },
+    );
+    const guest = await repository.createGuest(
+      user.id,
+      wedding.id,
+      crypto.randomUUID(),
+      { name: "Nok", allowedPartySize: 1 },
+    );
+
+    await expect(
+      repository.bulkArchiveGuests(user.id, wedding.id, [
+        guest.id,
+        crypto.randomUUID(),
+      ]),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      repository.getGuest(user.id, wedding.id, guest.id),
+    ).resolves.not.toHaveProperty("archivedAt");
   });
 });

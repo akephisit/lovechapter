@@ -1,4 +1,6 @@
 import { AuthServiceError, type AuthService } from "@lovechapter/auth";
+import type { GuestImportMapping } from "@lovechapter/contracts";
+import type { EnvelopeTemplateInput } from "@lovechapter/contracts";
 import {
   AuthenticationRequiredError,
   ConflictError,
@@ -19,10 +21,13 @@ import {
 import { WebStandardAdapter } from "elysia/adapter/web-standard";
 
 import "./elysia-typebox";
+import { parseGuestCsv } from "./guest-csv-parser";
 import {
   authorizeIngress,
   RequestSecurityError,
   requireJsonContentType,
+  isGuestCsvUpload,
+  requireGuestCsvContentType,
   requireMutationOrigin,
 } from "./request-security";
 import {
@@ -60,6 +65,81 @@ const guestParams = t.Object({
   weddingId: t.String({ format: "uuid" }),
   guestId: t.String({ format: "uuid" }),
 });
+const guestImportParams = t.Object({
+  weddingId: t.String({ format: "uuid" }),
+  batchId: t.String({ format: "uuid" }),
+});
+const envelopeTemplateParams = t.Object({
+  weddingId: t.String({ format: "uuid" }),
+  templateId: t.String({ format: "uuid" }),
+});
+const envelopeTemplateInput = t.Object(
+  {
+    name: t.String({ minLength: 1, maxLength: 80 }),
+    widthMm: t.Integer({ minimum: 90, maximum: 330 }),
+    heightMm: t.Integer({ minimum: 55, maximum: 480 }),
+    orientation: t.Union([t.Literal("landscape"), t.Literal("portrait")]),
+    marginTopMm: t.Integer({ minimum: 0, maximum: 480 }),
+    marginRightMm: t.Integer({ minimum: 0, maximum: 480 }),
+    marginBottomMm: t.Integer({ minimum: 0, maximum: 480 }),
+    marginLeftMm: t.Integer({ minimum: 0, maximum: 480 }),
+    alignment: t.Union([
+      t.Literal("left"),
+      t.Literal("center"),
+      t.Literal("right"),
+    ]),
+    fontFamily: t.Union([
+      t.Literal("noto-sans-thai"),
+      t.Literal("noto-serif-thai"),
+    ]),
+    fontSizePt: t.Integer({ minimum: 8, maximum: 72 }),
+    lineSpacingPercent: t.Integer({ minimum: 80, maximum: 250 }),
+    showAddress: t.Boolean(),
+  },
+  { additionalProperties: false },
+);
+const envelopePrintInput = t.Object(
+  {
+    guestIds: t.Array(t.String({ format: "uuid" }), {
+      minItems: 1,
+      maxItems: 500,
+      uniqueItems: true,
+    }),
+    templateId: t.Optional(t.String({ format: "uuid" })),
+    template: t.Optional(envelopeTemplateInput),
+  },
+  { additionalProperties: false },
+);
+const guestImportMappingInput = t.Object(
+  {
+    expectedVersion: t.Integer({ minimum: 1 }),
+    mapping: t.Record(
+      t.String(),
+      t.Union([t.Integer({ minimum: 0, maximum: 39 }), t.Null()]),
+    ),
+    affiliationMappings: t.Record(t.String(), t.String({ format: "uuid" })),
+    excludedRowIds: t.Array(t.String({ format: "uuid" }), {
+      maxItems: 5000,
+      uniqueItems: true,
+    }),
+  },
+  { additionalProperties: false },
+);
+const guestImportCommitInput = t.Object(
+  {
+    expectedVersion: t.Integer({ minimum: 1 }),
+    includedRowIds: t.Array(t.String({ format: "uuid" }), {
+      maxItems: 5000,
+      uniqueItems: true,
+    }),
+    createAnywayRowIds: t.Array(t.String({ format: "uuid" }), {
+      maxItems: 5000,
+      uniqueItems: true,
+    }),
+    idempotencyKey: t.String({ minLength: 1, maxLength: 128 }),
+  },
+  { additionalProperties: false },
+);
 const affiliationParams = t.Object({
   weddingId: t.String({ format: "uuid" }),
   affiliationId: t.String({ format: "uuid" }),
@@ -71,6 +151,32 @@ const pageQuery = t.Object({
   limit: t.Optional(t.Numeric({ minimum: 1, maximum: 100, default: 20 })),
   cursor: t.Optional(t.String({ minLength: 1, maxLength: 500 })),
 });
+const guestListQuery = t.Object({
+  limit: t.Optional(t.Numeric({ minimum: 1, maximum: 100, default: 20 })),
+  cursor: t.Optional(t.String({ minLength: 1, maxLength: 500 })),
+  search: t.Optional(t.String({ minLength: 1, maxLength: 120 })),
+  affiliation: t.Optional(
+    t.Union([t.Literal("unassigned"), t.String({ format: "uuid" })]),
+  ),
+  rsvp: t.Optional(
+    t.Union([
+      t.Literal("pending"),
+      t.Literal("attending"),
+      t.Literal("declined"),
+    ]),
+  ),
+  view: t.Optional(
+    t.Union([t.Literal("active"), t.Literal("archived")], {
+      default: "active",
+    }),
+  ),
+});
+const guestExportQuery = t.Pick(guestListQuery, [
+  "search",
+  "affiliation",
+  "rsvp",
+  "view",
+]);
 const profileInput = t.Object(
   { displayName: t.String({ minLength: 1, maxLength: 120 }) },
   { additionalProperties: false },
@@ -84,12 +190,61 @@ const weddingInput = t.Object(
   },
   { additionalProperties: false },
 );
+const postalAddressInput = t.Object(
+  {
+    addressLine1: t.String({ minLength: 1, maxLength: 180 }),
+    addressLine2: t.Optional(t.String({ maxLength: 180 })),
+    locality: t.Optional(t.String({ maxLength: 120 })),
+    administrativeArea: t.Optional(t.String({ maxLength: 120 })),
+    postalCode: t.Optional(t.String({ maxLength: 32 })),
+    countryCode: t.Optional(t.String({ pattern: "^[A-Za-z]{2}$" })),
+  },
+  { additionalProperties: false },
+);
 const guestInput = t.Object(
   {
     name: t.String({ minLength: 1, maxLength: 120 }),
     email: t.Optional(t.String({ maxLength: 320 })),
+    phone: t.Optional(t.String({ maxLength: 40 })),
     allowedPartySize: t.Integer({ minimum: 1, maximum: 20 }),
     affiliationId: t.Optional(t.String({ format: "uuid" })),
+    envelopeName: t.Optional(t.String({ maxLength: 180 })),
+    note: t.Optional(t.String({ maxLength: 2_000 })),
+    postalAddress: t.Optional(postalAddressInput),
+  },
+  { additionalProperties: false },
+);
+const guestUpdateInput = t.Object(
+  {
+    name: t.Optional(t.String({ minLength: 1, maxLength: 120 })),
+    email: t.Optional(t.String({ maxLength: 320 })),
+    phone: t.Optional(t.String({ maxLength: 40 })),
+    allowedPartySize: t.Optional(t.Integer({ minimum: 1, maximum: 20 })),
+    affiliationId: t.Optional(t.String({ format: "uuid" })),
+    envelopeName: t.Optional(t.String({ maxLength: 180 })),
+    note: t.Optional(t.String({ maxLength: 2_000 })),
+    postalAddress: t.Optional(t.Union([postalAddressInput, t.Null()])),
+  },
+  { additionalProperties: false },
+);
+const bulkGuestIdsInput = t.Object(
+  {
+    guestIds: t.Array(t.String({ format: "uuid" }), {
+      minItems: 1,
+      maxItems: 200,
+      uniqueItems: true,
+    }),
+  },
+  { additionalProperties: false },
+);
+const bulkGuestAffiliationInput = t.Object(
+  {
+    guestIds: t.Array(t.String({ format: "uuid" }), {
+      minItems: 1,
+      maxItems: 200,
+      uniqueItems: true,
+    }),
+    affiliationId: t.Union([t.String({ format: "uuid" }), t.Null()]),
   },
   { additionalProperties: false },
 );
@@ -402,13 +557,136 @@ export function createApiApp(dependencies: ApiDependencies) {
     )
     .get(
       "/v1/weddings/:weddingId/guests",
-      { params: idParams, query: pageQuery },
+      { params: idParams, query: guestListQuery },
       ({ params, query, request }) =>
         dependencies.run(request, (service) =>
           service.listGuests(params.weddingId, {
             limit: query.limit ?? 20,
             ...(query.cursor ? { cursor: query.cursor } : {}),
+            ...(query.search ? { search: query.search } : {}),
+            ...(query.affiliation ? { affiliation: query.affiliation } : {}),
+            ...(query.rsvp ? { rsvp: query.rsvp } : {}),
+            view: query.view ?? "active",
           }),
+        ),
+    )
+    .get(
+      "/v1/weddings/:weddingId/guests/export.csv",
+      { params: idParams, query: guestExportQuery },
+      async ({ params, query, request }) =>
+        new Response(
+          await dependencies.run(request, (service) =>
+            service.streamGuestCsv(params.weddingId, query),
+          ),
+          {
+            headers: {
+              "content-type": "text/csv; charset=utf-8",
+              "content-disposition":
+                'attachment; filename="lovechapter-guests.csv"',
+              "cache-control": "no-store",
+            },
+          },
+        ),
+    )
+    .post(
+      "/v1/weddings/:weddingId/guest-imports",
+      { params: idParams },
+      ({ params, request }) =>
+        dependencies.run(request, async (service) => {
+          await service.listGuestAffiliations(params.weddingId);
+          const parsed = await parseGuestCsv(
+            new Uint8Array(await request.arrayBuffer()),
+          );
+          return status(
+            201,
+            await service.stageGuestImport(params.weddingId, parsed),
+          );
+        }),
+    )
+    .get(
+      "/v1/weddings/:weddingId/guest-imports/:batchId",
+      { params: guestImportParams, query: pageQuery },
+      ({ params, query, request }) =>
+        dependencies.run(request, (service) =>
+          service.getGuestImport(params.weddingId, params.batchId, {
+            limit: query.limit ?? 100,
+            ...(query.cursor ? { cursor: query.cursor } : {}),
+          }),
+        ),
+    )
+    .patch(
+      "/v1/weddings/:weddingId/guest-imports/:batchId/mapping",
+      { params: guestImportParams, body: guestImportMappingInput },
+      ({ params, body, request }) =>
+        dependencies.run(request, (service) =>
+          service.updateGuestImportMapping(params.weddingId, params.batchId, {
+            ...body,
+            mapping: body.mapping as GuestImportMapping,
+          }),
+        ),
+    )
+    .post(
+      "/v1/weddings/:weddingId/guest-imports/:batchId/commit",
+      { params: guestImportParams, body: guestImportCommitInput },
+      ({ params, body, request }) =>
+        dependencies.run(request, (service) =>
+          service.commitGuestImport(params.weddingId, params.batchId, body),
+        ),
+    )
+    .get(
+      "/v1/weddings/:weddingId/envelope-templates",
+      { params: idParams },
+      ({ params, request }) =>
+        dependencies.run(request, (service) =>
+          service.listEnvelopeTemplates(params.weddingId),
+        ),
+    )
+    .post(
+      "/v1/weddings/:weddingId/envelope-templates",
+      { params: idParams, body: envelopeTemplateInput },
+      async ({ params, body, request }) =>
+        status(
+          201,
+          await dependencies.run(request, (service) =>
+            service.createEnvelopeTemplate(params.weddingId, body),
+          ),
+        ),
+    )
+    .patch(
+      "/v1/weddings/:weddingId/envelope-templates/:templateId",
+      { params: envelopeTemplateParams, body: envelopeTemplateInput },
+      ({ params, body, request }) =>
+        dependencies.run(request, (service) =>
+          service.updateEnvelopeTemplate(
+            params.weddingId,
+            params.templateId,
+            body,
+          ),
+        ),
+    )
+    .delete(
+      "/v1/weddings/:weddingId/envelope-templates/:templateId",
+      { params: envelopeTemplateParams },
+      async ({ params, request }) => {
+        await dependencies.run(request, (service) =>
+          service.deleteEnvelopeTemplate(params.weddingId, params.templateId),
+        );
+        return status(204);
+      },
+    )
+    .post(
+      "/v1/weddings/:weddingId/envelope-print-data",
+      { params: idParams, body: envelopePrintInput },
+      ({ params, body, request }) =>
+        dependencies.run(request, (service) =>
+          service.getEnvelopePrintData(
+            params.weddingId,
+            body as {
+              guestIds: string[];
+              templateId?: string;
+              template?: EnvelopeTemplateInput;
+            },
+          ),
         ),
     )
     .post(
@@ -420,6 +698,58 @@ export function createApiApp(dependencies: ApiDependencies) {
           await dependencies.run(request, (service) =>
             service.addGuest(params.weddingId, body),
           ),
+        ),
+    )
+    .patch(
+      "/v1/weddings/:weddingId/guests/bulk-affiliation",
+      { params: idParams, body: bulkGuestAffiliationInput },
+      ({ params, body, request }) =>
+        dependencies.run(request, (service) =>
+          service.bulkSetGuestAffiliation(
+            params.weddingId,
+            body.guestIds,
+            body.affiliationId,
+          ),
+        ),
+    )
+    .post(
+      "/v1/weddings/:weddingId/guests/bulk-archive",
+      { params: idParams, body: bulkGuestIdsInput },
+      ({ params, body, request }) =>
+        dependencies.run(request, (service) =>
+          service.bulkArchiveGuests(params.weddingId, body.guestIds),
+        ),
+    )
+    .get(
+      "/v1/weddings/:weddingId/guests/:guestId",
+      { params: guestParams },
+      ({ params, request }) =>
+        dependencies.run(request, (service) =>
+          service.getGuest(params.weddingId, params.guestId),
+        ),
+    )
+    .patch(
+      "/v1/weddings/:weddingId/guests/:guestId",
+      { params: guestParams, body: guestUpdateInput },
+      ({ params, body, request }) =>
+        dependencies.run(request, (service) =>
+          service.updateGuest(params.weddingId, params.guestId, body),
+        ),
+    )
+    .post(
+      "/v1/weddings/:weddingId/guests/:guestId/archive",
+      { params: guestParams },
+      ({ params, request }) =>
+        dependencies.run(request, (service) =>
+          service.archiveGuest(params.weddingId, params.guestId),
+        ),
+    )
+    .post(
+      "/v1/weddings/:weddingId/guests/:guestId/restore",
+      { params: guestParams },
+      ({ params, request }) =>
+        dependencies.run(request, (service) =>
+          service.restoreGuest(params.weddingId, params.guestId),
         ),
     )
     .patch(
@@ -488,7 +818,8 @@ function enforceRequestSecurity(
     request.method !== "OPTIONS"
   ) {
     requireMutationOrigin(request, dependencies.publicWebOrigin);
-    requireJsonContentType(request);
+    if (isGuestCsvUpload(request)) requireGuestCsvContentType(request);
+    else requireJsonContentType(request);
   }
 }
 

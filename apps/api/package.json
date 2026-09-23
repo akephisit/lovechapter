@@ -16,6 +16,7 @@
     "@lovechapter/contracts": "0.1.0",
     "@lovechapter/database": "0.1.0",
     "@lovechapter/domain": "0.1.0",
+    "csv-parse": "^7.0.2",
     "elysia": "2.0.0-beta.16",
     "exact-mirror": "1.2.6",
     "openapi-types": "12.1.3",

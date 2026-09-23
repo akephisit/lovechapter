@@ -1,10 +1,12 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   date,
   foreignKey,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   primaryKey,
@@ -29,6 +31,11 @@ export const attendanceStatus = pgEnum("attendance_status", [
 export const authTokenPurpose = pgEnum("auth_token_purpose", [
   "verify_email",
   "reset_password",
+]);
+
+export const guestImportStatus = pgEnum("guest_import_status", [
+  "previewed",
+  "committed",
 ]);
 
 const timestamps = {
@@ -161,8 +168,15 @@ export const guests = pgTable(
       .references(() => weddings.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 120 }).notNull(),
     email: varchar("email", { length: 320 }),
+    phone: varchar("phone", { length: 40 }),
     allowedPartySize: integer("allowed_party_size").notNull().default(1),
     affiliationId: uuid("affiliation_id"),
+    envelopeName: varchar("envelope_name", { length: 180 }),
+    note: varchar("note", { length: 2_000 }),
+    archivedAt: timestamp("archived_at", {
+      withTimezone: true,
+      mode: "string",
+    }),
     ...timestamps,
   },
   (table) => [
@@ -176,14 +190,210 @@ export const guests = pgTable(
       columns: [table.weddingId, table.affiliationId],
       foreignColumns: [guestAffiliations.weddingId, guestAffiliations.id],
     }).onDelete("restrict"),
-    index("guests_wedding_created_idx").on(
-      table.weddingId,
-      table.createdAt.desc(),
-      table.id.desc(),
-    ),
+    index("guests_wedding_active_created_idx")
+      .on(table.weddingId, table.createdAt.desc(), table.id.desc())
+      .where(sql`${table.archivedAt} is null`),
+    index("guests_wedding_archived_created_idx")
+      .on(table.weddingId, table.createdAt.desc(), table.id.desc())
+      .where(sql`${table.archivedAt} is not null`),
     index("guests_wedding_affiliation_idx")
       .on(table.weddingId, table.affiliationId)
       .where(sql`${table.affiliationId} is not null`),
+  ],
+);
+
+export const guestPostalAddresses = pgTable(
+  "guest_postal_addresses",
+  {
+    weddingId: uuid("wedding_id").notNull(),
+    guestId: uuid("guest_id").notNull(),
+    addressLine1: varchar("address_line_1", { length: 180 }).notNull(),
+    addressLine2: varchar("address_line_2", { length: 180 }),
+    locality: varchar("locality", { length: 120 }),
+    administrativeArea: varchar("administrative_area", { length: 120 }),
+    postalCode: varchar("postal_code", { length: 32 }),
+    countryCode: varchar("country_code", { length: 2 }),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      name: "guest_postal_addresses_pkey",
+      columns: [table.weddingId, table.guestId],
+    }),
+    foreignKey({
+      name: "guest_postal_addresses_guest_scope_fk",
+      columns: [table.weddingId, table.guestId],
+      foreignColumns: [guests.weddingId, guests.id],
+    }).onDelete("cascade"),
+    check(
+      "guest_postal_addresses_country_code_check",
+      sql.raw("country_code is null or country_code ~ '^[A-Z]{2}$'"),
+    ),
+  ],
+);
+
+export const envelopePrintTemplates = pgTable(
+  "envelope_print_templates",
+  {
+    id: uuid("id").notNull(),
+    weddingId: uuid("wedding_id")
+      .notNull()
+      .references(() => weddings.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 80 }).notNull(),
+    widthMm: integer("width_mm").notNull(),
+    heightMm: integer("height_mm").notNull(),
+    orientation: varchar("orientation", { length: 9 }).notNull(),
+    marginTopMm: integer("margin_top_mm").notNull(),
+    marginRightMm: integer("margin_right_mm").notNull(),
+    marginBottomMm: integer("margin_bottom_mm").notNull(),
+    marginLeftMm: integer("margin_left_mm").notNull(),
+    alignment: varchar("alignment", { length: 6 }).notNull(),
+    fontFamily: varchar("font_family", { length: 16 }).notNull(),
+    fontSizePt: integer("font_size_pt").notNull(),
+    lineSpacingPercent: integer("line_spacing_percent").notNull(),
+    showAddress: boolean("show_address").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    primaryKey({
+      name: "envelope_print_templates_pkey",
+      columns: [table.weddingId, table.id],
+    }),
+    uniqueIndex("envelope_print_templates_name_unique").on(
+      table.weddingId,
+      sql`lower(${table.name})`,
+    ),
+    index("envelope_print_templates_order_idx").on(
+      table.weddingId,
+      table.updatedAt.desc(),
+      table.id.desc(),
+    ),
+    check(
+      "envelope_print_templates_dimensions_check",
+      sql`${table.widthMm} between 90 and 330 and ${table.heightMm} between 55 and 480`,
+    ),
+    check(
+      "envelope_print_templates_margins_check",
+      sql`${table.marginTopMm} >= 0 and ${table.marginRightMm} >= 0 and ${table.marginBottomMm} >= 0 and ${table.marginLeftMm} >= 0 and ${table.widthMm} - ${table.marginLeftMm} - ${table.marginRightMm} >= 20 and ${table.heightMm} - ${table.marginTopMm} - ${table.marginBottomMm} >= 20`,
+    ),
+    check(
+      "envelope_print_templates_orientation_check",
+      sql`${table.orientation} in ('landscape', 'portrait') and ${table.alignment} in ('left', 'center', 'right')`,
+    ),
+    check(
+      "envelope_print_templates_font_check",
+      sql`${table.fontFamily} in ('noto-sans-thai', 'noto-serif-thai') and ${table.fontSizePt} between 8 and 72 and ${table.lineSpacingPercent} between 80 and 250`,
+    ),
+    check(
+      "envelope_print_templates_name_check",
+      sql`length(trim(${table.name})) between 1 and 80`,
+    ),
+  ],
+);
+
+export const guestImportBatches = pgTable(
+  "guest_import_batches",
+  {
+    id: uuid("id").notNull(),
+    weddingId: uuid("wedding_id")
+      .notNull()
+      .references(() => weddings.id, { onDelete: "cascade" }),
+    createdByUserId: uuid("created_by_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    sourceSha256: varchar("source_sha256", { length: 64 }).notNull(),
+    headers: jsonb("headers").$type<string[]>().notNull(),
+    mapping: jsonb("mapping").$type<Record<string, number | null>>().notNull(),
+    affiliationMappings: jsonb("affiliation_mappings")
+      .$type<Record<string, string>>()
+      .notNull()
+      .default({}),
+    status: guestImportStatus("status").notNull().default("previewed"),
+    previewVersion: integer("preview_version").notNull().default(1),
+    rowCount: integer("row_count").notNull(),
+    validCount: integer("valid_count").notNull(),
+    warningCount: integer("warning_count").notNull(),
+    invalidCount: integer("invalid_count").notNull(),
+    excludedCount: integer("excluded_count").notNull(),
+    commitIdempotencyKey: varchar("commit_idempotency_key", { length: 128 }),
+    commitResult: jsonb("commit_result").$type<{
+      created: number;
+      excluded: number;
+      guestIds: string[];
+    }>(),
+    committedAt: timestamp("committed_at", {
+      withTimezone: true,
+      mode: "string",
+    }),
+    expiresAt: timestamp("expires_at", {
+      withTimezone: true,
+      mode: "string",
+    }).notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    primaryKey({
+      name: "guest_import_batches_pkey",
+      columns: [table.weddingId, table.id],
+    }),
+    index("guest_import_batches_cleanup_idx").on(
+      table.status,
+      table.expiresAt,
+      table.weddingId,
+      table.id,
+    ),
+    check(
+      "guest_import_batches_sha_check",
+      sql`${table.sourceSha256} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "guest_import_batches_version_check",
+      sql`${table.previewVersion} > 0`,
+    ),
+    check(
+      "guest_import_batches_counts_check",
+      sql`${table.rowCount} between 0 and 5000 and ${table.validCount} >= 0 and ${table.warningCount} >= 0 and ${table.invalidCount} >= 0 and ${table.excludedCount} >= 0`,
+    ),
+  ],
+);
+
+export const guestImportRows = pgTable(
+  "guest_import_rows",
+  {
+    id: uuid("id").notNull(),
+    weddingId: uuid("wedding_id").notNull(),
+    batchId: uuid("batch_id").notNull(),
+    rowNumber: integer("row_number").notNull(),
+    sourceValues: jsonb("source_values").$type<string[]>().notNull(),
+    candidate: jsonb("candidate").$type<Record<string, unknown>>(),
+    errors: jsonb("errors").$type<string[]>().notNull().default([]),
+    warnings: jsonb("warnings").$type<string[]>().notNull().default([]),
+    included: boolean("included").notNull().default(true),
+  },
+  (table) => [
+    primaryKey({
+      name: "guest_import_rows_pkey",
+      columns: [table.weddingId, table.id],
+    }),
+    foreignKey({
+      name: "guest_import_rows_batch_scope_fk",
+      columns: [table.weddingId, table.batchId],
+      foreignColumns: [guestImportBatches.weddingId, guestImportBatches.id],
+    }).onDelete("cascade"),
+    uniqueIndex("guest_import_rows_number_unique").on(
+      table.weddingId,
+      table.batchId,
+      table.rowNumber,
+    ),
+    index("guest_import_rows_preview_idx").on(
+      table.weddingId,
+      table.batchId,
+      table.rowNumber,
+      table.id,
+    ),
+    check("guest_import_rows_number_check", sql`${table.rowNumber} >= 2`),
   ],
 );
 

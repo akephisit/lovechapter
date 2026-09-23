@@ -1,9 +1,14 @@
-import type { Attendance } from "@lovechapter/contracts";
-import type { ListCursor } from "@lovechapter/domain";
+import type { Attendance, PostalAddressInput } from "@lovechapter/contracts";
+import type {
+  GuestListRepositoryInput,
+  ListCursor,
+  NormalizedGuestUpdate,
+} from "@lovechapter/domain";
 import { sql, type SQL } from "drizzle-orm";
 
 import {
   guestAffiliations,
+  guestPostalAddresses,
   guests,
   invitations,
   rsvps,
@@ -103,15 +108,16 @@ export function buildListWeddingsQuery(input: {
     limit ${input.limit + 1}`;
 }
 
-export function buildListGuestsQuery(input: {
-  userId: string;
-  weddingId: string;
-  limit: number;
-  cursor?: ListCursor;
-}): SQL {
-  const cursorPredicate = input.cursor
-    ? sql`and (${guests.createdAt}, ${guests.id}) < (${input.cursor.createdAt}, ${input.cursor.id})`
-    : sql``;
+export function buildListGuestsQuery(
+  input: GuestListRepositoryInput & { userId: string; weddingId: string },
+): SQL {
+  const {
+    cursorPredicate,
+    archivePredicate,
+    searchPredicate,
+    affiliationPredicate,
+    rsvpPredicate,
+  } = guestListPredicates(input);
   return sql`with "authorized_wedding" as (
       select ${weddingMembers.weddingId} as "wedding_id"
       from ${weddingMembers}
@@ -124,6 +130,7 @@ export function buildListGuestsQuery(input: {
       ${guests.id} as "id",
       ${guests.name} as "name",
       ${guests.email} as "email",
+      ${guests.phone} as "phone",
       ${guests.allowedPartySize} as "allowed_party_size",
       ${guestAffiliations.id} as "affiliation_id",
       ${guestAffiliations.name} as "affiliation_name",
@@ -131,6 +138,7 @@ export function buildListGuestsQuery(input: {
       ${guestAffiliations.sortOrder} as "affiliation_sort_order",
       ${guestAffiliations.createdAt} as "affiliation_created_at",
       ${guests.createdAt} as "created_at",
+      ${guests.archivedAt} as "archived_at",
       ${rsvps.attendance} as "rsvp_attendance",
       ${rsvps.partySize} as "rsvp_party_size",
       ${rsvps.note} as "rsvp_note",
@@ -138,7 +146,11 @@ export function buildListGuestsQuery(input: {
     from "authorized_wedding"
     left join ${guests}
       on ${guests.weddingId} = "authorized_wedding"."wedding_id"
+     ${archivePredicate}
      ${cursorPredicate}
+     ${searchPredicate}
+     ${affiliationPredicate}
+     ${rsvpPredicate}
     left join ${rsvps}
       on ${rsvps.weddingId} = ${guests.weddingId}
      and ${rsvps.guestId} = ${guests.id}
@@ -149,19 +161,177 @@ export function buildListGuestsQuery(input: {
     limit ${input.limit + 1}`;
 }
 
+function guestListPredicates(input: GuestListRepositoryInput) {
+  const cursorPredicate = input.cursor
+    ? sql`and (${guests.createdAt}, ${guests.id}) < (${input.cursor.createdAt}, ${input.cursor.id})`
+    : sql``;
+  const archivePredicate =
+    input.view === "archived"
+      ? sql`and ${guests.archivedAt} is not null`
+      : sql`and ${guests.archivedAt} is null`;
+  const searchPredicate = input.search
+    ? sql`and (
+        lower(${guests.name}) like lower(${`${escapeLike(input.search)}%`}) escape '\\'
+        or lower(coalesce(${guests.email}, '')) like lower(${`${escapeLike(input.search)}%`}) escape '\\'
+        or lower(coalesce(${guests.phone}, '')) like lower(${`${escapeLike(input.search)}%`}) escape '\\'
+      )`
+    : sql``;
+  const affiliationPredicate =
+    input.affiliation === "unassigned"
+      ? sql`and ${guests.affiliationId} is null`
+      : input.affiliation
+        ? sql`and ${guests.affiliationId} = ${input.affiliation}`
+        : sql``;
+  const rsvpPredicate =
+    input.rsvp === "pending"
+      ? sql`and not exists (
+          select 1 from ${rsvps}
+          where ${rsvps.weddingId} = ${guests.weddingId}
+            and ${rsvps.guestId} = ${guests.id}
+        )`
+      : input.rsvp
+        ? sql`and exists (
+            select 1 from ${rsvps}
+            where ${rsvps.weddingId} = ${guests.weddingId}
+              and ${rsvps.guestId} = ${guests.id}
+              and ${rsvps.attendance} = ${input.rsvp}
+          )`
+        : sql``;
+  return {
+    cursorPredicate,
+    archivePredicate,
+    searchPredicate,
+    affiliationPredicate,
+    rsvpPredicate,
+  };
+}
+
+export function buildListGuestExportPageQuery(
+  input: GuestListRepositoryInput & {
+    userId: string;
+    weddingId: string;
+    limit: 500;
+  },
+): SQL {
+  const {
+    cursorPredicate,
+    archivePredicate,
+    searchPredicate,
+    affiliationPredicate,
+    rsvpPredicate,
+  } = guestListPredicates(input);
+  return sql`with "authorized_wedding" as (
+      select ${weddingMembers.weddingId} as "wedding_id"
+      from ${weddingMembers}
+      where ${weddingMembers.weddingId} = ${input.weddingId}
+        and ${weddingMembers.userId} = ${input.userId}
+      limit 1
+    )
+    select
+      true as "authorized",
+      ${guests.id} as "cursor_id",
+      ${guests.createdAt} as "cursor_created_at",
+      ${guests.name} as "name",
+      ${guests.email} as "email",
+      ${guests.phone} as "phone",
+      ${guests.allowedPartySize} as "allowed_party_size",
+      ${guestAffiliations.name} as "affiliation",
+      ${guests.envelopeName} as "envelope_name",
+      ${guestPostalAddresses.addressLine1} as "address_line_1",
+      ${guestPostalAddresses.addressLine2} as "address_line_2",
+      ${guestPostalAddresses.locality} as "locality",
+      ${guestPostalAddresses.administrativeArea} as "administrative_area",
+      ${guestPostalAddresses.postalCode} as "postal_code",
+      ${guestPostalAddresses.countryCode} as "country_code",
+      ${guests.note} as "note",
+      ${rsvps.attendance} as "rsvp_status",
+      ${rsvps.partySize} as "rsvp_party_size"
+    from "authorized_wedding"
+    left join ${guests}
+      on ${guests.weddingId} = "authorized_wedding"."wedding_id"
+     ${archivePredicate}
+     ${cursorPredicate}
+     ${searchPredicate}
+     ${affiliationPredicate}
+     ${rsvpPredicate}
+    left join ${rsvps}
+      on ${rsvps.weddingId} = ${guests.weddingId}
+     and ${rsvps.guestId} = ${guests.id}
+    left join ${guestAffiliations}
+      on ${guestAffiliations.weddingId} = ${guests.weddingId}
+     and ${guestAffiliations.id} = ${guests.affiliationId}
+    left join ${guestPostalAddresses}
+      on ${guestPostalAddresses.weddingId} = ${guests.weddingId}
+     and ${guestPostalAddresses.guestId} = ${guests.id}
+    order by ${guests.createdAt} desc nulls last, ${guests.id} desc nulls last
+    limit ${input.limit + 1}`;
+}
+
+export function buildGetGuestQuery(input: {
+  userId: string;
+  weddingId: string;
+  guestId: string;
+}): SQL {
+  return sql`select
+      ${guests.id} as "id",
+      ${guests.name} as "name",
+      ${guests.email} as "email",
+      ${guests.phone} as "phone",
+      ${guests.allowedPartySize} as "allowed_party_size",
+      ${guests.envelopeName} as "envelope_name",
+      ${guests.note} as "note",
+      ${guests.createdAt} as "created_at",
+      ${guests.updatedAt} as "updated_at",
+      ${guests.archivedAt} as "archived_at",
+      ${guestAffiliations.id} as "affiliation_id",
+      ${guestAffiliations.name} as "affiliation_name",
+      ${guestAffiliations.color} as "affiliation_color",
+      ${guestAffiliations.sortOrder} as "affiliation_sort_order",
+      ${guestAffiliations.createdAt} as "affiliation_created_at",
+      ${rsvps.attendance} as "rsvp_attendance",
+      ${rsvps.partySize} as "rsvp_party_size",
+      ${rsvps.note} as "rsvp_note",
+      ${rsvps.updatedAt} as "rsvp_updated_at",
+      ${guestPostalAddresses.addressLine1} as "address_line_1",
+      ${guestPostalAddresses.addressLine2} as "address_line_2",
+      ${guestPostalAddresses.locality} as "locality",
+      ${guestPostalAddresses.administrativeArea} as "administrative_area",
+      ${guestPostalAddresses.postalCode} as "postal_code",
+      ${guestPostalAddresses.countryCode} as "country_code"
+    from ${guests}
+    inner join ${weddingMembers}
+      on ${weddingMembers.weddingId} = ${guests.weddingId}
+     and ${weddingMembers.userId} = ${input.userId}
+    left join ${guestAffiliations}
+      on ${guestAffiliations.weddingId} = ${guests.weddingId}
+     and ${guestAffiliations.id} = ${guests.affiliationId}
+    left join ${rsvps}
+      on ${rsvps.weddingId} = ${guests.weddingId}
+     and ${rsvps.guestId} = ${guests.id}
+    left join ${guestPostalAddresses}
+      on ${guestPostalAddresses.weddingId} = ${guests.weddingId}
+     and ${guestPostalAddresses.guestId} = ${guests.id}
+    where ${guests.weddingId} = ${input.weddingId}
+      and ${guests.id} = ${input.guestId}
+    limit 1`;
+}
+
 export function buildCreateGuestQuery(input: {
   id: string;
   userId: string;
   weddingId: string;
   name: string;
   email: string | null;
+  phone: string | null;
   allowedPartySize: number;
   affiliationId: string | null;
+  envelopeName: string | null;
+  note: string | null;
 }): SQL {
   return sql`with "inserted_guest" as (
     insert into ${guests}
-      (${guests.id}, ${guests.weddingId}, ${guests.name}, ${guests.email}, ${guests.allowedPartySize}, ${guests.affiliationId})
-    select ${input.id}, ${input.weddingId}, ${input.name}, ${input.email}, ${input.allowedPartySize}, ${input.affiliationId}
+      (${guests.id}, ${guests.weddingId}, ${guests.name}, ${guests.email}, ${guests.phone}, ${guests.allowedPartySize}, ${guests.affiliationId}, ${guests.envelopeName}, ${guests.note})
+    select ${input.id}, ${input.weddingId}, ${input.name}, ${input.email}, ${input.phone}, ${input.allowedPartySize}, ${input.affiliationId}, ${input.envelopeName}, ${input.note}
     from ${weddingMembers}
     where ${weddingMembers.weddingId} = ${input.weddingId}
       and ${weddingMembers.userId} = ${input.userId}
@@ -170,15 +340,17 @@ export function buildCreateGuestQuery(input: {
         where ${guestAffiliations.weddingId} = ${input.weddingId}
           and ${guestAffiliations.id} = ${input.affiliationId}
       ))
-    returning ${guests.id}, ${guests.weddingId}, ${guests.name}, ${guests.email},
-      ${guests.allowedPartySize}, ${guests.affiliationId}, ${guests.createdAt}
+    returning ${guests.id}, ${guests.weddingId}, ${guests.name}, ${guests.email}, ${guests.phone},
+      ${guests.allowedPartySize}, ${guests.affiliationId}, ${guests.createdAt}, ${guests.archivedAt}
   )
   select
     "inserted_guest"."id" as "id",
     "inserted_guest"."name" as "name",
     "inserted_guest"."email" as "email",
+    "inserted_guest"."phone" as "phone",
     "inserted_guest"."allowed_party_size" as "allowed_party_size",
     "inserted_guest"."created_at" as "created_at",
+    "inserted_guest"."archived_at" as "archived_at",
     ${guestAffiliations.id} as "affiliation_id",
     ${guestAffiliations.name} as "affiliation_name",
     ${guestAffiliations.color} as "affiliation_color",
@@ -188,6 +360,244 @@ export function buildCreateGuestQuery(input: {
   left join ${guestAffiliations}
     on ${guestAffiliations.weddingId} = "inserted_guest"."wedding_id"
    and ${guestAffiliations.id} = "inserted_guest"."affiliation_id"`;
+}
+
+export function buildUpdateGuestQuery(input: {
+  userId: string;
+  weddingId: string;
+  guestId: string;
+  patch: NormalizedGuestUpdate;
+}): SQL {
+  const assignments: SQL[] = [sql`${guests.updatedAt} = now()`];
+  if (input.patch.name !== undefined) {
+    assignments.push(sql`${guests.name} = ${input.patch.name}`);
+  }
+  if (input.patch.email !== undefined) {
+    assignments.push(sql`${guests.email} = ${input.patch.email}`);
+  }
+  if (input.patch.phone !== undefined) {
+    assignments.push(sql`${guests.phone} = ${input.patch.phone}`);
+  }
+  if (input.patch.allowedPartySize !== undefined) {
+    assignments.push(
+      sql`${guests.allowedPartySize} = ${input.patch.allowedPartySize}`,
+    );
+  }
+  if (input.patch.affiliationId !== undefined) {
+    assignments.push(
+      sql`${guests.affiliationId} = ${input.patch.affiliationId}`,
+    );
+  }
+  if (input.patch.envelopeName !== undefined) {
+    assignments.push(sql`${guests.envelopeName} = ${input.patch.envelopeName}`);
+  }
+  if (input.patch.note !== undefined) {
+    assignments.push(sql`${guests.note} = ${input.patch.note}`);
+  }
+  const affiliationPredicate =
+    input.patch.affiliationId === undefined ||
+    input.patch.affiliationId === null
+      ? sql``
+      : sql`and exists (
+          select 1 from ${guestAffiliations}
+          where ${guestAffiliations.weddingId} = ${input.weddingId}
+            and ${guestAffiliations.id} = ${input.patch.affiliationId}
+        )`;
+  return sql`update ${guests}
+    set ${sql.join(assignments, sql`, `)}
+    where ${guests.weddingId} = ${input.weddingId}
+      and ${guests.id} = ${input.guestId}
+      and exists (
+        select 1 from ${weddingMembers}
+        where ${weddingMembers.weddingId} = ${input.weddingId}
+          and ${weddingMembers.userId} = ${input.userId}
+      )
+      ${affiliationPredicate}
+    returning ${guests.id} as "id"`;
+}
+
+export function buildUpsertGuestPostalAddressQuery(input: {
+  userId: string;
+  weddingId: string;
+  guestId: string;
+  postalAddress: PostalAddressInput;
+}): SQL {
+  const address = input.postalAddress;
+  return sql`insert into ${guestPostalAddresses}
+      (${guestPostalAddresses.weddingId}, ${guestPostalAddresses.guestId}, ${guestPostalAddresses.addressLine1}, ${guestPostalAddresses.addressLine2}, ${guestPostalAddresses.locality}, ${guestPostalAddresses.administrativeArea}, ${guestPostalAddresses.postalCode}, ${guestPostalAddresses.countryCode})
+    select ${input.weddingId}, ${input.guestId}, ${address.addressLine1}, ${address.addressLine2 ?? null}, ${address.locality ?? null}, ${address.administrativeArea ?? null}, ${address.postalCode ?? null}, ${address.countryCode ?? null}
+    from ${weddingMembers}
+    inner join ${guests}
+      on ${guests.weddingId} = ${weddingMembers.weddingId}
+     and ${guests.id} = ${input.guestId}
+    where ${weddingMembers.weddingId} = ${input.weddingId}
+      and ${weddingMembers.userId} = ${input.userId}
+    on conflict (${guestPostalAddresses.weddingId}, ${guestPostalAddresses.guestId})
+    do update set
+      ${guestPostalAddresses.addressLine1} = excluded.${sql.raw('"address_line_1"')},
+      ${guestPostalAddresses.addressLine2} = excluded.${sql.raw('"address_line_2"')},
+      ${guestPostalAddresses.locality} = excluded.${sql.raw('"locality"')},
+      ${guestPostalAddresses.administrativeArea} = excluded.${sql.raw('"administrative_area"')},
+      ${guestPostalAddresses.postalCode} = excluded.${sql.raw('"postal_code"')},
+      ${guestPostalAddresses.countryCode} = excluded.${sql.raw('"country_code"')},
+      ${guestPostalAddresses.updatedAt} = now()`;
+}
+
+export function buildDeleteGuestPostalAddressQuery(input: {
+  userId: string;
+  weddingId: string;
+  guestId: string;
+}): SQL {
+  return sql`delete from ${guestPostalAddresses}
+    where ${guestPostalAddresses.weddingId} = ${input.weddingId}
+      and ${guestPostalAddresses.guestId} = ${input.guestId}
+      and exists (
+        select 1 from ${weddingMembers}
+        where ${weddingMembers.weddingId} = ${input.weddingId}
+          and ${weddingMembers.userId} = ${input.userId}
+      )`;
+}
+
+export function buildArchiveGuestQuery(input: {
+  userId: string;
+  weddingId: string;
+  guestId: string;
+}): SQL {
+  return sql`update ${guests}
+    set ${guests.archivedAt} = now(), ${guests.updatedAt} = now()
+    where ${guests.weddingId} = ${input.weddingId}
+      and ${guests.id} = ${input.guestId}
+      and ${guests.archivedAt} is null
+      and exists (
+        select 1 from ${weddingMembers}
+        where ${weddingMembers.weddingId} = ${input.weddingId}
+          and ${weddingMembers.userId} = ${input.userId}
+      )
+    returning ${guests.id} as "id"`;
+}
+
+export function buildRestoreGuestQuery(input: {
+  userId: string;
+  weddingId: string;
+  guestId: string;
+}): SQL {
+  return sql`update ${guests}
+    set ${guests.archivedAt} = null, ${guests.updatedAt} = now()
+    where ${guests.weddingId} = ${input.weddingId}
+      and ${guests.id} = ${input.guestId}
+      and ${guests.archivedAt} is not null
+      and exists (
+        select 1 from ${weddingMembers}
+        where ${weddingMembers.weddingId} = ${input.weddingId}
+          and ${weddingMembers.userId} = ${input.userId}
+      )
+    returning ${guests.id} as "id"`;
+}
+
+export function buildRevokeGuestInvitationsQuery(input: {
+  userId: string;
+  weddingId: string;
+  guestIds: string[];
+}): SQL {
+  return sql`update ${invitations}
+    set ${invitations.revokedAt} = now(), ${invitations.updatedAt} = now()
+    where ${invitations.weddingId} = ${input.weddingId}
+      and ${invitations.guestId} = any(${input.guestIds}::uuid[])
+      and ${invitations.revokedAt} is null
+      and exists (
+        select 1 from ${weddingMembers}
+        where ${weddingMembers.weddingId} = ${input.weddingId}
+          and ${weddingMembers.userId} = ${input.userId}
+      )`;
+}
+
+export function buildBulkArchiveGuestsQuery(input: {
+  userId: string;
+  weddingId: string;
+  guestIds: string[];
+}): SQL {
+  return sql`with "authorized_wedding" as (
+      select ${weddingMembers.weddingId} as "wedding_id"
+      from ${weddingMembers}
+      where ${weddingMembers.weddingId} = ${input.weddingId}
+        and ${weddingMembers.userId} = ${input.userId}
+      limit 1
+    ), "requested" as (
+      select distinct "value"::uuid as "id"
+      from unnest(${input.guestIds}::uuid[]) as "requested_ids"("value")
+    ), "matched" as (
+      select ${guests.id} as "id"
+      from ${guests}
+      inner join "authorized_wedding"
+        on "authorized_wedding"."wedding_id" = ${guests.weddingId}
+      inner join "requested" on "requested"."id" = ${guests.id}
+      for update of ${guests}
+    ), "valid" as (
+      select "authorized_wedding"."wedding_id"
+      from "authorized_wedding"
+      where (select count(*) from "requested") = ${input.guestIds.length}
+        and (select count(*) from "matched") = ${input.guestIds.length}
+    ), "updated" as (
+      update ${guests}
+      set ${guests.archivedAt} = coalesce(${guests.archivedAt}, now()),
+          ${guests.updatedAt} = now()
+      from "matched", "valid"
+      where ${guests.weddingId} = "valid"."wedding_id"
+        and ${guests.id} = "matched"."id"
+      returning ${guests.id} as "id"
+    )
+    select count("updated"."id")::integer as "affected"
+    from "valid" left join "updated" on true
+    group by "valid"."wedding_id"`;
+}
+
+export function buildBulkSetGuestAffiliationQuery(input: {
+  userId: string;
+  weddingId: string;
+  guestIds: string[];
+  affiliationId: string | null;
+}): SQL {
+  return sql`with "authorized_wedding" as (
+      select ${weddingMembers.weddingId} as "wedding_id"
+      from ${weddingMembers}
+      where ${weddingMembers.weddingId} = ${input.weddingId}
+        and ${weddingMembers.userId} = ${input.userId}
+      limit 1
+    ), "requested" as (
+      select distinct "value"::uuid as "id"
+      from unnest(${input.guestIds}::uuid[]) as "requested_ids"("value")
+    ), "selected_affiliation" as (
+      select ${guestAffiliations.id} as "id"
+      from ${guestAffiliations}
+      inner join "authorized_wedding"
+        on "authorized_wedding"."wedding_id" = ${guestAffiliations.weddingId}
+      where ${guestAffiliations.id} = ${input.affiliationId}
+      for update of ${guestAffiliations}
+    ), "matched" as (
+      select ${guests.id} as "id"
+      from ${guests}
+      inner join "authorized_wedding"
+        on "authorized_wedding"."wedding_id" = ${guests.weddingId}
+      inner join "requested" on "requested"."id" = ${guests.id}
+      for update of ${guests}
+    ), "valid" as (
+      select "authorized_wedding"."wedding_id"
+      from "authorized_wedding"
+      where (select count(*) from "requested") = ${input.guestIds.length}
+        and (select count(*) from "matched") = ${input.guestIds.length}
+        and (${input.affiliationId}::uuid is null or exists (select 1 from "selected_affiliation"))
+    ), "updated" as (
+      update ${guests}
+      set ${guests.affiliationId} = ${input.affiliationId},
+          ${guests.updatedAt} = now()
+      from "matched", "valid"
+      where ${guests.weddingId} = "valid"."wedding_id"
+        and ${guests.id} = "matched"."id"
+      returning ${guests.id} as "id"
+    )
+    select count("updated"."id")::integer as "affected"
+    from "valid" left join "updated" on true
+    group by "valid"."wedding_id"`;
 }
 
 export function buildListGuestAffiliationsQuery(input: {
@@ -403,15 +813,17 @@ export function buildSetGuestAffiliationQuery(input: {
         where ${guestAffiliations.weddingId} = ${input.weddingId}
           and ${guestAffiliations.id} = ${input.affiliationId}
       ))
-    returning ${guests.id}, ${guests.weddingId}, ${guests.name}, ${guests.email},
-      ${guests.allowedPartySize}, ${guests.affiliationId}, ${guests.createdAt}
+    returning ${guests.id}, ${guests.weddingId}, ${guests.name}, ${guests.email}, ${guests.phone},
+      ${guests.allowedPartySize}, ${guests.affiliationId}, ${guests.createdAt}, ${guests.archivedAt}
   )
   select
     "updated_guest"."id" as "id",
     "updated_guest"."name" as "name",
     "updated_guest"."email" as "email",
+    "updated_guest"."phone" as "phone",
     "updated_guest"."allowed_party_size" as "allowed_party_size",
     "updated_guest"."created_at" as "created_at",
+    "updated_guest"."archived_at" as "archived_at",
     ${guestAffiliations.id} as "affiliation_id",
     ${guestAffiliations.name} as "affiliation_name",
     ${guestAffiliations.color} as "affiliation_color",
@@ -447,10 +859,27 @@ export function buildCreateInvitationQuery(input: {
      and ${weddingMembers.userId} = ${input.userId}
     where ${guests.weddingId} = ${input.weddingId}
       and ${guests.id} = ${input.guestId}
+      and ${guests.archivedAt} is null
     returning
       ${invitations.id} as "id",
       ${invitations.guestId} as "guest_id",
       ${invitations.expiresAt} as "expires_at"`;
+}
+
+export function buildLockInvitationGuestQuery(input: {
+  userId: string;
+  weddingId: string;
+  guestId: string;
+}): SQL {
+  return sql`select ${guests.id} as "id"
+    from ${guests}
+    inner join ${weddingMembers}
+      on ${weddingMembers.weddingId} = ${guests.weddingId}
+     and ${weddingMembers.userId} = ${input.userId}
+    where ${guests.weddingId} = ${input.weddingId}
+      and ${guests.id} = ${input.guestId}
+      and ${guests.archivedAt} is null
+    for update of ${guests}`;
 }
 
 export function buildPublicInvitationQuery(tokenHash: string): SQL {
@@ -476,6 +905,7 @@ export function buildPublicInvitationQuery(tokenHash: string): SQL {
      and ${rsvps.guestId} = ${invitations.guestId}
     where ${invitations.tokenHash} = ${tokenHash}
       and ${invitations.revokedAt} is null
+      and ${guests.archivedAt} is null
       and (${invitations.expiresAt} is null or ${invitations.expiresAt} > now())
     limit 1`;
 }
@@ -499,6 +929,7 @@ export function buildUpsertRsvpQuery(input: {
        and ${guests.id} = ${invitations.guestId}
       where ${invitations.tokenHash} = ${input.tokenHash}
         and ${invitations.revokedAt} is null
+        and ${guests.archivedAt} is null
         and (${invitations.expiresAt} is null or ${invitations.expiresAt} > now())
       limit 1
     ), "upserted" as (
@@ -537,4 +968,11 @@ export function buildUpsertRsvpQuery(input: {
       (select "allowed_party_size" from "valid_invitation") as "allowed_party_size"
     where not exists (select 1 from "upserted")
     limit 1`;
+}
+
+function escapeLike(value: string): string {
+  return value
+    .replaceAll("\\", "\\\\")
+    .replaceAll("%", "\\%")
+    .replaceAll("_", "\\_");
 }

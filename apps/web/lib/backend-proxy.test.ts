@@ -5,6 +5,30 @@ import { proxyApiRequest, type ProxyEnvironment } from "./backend-proxy";
 const secret = Buffer.alloc(32, 7).toString("base64url");
 
 describe("same-origin backend proxy", () => {
+  it("passes safe CSV download headers while forcing no-store", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response("name\r\n", {
+          headers: {
+            "content-type": "text/csv; charset=utf-8",
+            "content-disposition":
+              'attachment; filename="lovechapter-guests.csv"',
+            "cache-control": "public",
+          },
+        }),
+    );
+    const response = await proxyApiRequest(
+      new Request(
+        "https://web.example.test/api/v1/weddings/one/guests/export.csv",
+      ),
+      ["v1", "weddings", "one", "guests", "export.csv"],
+      environment(fetchMock),
+    );
+    expect(response.headers.get("content-disposition")).toBe(
+      'attachment; filename="lovechapter-guests.csv"',
+    );
+    expect(response.headers.get("cache-control")).toBe("no-store");
+  });
   it("forwards only allowlisted browser headers and trusted proxy metadata", async () => {
     const fetchMock = vi.fn<typeof fetch>(async (input) => {
       const request = input as Request;

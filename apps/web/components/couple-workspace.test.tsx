@@ -17,6 +17,44 @@ import { describe, expect, it, vi } from "vitest";
 import { CoupleWorkspace, type CoupleWorkspaceApi } from "./couple-workspace";
 
 describe("CoupleWorkspace", () => {
+  it("opens the full guest management workspace when detail endpoints are available", async () => {
+    const wedding = weddingFixture();
+    const guest = guestFixture();
+    const api: CoupleWorkspaceApi = {
+      ...affiliationApi(),
+      listWeddings: vi.fn(async () => page([wedding])),
+      createWedding: vi.fn(),
+      listGuests: vi.fn(async () => page([guest])),
+      listGuestManagement: vi.fn(async () => page([guest])),
+      addGuest: vi.fn(),
+      createInvitation: vi.fn(async () => invitationFixture(guest.id)),
+      getGuest: vi.fn(async () => ({
+        ...guest,
+        postalAddress: null,
+        updatedAt: guest.createdAt,
+      })),
+      updateGuest: vi.fn(),
+      archiveGuest: vi.fn(),
+      restoreGuest: vi.fn(),
+    };
+    const user = userEvent.setup();
+    render(
+      <CoupleWorkspace
+        identity={userFixture()}
+        api={api}
+        onSignOut={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("Nok")).toBeVisible();
+    expect(screen.getByLabelText(/search guests/i)).toBeVisible();
+    await user.click(
+      screen.getByRole("button", { name: /create invitation/i }),
+    );
+    expect(
+      await screen.findByRole("link", { name: /open nok's invitation/i }),
+    ).toBeVisible();
+  });
   it("creates a wedding and guest, then reveals the one-time invitation URL", async () => {
     const wedding = weddingFixture();
     const guest = guestFixture();

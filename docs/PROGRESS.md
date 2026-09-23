@@ -36,6 +36,11 @@ claimed.
   assignment/reassignment for new or existing guests, a 100-item bound, and
   transactional delete-to-unassigned behavior; no affiliation is hardcoded or
   seeded
+- Guest management with optional contact/envelope/address fields, archive and
+  bounded bulk operations; filtered CSV export and creation-only CSV import
+  with mapping, duplicate confirmation, idempotent commit, and 24-hour cleanup
+- Browser envelope printing with optional address, wedding-scoped saved
+  templates, DL/C5/C6/custom sizes, and self-hosted Thai/Latin fonts
 - Conservative service worker with no fetch interception or data caching
 - Provider-free in-process vertical-slice proof and browser isolation
   regressions
@@ -106,6 +111,64 @@ build, vinext compatibility at 94% with zero issues, and Cloudflare deployment
 dry-run. `git diff --check` also passed. The disposable PostgreSQL suite was not
 executed because this runner has no `TEST_DATABASE_URL`; it remains an explicit
 staging gate rather than a claimed result.
+
+The guest-management slice adds optional contact, envelope, note, and postal
+address fields; wedding-scoped filtered/keyset lists and authorized details;
+recoverable archive/restore with invitation revocation; atomic bounded bulk
+affiliation/archive; and a couple-facing search/filter/edit workspace. Address
+is never required to add a guest. On 2026-09-23 formatting, lint, workspace
+typechecks, and 47 test files / 280 tests passed. `npm run ci` progressed through
+those checks but stopped at the API build because `bun` is not installed in
+this runner (`sh: bun: not found`); no Bun build, smoke, native Next build,
+vinext check, or deployment dry-run result is claimed for this slice. The
+disposable PostgreSQL integration suite and representative `EXPLAIN` plans
+remain staging gates because `TEST_DATABASE_URL` is unset.
+
+The CSV export slice now streams the current authorized guest filter in 500-row
+keyset pages, with the agreed 15-column BOM/CRLF CSV header, RFC 4180 quoting,
+spreadsheet-formula neutralization, and no invitation credentials. The API and
+same-origin proxy expose a no-store download, and the guest workspace has an
+“Export filtered CSV” control. On 2026-09-23, the focused export regression
+passed 118 tests; repository-wide format, lint, all workspace typechecks, and
+48 test files / 296 tests passed. A target-spreadsheet manual fixture check,
+disposable PostgreSQL parity run, Bun builds and smoke, and deployment dry-run
+have not been run in this environment; Bun remains unavailable here.
+
+The CSV import slice parses `text/csv` with `csv-parse@7.0.2` and keeps the
+existing 1 MiB body limit. It bounds input to 5,000 rows, 40 columns, and
+4,096 Unicode characters per cell. The upload discards raw bytes after
+parsing; normalized staging expires after 24 hours and is cleaned 500 batches
+at a time on the 15-minute jobs cadence. Mapping, validation, duplicate
+warnings, exclusions, and explicit “create anyway” decisions precede a
+creation-only, atomic, version-checked, idempotent commit. Address is optional.
+The wizard renders guest values as text and refreshes the guest list after
+success. SQL concurrency tests are checked in but cannot run without an
+explicitly disposable `TEST_DATABASE_URL` and confirmation flag.
+Single and bulk archive require confirmation; invitation creation and archive
+lock the same guest row so restored guests cannot regain old invitation links.
+
+Envelope printing selects 1–500 active guests and preserves their order. It
+uses `envelopeName` or falls back to `name`; name-only mode never requires an
+address. Address mode visibly warns on missing addresses. Wedding-scoped
+templates are capped at 50, with integer dimensions of 90–330 × 55–480 mm,
+safe margins, whitelisted alignment/font choices, and no custom HTML/CSS.
+DL (220 × 110 mm), C5 (229 × 162 mm), and C6 (162 × 114 mm) are built in.
+The print view uses one page per guest and locally bundled Noto Sans/Serif Thai
+variable fonts; printing waits for `document.fonts.ready`. Real-printer
+orientation, 100% scaling, and non-printable margins require one physical
+test envelope before a larger run. The disposable PostgreSQL integration
+suite and representative query plans remain staging gates; no live DB or
+printer is available in this runner.
+
+The 2026-09-23 provider-free regression after both slices passed formatting,
+lint, every workspace typecheck, 59 test files / 383 tests, Drizzle migration
+snapshot check, and `git diff --check`. Native Next and vinext production
+builds passed; vinext reported 94% compatibility with zero issues. The full
+`npm run ci` ran through all tests and stopped at the API build because this
+runner lacks `bun` (`sh: bun: not found`). Bun API/jobs builds and smoke,
+disposable PostgreSQL integration and query plans, a
+target-spreadsheet CSV check, and a physical test envelope remain unverified.
+The Cloudflare deployment dry-run completed without publishing.
 
 The benchmark numbers describe only the current development runner. No
 `TEST_DATABASE_URL` or confirmation flag was configured, so the live PostgreSQL

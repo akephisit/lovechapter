@@ -3,13 +3,11 @@
 import type {
   AuthenticatedUser,
   CreateGuestAffiliationInput,
-  CreateGuestInput,
   CreateWeddingInput,
   GuestAffiliation,
   GuestSummary,
   InvitationCreated,
   Page,
-  SetGuestAffiliationInput,
   UpdateGuestAffiliationInput,
   WeddingSummary,
 } from "@lovechapter/contracts";
@@ -25,6 +23,10 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
+import {
+  GuestWorkspace,
+  type GuestWorkspaceApi,
+} from "./guest-management/guest-workspace";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -32,7 +34,7 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Select } from "./ui/select";
 
-export interface CoupleWorkspaceApi {
+export interface CoupleWorkspaceApi extends GuestWorkspaceApi {
   listWeddings(cursor?: string): Promise<Page<WeddingSummary>>;
   createWedding(input: CreateWeddingInput): Promise<WeddingSummary>;
   listGuestAffiliations(weddingId: string): Promise<GuestAffiliation[]>;
@@ -53,13 +55,6 @@ export interface CoupleWorkspaceApi {
     weddingId: string,
     affiliationId: string,
   ): Promise<void>;
-  listGuests(weddingId: string, cursor?: string): Promise<Page<GuestSummary>>;
-  addGuest(weddingId: string, input: CreateGuestInput): Promise<GuestSummary>;
-  setGuestAffiliation(
-    weddingId: string,
-    guestId: string,
-    input: SetGuestAffiliationInput,
-  ): Promise<GuestSummary>;
   createInvitation(
     weddingId: string,
     guestId: string,
@@ -637,6 +632,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
 
             {selected ? (
               <WeddingWorkspace
+                api={api}
                 wedding={selected}
                 guests={guests}
                 affiliations={affiliations}
@@ -654,6 +650,9 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
                 onCopyInvitation={copyInvitation}
                 onLoadMore={loadMoreGuests}
                 onRefresh={refreshGuests}
+                onImportedAffiliation={(affiliation) =>
+                  setAffiliations((current) => [...current, affiliation])
+                }
               />
             ) : (
               <Card className="relative overflow-hidden p-8 sm:p-10">
@@ -869,6 +868,7 @@ function GuestAffiliationManager({
 }
 
 function WeddingWorkspace({
+  api,
   wedding,
   guests,
   affiliations,
@@ -886,7 +886,9 @@ function WeddingWorkspace({
   onCopyInvitation,
   onLoadMore,
   onRefresh,
+  onImportedAffiliation,
 }: {
+  api: CoupleWorkspaceApi;
   wedding: WeddingSummary;
   guests: GuestSummary[];
   affiliations: GuestAffiliation[];
@@ -910,7 +912,31 @@ function WeddingWorkspace({
   onCopyInvitation(guest: GuestSummary): Promise<void>;
   onLoadMore(): Promise<void>;
   onRefresh(): Promise<void>;
+  onImportedAffiliation(affiliation: GuestAffiliation): void;
 }) {
+  if (api.getGuest && api.updateGuest && api.archiveGuest && api.restoreGuest) {
+    return (
+      <div className="space-y-6">
+        <GuestAffiliationManager
+          affiliations={affiliations}
+          busy={busy}
+          onCreate={onCreateAffiliation}
+          onUpdate={onUpdateAffiliation}
+          onMove={onMoveAffiliation}
+          onDelete={onDeleteAffiliation}
+        />
+        <GuestWorkspace
+          key={wedding.id}
+          weddingId={wedding.id}
+          weddingName={wedding.name}
+          affiliations={affiliations}
+          initialPage={{ items: guests, nextCursor }}
+          api={api}
+          onAffiliationCreated={onImportedAffiliation}
+        />
+      </div>
+    );
+  }
   return (
     <div className="space-y-6">
       <GuestAffiliationManager
