@@ -25,7 +25,7 @@ export function buildSyncUserQuery(input: {
   email: string | null;
 }): SQL {
   return sql`insert into ${users}
-      (${users.id}, ${users.authProvider}, ${users.authSubject}, ${users.displayName}, ${users.email})
+      (${sql.identifier(users.id.name)}, ${sql.identifier(users.authProvider.name)}, ${sql.identifier(users.authSubject.name)}, ${sql.identifier(users.displayName.name)}, ${sql.identifier(users.email.name)})
     values (${input.id}, ${input.provider}, ${input.subject}, ${input.displayName}, ${input.email})
     on conflict ("auth_provider","auth_subject") do update set
       "email" = excluded."email",
@@ -42,9 +42,9 @@ export function buildUpdateUserProfileQuery(input: {
   displayName: string;
 }): SQL {
   return sql`update ${users}
-    set ${users.displayName} = ${input.displayName},
-        ${users.onboardingCompletedAt} = now(),
-        ${users.updatedAt} = now()
+    set ${sql.identifier(users.displayName.name)} = ${input.displayName},
+        ${sql.identifier(users.onboardingCompletedAt.name)} = now(),
+        ${sql.identifier(users.updatedAt.name)} = now()
     where ${users.id} = ${input.userId}
     returning
       ${users.id} as "id",
@@ -62,7 +62,7 @@ export function buildCreateWeddingQuery(input: {
   locale: string;
 }): SQL {
   return sql`insert into ${weddings}
-      (${weddings.id}, ${weddings.name}, ${weddings.weddingDate}, ${weddings.timeZone}, ${weddings.locale}, ${weddings.createdByUserId}, ${weddings.workspaceOwnerUserId})
+      (${sql.identifier(weddings.id.name)}, ${sql.identifier(weddings.name.name)}, ${sql.identifier(weddings.weddingDate.name)}, ${sql.identifier(weddings.timeZone.name)}, ${sql.identifier(weddings.locale.name)}, ${sql.identifier(weddings.createdByUserId.name)}, ${sql.identifier(weddings.workspaceOwnerUserId.name)})
     values (${input.id}, ${input.name}, ${input.weddingDate}, ${input.timeZone}, ${input.locale}, ${input.userId}, ${input.userId})
     returning
       ${weddings.id} as "id",
@@ -78,7 +78,7 @@ export function buildCreateOwnerMembershipQuery(input: {
   weddingId: string;
 }): SQL {
   return sql`insert into ${weddingMembers}
-      (${weddingMembers.weddingId}, ${weddingMembers.userId}, ${weddingMembers.role})
+      (${sql.identifier(weddingMembers.weddingId.name)}, ${sql.identifier(weddingMembers.userId.name)}, ${sql.identifier(weddingMembers.role.name)})
     values (${input.weddingId}, ${input.userId}, 'owner')`;
 }
 
@@ -330,7 +330,7 @@ export function buildCreateGuestQuery(input: {
 }): SQL {
   return sql`with "inserted_guest" as (
     insert into ${guests}
-      (${guests.id}, ${guests.weddingId}, ${guests.name}, ${guests.email}, ${guests.phone}, ${guests.allowedPartySize}, ${guests.affiliationId}, ${guests.envelopeName}, ${guests.note})
+      (${sql.identifier(guests.id.name)}, ${sql.identifier(guests.weddingId.name)}, ${sql.identifier(guests.name.name)}, ${sql.identifier(guests.email.name)}, ${sql.identifier(guests.phone.name)}, ${sql.identifier(guests.allowedPartySize.name)}, ${sql.identifier(guests.affiliationId.name)}, ${sql.identifier(guests.envelopeName.name)}, ${sql.identifier(guests.note.name)})
     select ${input.id}, ${input.weddingId}, ${input.name}, ${input.email}, ${input.phone}, ${input.allowedPartySize}, ${input.affiliationId}, ${input.envelopeName}, ${input.note}
     from ${weddingMembers}
     where ${weddingMembers.weddingId} = ${input.weddingId}
@@ -368,31 +368,43 @@ export function buildUpdateGuestQuery(input: {
   guestId: string;
   patch: NormalizedGuestUpdate;
 }): SQL {
-  const assignments: SQL[] = [sql`${guests.updatedAt} = now()`];
+  const assignments: SQL[] = [
+    sql`${sql.identifier(guests.updatedAt.name)} = now()`,
+  ];
   if (input.patch.name !== undefined) {
-    assignments.push(sql`${guests.name} = ${input.patch.name}`);
+    assignments.push(
+      sql`${sql.identifier(guests.name.name)} = ${input.patch.name}`,
+    );
   }
   if (input.patch.email !== undefined) {
-    assignments.push(sql`${guests.email} = ${input.patch.email}`);
+    assignments.push(
+      sql`${sql.identifier(guests.email.name)} = ${input.patch.email}`,
+    );
   }
   if (input.patch.phone !== undefined) {
-    assignments.push(sql`${guests.phone} = ${input.patch.phone}`);
+    assignments.push(
+      sql`${sql.identifier(guests.phone.name)} = ${input.patch.phone}`,
+    );
   }
   if (input.patch.allowedPartySize !== undefined) {
     assignments.push(
-      sql`${guests.allowedPartySize} = ${input.patch.allowedPartySize}`,
+      sql`${sql.identifier(guests.allowedPartySize.name)} = ${input.patch.allowedPartySize}`,
     );
   }
   if (input.patch.affiliationId !== undefined) {
     assignments.push(
-      sql`${guests.affiliationId} = ${input.patch.affiliationId}`,
+      sql`${sql.identifier(guests.affiliationId.name)} = ${input.patch.affiliationId}`,
     );
   }
   if (input.patch.envelopeName !== undefined) {
-    assignments.push(sql`${guests.envelopeName} = ${input.patch.envelopeName}`);
+    assignments.push(
+      sql`${sql.identifier(guests.envelopeName.name)} = ${input.patch.envelopeName}`,
+    );
   }
   if (input.patch.note !== undefined) {
-    assignments.push(sql`${guests.note} = ${input.patch.note}`);
+    assignments.push(
+      sql`${sql.identifier(guests.note.name)} = ${input.patch.note}`,
+    );
   }
   const affiliationPredicate =
     input.patch.affiliationId === undefined ||
@@ -424,7 +436,7 @@ export function buildUpsertGuestPostalAddressQuery(input: {
 }): SQL {
   const address = input.postalAddress;
   return sql`insert into ${guestPostalAddresses}
-      (${guestPostalAddresses.weddingId}, ${guestPostalAddresses.guestId}, ${guestPostalAddresses.addressLine1}, ${guestPostalAddresses.addressLine2}, ${guestPostalAddresses.locality}, ${guestPostalAddresses.administrativeArea}, ${guestPostalAddresses.postalCode}, ${guestPostalAddresses.countryCode})
+      (${sql.identifier(guestPostalAddresses.weddingId.name)}, ${sql.identifier(guestPostalAddresses.guestId.name)}, ${sql.identifier(guestPostalAddresses.addressLine1.name)}, ${sql.identifier(guestPostalAddresses.addressLine2.name)}, ${sql.identifier(guestPostalAddresses.locality.name)}, ${sql.identifier(guestPostalAddresses.administrativeArea.name)}, ${sql.identifier(guestPostalAddresses.postalCode.name)}, ${sql.identifier(guestPostalAddresses.countryCode.name)})
     select ${input.weddingId}, ${input.guestId}, ${address.addressLine1}, ${address.addressLine2 ?? null}, ${address.locality ?? null}, ${address.administrativeArea ?? null}, ${address.postalCode ?? null}, ${address.countryCode ?? null}
     from ${weddingMembers}
     inner join ${guests}
@@ -432,15 +444,15 @@ export function buildUpsertGuestPostalAddressQuery(input: {
      and ${guests.id} = ${input.guestId}
     where ${weddingMembers.weddingId} = ${input.weddingId}
       and ${weddingMembers.userId} = ${input.userId}
-    on conflict (${guestPostalAddresses.weddingId}, ${guestPostalAddresses.guestId})
+    on conflict (${sql.identifier(guestPostalAddresses.weddingId.name)}, ${sql.identifier(guestPostalAddresses.guestId.name)})
     do update set
-      ${guestPostalAddresses.addressLine1} = excluded.${sql.raw('"address_line_1"')},
-      ${guestPostalAddresses.addressLine2} = excluded.${sql.raw('"address_line_2"')},
-      ${guestPostalAddresses.locality} = excluded.${sql.raw('"locality"')},
-      ${guestPostalAddresses.administrativeArea} = excluded.${sql.raw('"administrative_area"')},
-      ${guestPostalAddresses.postalCode} = excluded.${sql.raw('"postal_code"')},
-      ${guestPostalAddresses.countryCode} = excluded.${sql.raw('"country_code"')},
-      ${guestPostalAddresses.updatedAt} = now()`;
+      ${sql.identifier(guestPostalAddresses.addressLine1.name)} = excluded.${sql.raw('"address_line_1"')},
+      ${sql.identifier(guestPostalAddresses.addressLine2.name)} = excluded.${sql.raw('"address_line_2"')},
+      ${sql.identifier(guestPostalAddresses.locality.name)} = excluded.${sql.raw('"locality"')},
+      ${sql.identifier(guestPostalAddresses.administrativeArea.name)} = excluded.${sql.raw('"administrative_area"')},
+      ${sql.identifier(guestPostalAddresses.postalCode.name)} = excluded.${sql.raw('"postal_code"')},
+      ${sql.identifier(guestPostalAddresses.countryCode.name)} = excluded.${sql.raw('"country_code"')},
+      ${sql.identifier(guestPostalAddresses.updatedAt.name)} = now()`;
 }
 
 export function buildDeleteGuestPostalAddressQuery(input: {
@@ -464,7 +476,7 @@ export function buildArchiveGuestQuery(input: {
   guestId: string;
 }): SQL {
   return sql`update ${guests}
-    set ${guests.archivedAt} = now(), ${guests.updatedAt} = now()
+    set ${sql.identifier(guests.archivedAt.name)} = now(), ${sql.identifier(guests.updatedAt.name)} = now()
     where ${guests.weddingId} = ${input.weddingId}
       and ${guests.id} = ${input.guestId}
       and ${guests.archivedAt} is null
@@ -482,7 +494,7 @@ export function buildRestoreGuestQuery(input: {
   guestId: string;
 }): SQL {
   return sql`update ${guests}
-    set ${guests.archivedAt} = null, ${guests.updatedAt} = now()
+    set ${sql.identifier(guests.archivedAt.name)} = null, ${sql.identifier(guests.updatedAt.name)} = now()
     where ${guests.weddingId} = ${input.weddingId}
       and ${guests.id} = ${input.guestId}
       and ${guests.archivedAt} is not null
@@ -500,7 +512,7 @@ export function buildRevokeGuestInvitationsQuery(input: {
   guestIds: string[];
 }): SQL {
   return sql`update ${invitations}
-    set ${invitations.revokedAt} = now(), ${invitations.updatedAt} = now()
+    set ${sql.identifier(invitations.revokedAt.name)} = now(), ${sql.identifier(invitations.updatedAt.name)} = now()
     where ${invitations.weddingId} = ${input.weddingId}
       and ${invitations.guestId} = any(${input.guestIds}::uuid[])
       and ${invitations.revokedAt} is null
@@ -539,8 +551,8 @@ export function buildBulkArchiveGuestsQuery(input: {
         and (select count(*) from "matched") = ${input.guestIds.length}
     ), "updated" as (
       update ${guests}
-      set ${guests.archivedAt} = coalesce(${guests.archivedAt}, now()),
-          ${guests.updatedAt} = now()
+      set ${sql.identifier(guests.archivedAt.name)} = coalesce(${guests.archivedAt}, now()),
+          ${sql.identifier(guests.updatedAt.name)} = now()
       from "matched", "valid"
       where ${guests.weddingId} = "valid"."wedding_id"
         and ${guests.id} = "matched"."id"
@@ -588,8 +600,8 @@ export function buildBulkSetGuestAffiliationQuery(input: {
         and (${input.affiliationId}::uuid is null or exists (select 1 from "selected_affiliation"))
     ), "updated" as (
       update ${guests}
-      set ${guests.affiliationId} = ${input.affiliationId},
-          ${guests.updatedAt} = now()
+      set ${sql.identifier(guests.affiliationId.name)} = ${input.affiliationId},
+          ${sql.identifier(guests.updatedAt.name)} = now()
       from "matched", "valid"
       where ${guests.weddingId} = "valid"."wedding_id"
         and ${guests.id} = "matched"."id"
@@ -635,7 +647,7 @@ export function buildCreateGuestAffiliationQuery(input: {
   color: string;
 }): SQL {
   return sql`insert into ${guestAffiliations}
-    (${guestAffiliations.id}, ${guestAffiliations.weddingId}, ${guestAffiliations.name}, ${guestAffiliations.color}, ${guestAffiliations.sortOrder})
+    (${sql.identifier(guestAffiliations.id.name)}, ${sql.identifier(guestAffiliations.weddingId.name)}, ${sql.identifier(guestAffiliations.name.name)}, ${sql.identifier(guestAffiliations.color.name)}, ${sql.identifier(guestAffiliations.sortOrder.name)})
   select ${input.id}, ${input.weddingId}, ${input.name}, ${input.color},
     coalesce(max(${guestAffiliations.sortOrder}), -1) + 1
   from ${weddingMembers}
@@ -686,9 +698,9 @@ export function buildUpdateGuestAffiliationQuery(input: {
   color: string;
 }): SQL {
   return sql`update ${guestAffiliations}
-  set ${guestAffiliations.name} = ${input.name},
-      ${guestAffiliations.color} = ${input.color},
-      ${guestAffiliations.updatedAt} = now()
+  set ${sql.identifier(guestAffiliations.name.name)} = ${input.name},
+      ${sql.identifier(guestAffiliations.color.name)} = ${input.color},
+      ${sql.identifier(guestAffiliations.updatedAt.name)} = now()
   where ${guestAffiliations.weddingId} = ${input.weddingId}
     and ${guestAffiliations.id} = ${input.affiliationId}
     and exists (
@@ -733,8 +745,8 @@ export function buildReorderGuestAffiliationsQuery(input: {
       )
   ), "updated_affiliations" as (
     update ${guestAffiliations}
-    set ${guestAffiliations.sortOrder} = "requested_order"."sort_order",
-        ${guestAffiliations.updatedAt} = now()
+    set ${sql.identifier(guestAffiliations.sortOrder.name)} = "requested_order"."sort_order",
+        ${sql.identifier(guestAffiliations.updatedAt.name)} = now()
     from "requested_order", "valid_order"
     where ${guestAffiliations.weddingId} = "valid_order"."wedding_id"
       and ${guestAffiliations.id} = "requested_order"."id"
@@ -764,8 +776,8 @@ export function buildUnassignGuestAffiliationQuery(input: {
   affiliationId: string;
 }): SQL {
   return sql`update ${guests}
-  set ${guests.affiliationId} = null,
-      ${guests.updatedAt} = now()
+  set ${sql.identifier(guests.affiliationId.name)} = null,
+      ${sql.identifier(guests.updatedAt.name)} = now()
   where ${guests.weddingId} = ${input.weddingId}
     and ${guests.affiliationId} = ${input.affiliationId}
     and exists (
@@ -799,8 +811,8 @@ export function buildSetGuestAffiliationQuery(input: {
 }): SQL {
   return sql`with "updated_guest" as (
     update ${guests}
-    set ${guests.affiliationId} = ${input.affiliationId},
-        ${guests.updatedAt} = now()
+    set ${sql.identifier(guests.affiliationId.name)} = ${input.affiliationId},
+        ${sql.identifier(guests.updatedAt.name)} = now()
     where ${guests.weddingId} = ${input.weddingId}
       and ${guests.id} = ${input.guestId}
       and exists (
@@ -851,7 +863,7 @@ export function buildCreateInvitationQuery(input: {
   expiresAt: string | null;
 }): SQL {
   return sql`insert into ${invitations}
-      (${invitations.id}, ${invitations.weddingId}, ${invitations.guestId}, ${invitations.tokenHash}, ${invitations.createdByUserId}, ${invitations.expiresAt})
+      (${sql.identifier(invitations.id.name)}, ${sql.identifier(invitations.weddingId.name)}, ${sql.identifier(invitations.guestId.name)}, ${sql.identifier(invitations.tokenHash.name)}, ${sql.identifier(invitations.createdByUserId.name)}, ${sql.identifier(invitations.expiresAt.name)})
     select ${input.id}, ${guests.weddingId}, ${guests.id}, ${input.tokenHash}, ${input.userId}, ${input.expiresAt}
     from ${guests}
     inner join ${weddingMembers}
@@ -934,7 +946,7 @@ export function buildUpsertRsvpQuery(input: {
       limit 1
     ), "upserted" as (
       insert into ${rsvps}
-        (${rsvps.id}, ${rsvps.weddingId}, ${rsvps.guestId}, ${rsvps.invitationId}, ${rsvps.attendance}, ${rsvps.partySize}, ${rsvps.note})
+        (${sql.identifier(rsvps.id.name)}, ${sql.identifier(rsvps.weddingId.name)}, ${sql.identifier(rsvps.guestId.name)}, ${sql.identifier(rsvps.invitationId.name)}, ${sql.identifier(rsvps.attendance.name)}, ${sql.identifier(rsvps.partySize.name)}, ${sql.identifier(rsvps.note.name)})
       select
         ${input.id}, "wedding_id", "guest_id", "invitation_id",
         ${input.attendance}, ${input.partySize}, ${input.note}

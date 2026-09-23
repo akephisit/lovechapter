@@ -11,6 +11,7 @@ import {
   buildRevokeAccountSessionsQuery,
   buildRehashPasswordIfCurrentQuery,
   buildResolveSessionQuery,
+  buildUpsertPendingAccountQuery,
   buildUpdatePasswordQuery,
 } from "./auth-queries";
 
@@ -20,6 +21,23 @@ const tokenId = "018f0000-0000-7000-8000-000000000002";
 const now = new Date("2026-09-22T00:00:00.000Z");
 
 describe("authentication SQL contracts", () => {
+  it("uses unqualified target columns for PostgreSQL mutations", () => {
+    const upsert = sqlOf(
+      buildUpsertPendingAccountQuery({
+        candidateAccountId: accountId,
+        email: "couple@example.test",
+        emailKey: "couple@example.test",
+        passwordHash: "scrypt-envelope",
+        displayName: "Couple",
+        now,
+      }),
+    );
+    const update = sqlOf(buildUpdatePasswordQuery(accountId, "new-hash", now));
+
+    expect(upsert).toMatch(/insert into "auth_accounts"\s+\("id", "email"/i);
+    expect(update).toMatch(/update "auth_accounts"\s+set "password_hash" =/i);
+  });
+
   it("uses explicit indexed account and session lookups", () => {
     const signInSql = sqlOf(
       buildFindAccountByEmailKeyQuery("couple@example.test"),

@@ -44,12 +44,12 @@ export function buildInsertEnvelopeTemplateQuery(
 ): SQL {
   const t = input.template;
   return sql`insert into ${envelopePrintTemplates}
-    (${envelopePrintTemplates.id}, ${envelopePrintTemplates.weddingId}, ${envelopePrintTemplates.name},
-     ${envelopePrintTemplates.widthMm}, ${envelopePrintTemplates.heightMm}, ${envelopePrintTemplates.orientation},
-     ${envelopePrintTemplates.marginTopMm}, ${envelopePrintTemplates.marginRightMm},
-     ${envelopePrintTemplates.marginBottomMm}, ${envelopePrintTemplates.marginLeftMm},
-     ${envelopePrintTemplates.alignment}, ${envelopePrintTemplates.fontFamily},
-     ${envelopePrintTemplates.fontSizePt}, ${envelopePrintTemplates.lineSpacingPercent}, ${envelopePrintTemplates.showAddress})
+    (${sql.identifier(envelopePrintTemplates.id.name)}, ${sql.identifier(envelopePrintTemplates.weddingId.name)}, ${sql.identifier(envelopePrintTemplates.name.name)},
+     ${sql.identifier(envelopePrintTemplates.widthMm.name)}, ${sql.identifier(envelopePrintTemplates.heightMm.name)}, ${sql.identifier(envelopePrintTemplates.orientation.name)},
+     ${sql.identifier(envelopePrintTemplates.marginTopMm.name)}, ${sql.identifier(envelopePrintTemplates.marginRightMm.name)},
+     ${sql.identifier(envelopePrintTemplates.marginBottomMm.name)}, ${sql.identifier(envelopePrintTemplates.marginLeftMm.name)},
+     ${sql.identifier(envelopePrintTemplates.alignment.name)}, ${sql.identifier(envelopePrintTemplates.fontFamily.name)},
+     ${sql.identifier(envelopePrintTemplates.fontSizePt.name)}, ${sql.identifier(envelopePrintTemplates.lineSpacingPercent.name)}, ${sql.identifier(envelopePrintTemplates.showAddress.name)})
     select ${input.id}, ${input.weddingId}, ${t.name}, ${t.widthMm}, ${t.heightMm}, ${t.orientation},
       ${t.marginTopMm}, ${t.marginRightMm}, ${t.marginBottomMm}, ${t.marginLeftMm},
       ${t.alignment}, ${t.fontFamily}, ${t.fontSizePt}, ${t.lineSpacingPercent}, ${t.showAddress}
@@ -60,13 +60,13 @@ export function buildUpdateEnvelopeTemplateQuery(
 ): SQL {
   const t = input.template;
   return sql`update ${envelopePrintTemplates} set
-    ${envelopePrintTemplates.name} = ${t.name}, ${envelopePrintTemplates.widthMm} = ${t.widthMm},
-    ${envelopePrintTemplates.heightMm} = ${t.heightMm}, ${envelopePrintTemplates.orientation} = ${t.orientation},
-    ${envelopePrintTemplates.marginTopMm} = ${t.marginTopMm}, ${envelopePrintTemplates.marginRightMm} = ${t.marginRightMm},
-    ${envelopePrintTemplates.marginBottomMm} = ${t.marginBottomMm}, ${envelopePrintTemplates.marginLeftMm} = ${t.marginLeftMm},
-    ${envelopePrintTemplates.alignment} = ${t.alignment}, ${envelopePrintTemplates.fontFamily} = ${t.fontFamily},
-    ${envelopePrintTemplates.fontSizePt} = ${t.fontSizePt}, ${envelopePrintTemplates.lineSpacingPercent} = ${t.lineSpacingPercent},
-    ${envelopePrintTemplates.showAddress} = ${t.showAddress}, ${envelopePrintTemplates.updatedAt} = now()
+    ${sql.identifier(envelopePrintTemplates.name.name)} = ${t.name}, ${sql.identifier(envelopePrintTemplates.widthMm.name)} = ${t.widthMm},
+    ${sql.identifier(envelopePrintTemplates.heightMm.name)} = ${t.heightMm}, ${sql.identifier(envelopePrintTemplates.orientation.name)} = ${t.orientation},
+    ${sql.identifier(envelopePrintTemplates.marginTopMm.name)} = ${t.marginTopMm}, ${sql.identifier(envelopePrintTemplates.marginRightMm.name)} = ${t.marginRightMm},
+    ${sql.identifier(envelopePrintTemplates.marginBottomMm.name)} = ${t.marginBottomMm}, ${sql.identifier(envelopePrintTemplates.marginLeftMm.name)} = ${t.marginLeftMm},
+    ${sql.identifier(envelopePrintTemplates.alignment.name)} = ${t.alignment}, ${sql.identifier(envelopePrintTemplates.fontFamily.name)} = ${t.fontFamily},
+    ${sql.identifier(envelopePrintTemplates.fontSizePt.name)} = ${t.fontSizePt}, ${sql.identifier(envelopePrintTemplates.lineSpacingPercent.name)} = ${t.lineSpacingPercent},
+    ${sql.identifier(envelopePrintTemplates.showAddress.name)} = ${t.showAddress}, ${sql.identifier(envelopePrintTemplates.updatedAt.name)} = now()
     where ${envelopePrintTemplates.weddingId} = ${input.weddingId}
       and ${envelopePrintTemplates.id} = ${input.templateId} and ${membership(input)}
     returning ${templateColumns}`;

@@ -48,6 +48,7 @@ describe("PostgreSQL query contracts", () => {
 
     expect(query.sql).toMatch(/do update set\s+"email" = excluded\."email"/i);
     expect(query.sql).not.toMatch(/do update set[\s\S]*"display_name" =/i);
+    expect(query.sql).toMatch(/insert into "users"\s+\("id", "auth_provider"/i);
   });
 
   it("updates onboarding by the resolved local primary key", () => {
@@ -57,6 +58,7 @@ describe("PostgreSQL query contracts", () => {
 
     expect(query.sql).toMatch(/where "users"\."id" = \$\d+/i);
     expect(query.sql).toMatch(/"onboarding_completed_at" = now\(\)/i);
+    expect(query.sql).toMatch(/update "users"\s+set "display_name" =/i);
     expect(query.params).toEqual(expect.arrayContaining([userId, "คู่รัก"]));
   });
 

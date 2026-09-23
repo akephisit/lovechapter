@@ -48,11 +48,11 @@ export function buildStageGuestImportBatchQuery(input: {
   expiresAt: string;
 }): SQL {
   return sql`insert into ${guestImportBatches}
-    (${guestImportBatches.id}, ${guestImportBatches.weddingId}, ${guestImportBatches.createdByUserId},
-     ${guestImportBatches.sourceSha256}, ${guestImportBatches.headers}, ${guestImportBatches.mapping},
-     ${guestImportBatches.affiliationMappings}, ${guestImportBatches.rowCount},
-     ${guestImportBatches.validCount}, ${guestImportBatches.warningCount},
-     ${guestImportBatches.invalidCount}, ${guestImportBatches.excludedCount}, ${guestImportBatches.expiresAt})
+    (${sql.identifier(guestImportBatches.id.name)}, ${sql.identifier(guestImportBatches.weddingId.name)}, ${sql.identifier(guestImportBatches.createdByUserId.name)},
+     ${sql.identifier(guestImportBatches.sourceSha256.name)}, ${sql.identifier(guestImportBatches.headers.name)}, ${sql.identifier(guestImportBatches.mapping.name)},
+     ${sql.identifier(guestImportBatches.affiliationMappings.name)}, ${sql.identifier(guestImportBatches.rowCount.name)},
+     ${sql.identifier(guestImportBatches.validCount.name)}, ${sql.identifier(guestImportBatches.warningCount.name)},
+     ${sql.identifier(guestImportBatches.invalidCount.name)}, ${sql.identifier(guestImportBatches.excludedCount.name)}, ${sql.identifier(guestImportBatches.expiresAt.name)})
     select ${input.id}, ${input.weddingId}, ${input.userId}, ${input.sourceSha256},
       ${JSON.stringify(input.headers)}::jsonb, ${JSON.stringify(input.mapping)}::jsonb,
       ${JSON.stringify(input.affiliationMappings)}::jsonb, ${input.rowCount}, ${input.validCount},
@@ -109,8 +109,8 @@ export function buildInsertImportedGuestsQuery(
     })),
   );
   return sql`insert into ${guests}
-    (${guests.id}, ${guests.weddingId}, ${guests.name}, ${guests.email}, ${guests.phone},
-     ${guests.allowedPartySize}, ${guests.affiliationId}, ${guests.envelopeName}, ${guests.note})
+    (${sql.identifier(guests.id.name)}, ${sql.identifier(guests.weddingId.name)}, ${sql.identifier(guests.name.name)}, ${sql.identifier(guests.email.name)}, ${sql.identifier(guests.phone.name)},
+     ${sql.identifier(guests.allowedPartySize.name)}, ${sql.identifier(guests.affiliationId.name)}, ${sql.identifier(guests.envelopeName.name)}, ${sql.identifier(guests.note.name)})
     select "source"."id", ${input.weddingId}, "source"."name", "source"."email", "source"."phone",
       "source"."allowed_party_size", "source"."affiliation_id", "source"."envelope_name", "source"."note"
     from jsonb_to_recordset(${payload}::jsonb) as "source"
@@ -179,11 +179,11 @@ export function buildMarkGuestImportCommittedQuery(
   },
 ): SQL {
   return sql`update ${guestImportBatches}
-    set ${guestImportBatches.status} = 'committed',
-        ${guestImportBatches.commitIdempotencyKey} = ${input.idempotencyKey},
-        ${guestImportBatches.commitResult} = ${JSON.stringify(input.result)}::jsonb,
-        ${guestImportBatches.committedAt} = now(),
-        ${guestImportBatches.updatedAt} = now()
+    set ${sql.identifier(guestImportBatches.status.name)} = 'committed',
+        ${sql.identifier(guestImportBatches.commitIdempotencyKey.name)} = ${input.idempotencyKey},
+        ${sql.identifier(guestImportBatches.commitResult.name)} = ${JSON.stringify(input.result)}::jsonb,
+        ${sql.identifier(guestImportBatches.committedAt.name)} = now(),
+        ${sql.identifier(guestImportBatches.updatedAt.name)} = now()
     where ${guestImportBatches.weddingId} = ${input.weddingId}
       and ${guestImportBatches.id} = ${input.batchId}
       and ${guestImportBatches.status} = 'previewed'
@@ -210,9 +210,9 @@ export function buildInsertGuestImportRowsQuery(
     })),
   );
   return sql`insert into ${guestImportRows}
-    (${guestImportRows.id}, ${guestImportRows.weddingId}, ${guestImportRows.batchId},
-     ${guestImportRows.rowNumber}, ${guestImportRows.sourceValues}, ${guestImportRows.candidate},
-     ${guestImportRows.errors}, ${guestImportRows.warnings}, ${guestImportRows.included})
+    (${sql.identifier(guestImportRows.id.name)}, ${sql.identifier(guestImportRows.weddingId.name)}, ${sql.identifier(guestImportRows.batchId.name)},
+     ${sql.identifier(guestImportRows.rowNumber.name)}, ${sql.identifier(guestImportRows.sourceValues.name)}, ${sql.identifier(guestImportRows.candidate.name)},
+     ${sql.identifier(guestImportRows.errors.name)}, ${sql.identifier(guestImportRows.warnings.name)}, ${sql.identifier(guestImportRows.included.name)})
     select "source"."id", ${input.weddingId}, ${input.batchId}, "source"."row_number",
       "source"."source_values", "source"."candidate", "source"."errors", "source"."warnings", "source"."included"
     from jsonb_to_recordset(${payload}::jsonb) as "source"
@@ -338,10 +338,10 @@ export function buildReplaceGuestImportRowsQuery(
     })),
   );
   return sql`update ${guestImportRows}
-    set ${guestImportRows.candidate} = "source"."candidate",
-        ${guestImportRows.errors} = "source"."errors",
-        ${guestImportRows.warnings} = "source"."warnings",
-        ${guestImportRows.included} = "source"."included"
+    set ${sql.identifier(guestImportRows.candidate.name)} = "source"."candidate",
+        ${sql.identifier(guestImportRows.errors.name)} = "source"."errors",
+        ${sql.identifier(guestImportRows.warnings.name)} = "source"."warnings",
+        ${sql.identifier(guestImportRows.included.name)} = "source"."included"
     from jsonb_to_recordset(${payload}::jsonb) as "source"
       ("id" uuid, "candidate" jsonb, "errors" jsonb, "warnings" jsonb, "included" boolean)
     where ${guestImportRows.weddingId} = ${input.weddingId}
@@ -365,14 +365,14 @@ export function buildUpdateGuestImportPreviewQuery(
   },
 ): SQL {
   return sql`update ${guestImportBatches}
-    set ${guestImportBatches.mapping} = ${JSON.stringify(input.mapping)}::jsonb,
-        ${guestImportBatches.affiliationMappings} = ${JSON.stringify(input.affiliationMappings)}::jsonb,
-        ${guestImportBatches.previewVersion} = ${guestImportBatches.previewVersion} + 1,
-        ${guestImportBatches.validCount} = ${input.validCount},
-        ${guestImportBatches.warningCount} = ${input.warningCount},
-        ${guestImportBatches.invalidCount} = ${input.invalidCount},
-        ${guestImportBatches.excludedCount} = ${input.excludedCount},
-        ${guestImportBatches.updatedAt} = now()
+    set ${sql.identifier(guestImportBatches.mapping.name)} = ${JSON.stringify(input.mapping)}::jsonb,
+        ${sql.identifier(guestImportBatches.affiliationMappings.name)} = ${JSON.stringify(input.affiliationMappings)}::jsonb,
+        ${sql.identifier(guestImportBatches.previewVersion.name)} = ${guestImportBatches.previewVersion} + 1,
+        ${sql.identifier(guestImportBatches.validCount.name)} = ${input.validCount},
+        ${sql.identifier(guestImportBatches.warningCount.name)} = ${input.warningCount},
+        ${sql.identifier(guestImportBatches.invalidCount.name)} = ${input.invalidCount},
+        ${sql.identifier(guestImportBatches.excludedCount.name)} = ${input.excludedCount},
+        ${sql.identifier(guestImportBatches.updatedAt.name)} = now()
     where ${guestImportBatches.weddingId} = ${input.weddingId}
       and ${guestImportBatches.id} = ${input.batchId}
       and ${guestImportBatches.status} = 'previewed'
