@@ -559,6 +559,47 @@ export class PostgresLoveChapterRepository implements LoveChapterRepository {
     }
   }
 
+  async replaceInvitation(
+    input: CreateInvitationRecord,
+  ): Promise<Omit<InvitationCreated, "token" | "publicUrl">> {
+    return this.executor.transaction(async (transaction) => {
+      const locked = await transaction.execute<{ id: string }>(
+        buildLockInvitationGuestQuery({
+          userId: input.createdByUserId,
+          weddingId: input.weddingId,
+          guestId: input.guestId,
+        }),
+      );
+      if (!locked.rows[0]) throw new NotFoundError("Guest not found");
+      await transaction.execute(
+        buildRevokeGuestInvitationsQuery({
+          userId: input.createdByUserId,
+          weddingId: input.weddingId,
+          guestIds: [input.guestId],
+        }),
+      );
+      const result = await transaction.execute<InvitationWriteRow>(
+        buildCreateInvitationQuery({
+          id: input.id,
+          userId: input.createdByUserId,
+          weddingId: input.weddingId,
+          guestId: input.guestId,
+          tokenHash: input.tokenHash,
+          expiresAt: input.expiresAt ?? null,
+        }),
+      );
+      const row = result.rows[0];
+      if (!row) throw new NotFoundError("Guest not found");
+      return row.expires_at
+        ? {
+            id: row.id,
+            guestId: row.guest_id,
+            expiresAt: asTimestamp(row.expires_at),
+          }
+        : { id: row.id, guestId: row.guest_id };
+    });
+  }
+
   async findPublicInvitation(
     tokenHash: string,
   ): Promise<PublicInvitation | null> {

@@ -205,6 +205,20 @@ The focused tests failed for each case before the fixes and then passed.
 Locally, formatting, lint, all workspace typechecks, 59 files / 388 tests, and
 `git diff --check` passed. No physical printer check was performed.
 
+The invitation/RSVP extension adds an authenticated replacement action for a
+lost invitation link. Under the guest row lock, PostgreSQL revokes previous
+links and inserts the new hash in one transaction; the raw token is returned
+once, never stored. RSVP submission locks its invitation row so replacement
+and an in-flight submission are ordered. The replacement is available for an active guest in the
+couple workspace after a confirmation warning, and the couple can copy the new
+link. Prior links stop working while the guest's existing RSVP remains. If an
+invitation becomes invalid during RSVP submission, the guest sees the
+unavailable state; editing a saved answer removes the saved confirmation until
+the next successful submission. Automated local tests cover the domain, API,
+web client, and components. The disposable PostgreSQL integration test for
+replacement is checked in for CI execution. Invitation delivery
+remains manual; automatic email requires verified sender configuration.
+
 ## External gates
 
 - ownership, DNS, public TLS, and exact origins for the intended domain

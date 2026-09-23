@@ -332,6 +332,46 @@ describe("LoveChapterService", () => {
     });
   });
 
+  it("replaces a lost invitation without erasing the guest's RSVP", async () => {
+    const repository = new InMemoryLoveChapterRepository();
+    const coupleService = service(repository);
+    const wedding = await coupleService.createWedding({
+      name: "Mali & Arun",
+      timeZone: "Asia/Bangkok",
+      locale: "en",
+    });
+    const guest = await coupleService.addGuest(wedding.id, {
+      name: "Nok",
+      allowedPartySize: 2,
+    });
+    const original = await coupleService.createInvitation(wedding.id, guest.id);
+    await coupleService.submitRsvp(original.token, {
+      attendance: "attending",
+      partySize: 2,
+    });
+
+    const replacement = await coupleService.replaceInvitation(
+      wedding.id,
+      guest.id,
+    );
+
+    expect(replacement.token).not.toBe(original.token);
+    await expect(
+      coupleService.getPublicInvitation(original.token),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      coupleService.submitRsvp(original.token, {
+        attendance: "declined",
+        partySize: 0,
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      coupleService.getPublicInvitation(replacement.token),
+    ).resolves.toMatchObject({
+      rsvp: { attendance: "attending", partySize: 2 },
+    });
+  });
+
   it("does not reveal another Couple's wedding", async () => {
     const repository = new InMemoryLoveChapterRepository();
     const wedding = await service(repository).createWedding({

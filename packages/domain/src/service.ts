@@ -629,6 +629,26 @@ export class LoveChapterService {
     };
   }
 
+  async replaceInvitation(
+    weddingId: string,
+    guestId: string,
+  ): Promise<InvitationCreated> {
+    const user = await this.requireOnboardedUser();
+    const token = generateInvitationToken();
+    const created = await this.repository.replaceInvitation({
+      id: crypto.randomUUID(),
+      weddingId,
+      guestId,
+      createdByUserId: user.id,
+      tokenHash: await hashInvitationToken(token),
+    });
+    return {
+      ...created,
+      token,
+      publicUrl: `${this.publicWebOrigin}/i/${token}`,
+    };
+  }
+
   async getPublicInvitation(token: string): Promise<PublicInvitation> {
     assertTokenShape(token);
     const invitation = await this.repository.findPublicInvitation(

@@ -526,6 +526,51 @@ describe("LoveChapter API", () => {
     expect(rsvp.status).toBe(200);
   });
 
+  it("replaces an invitation over the protected API and rejects the old public link", async () => {
+    const fixture = testFixture({ principal: couple("replacement-owner") });
+    const weddingResponse = await fixture.app.handle(
+      jsonRequest("/v1/weddings", "POST", {
+        name: "Mali & Arun",
+        timeZone: "Asia/Bangkok",
+        locale: "en",
+      }),
+    );
+    const wedding = (await weddingResponse.json()) as { id: string };
+    const guestResponse = await fixture.app.handle(
+      jsonRequest(`/v1/weddings/${wedding.id}/guests`, "POST", {
+        name: "Nok",
+        allowedPartySize: 1,
+      }),
+    );
+    const guest = (await guestResponse.json()) as { id: string };
+    const path = `/v1/weddings/${wedding.id}/guests/${guest.id}/invitations`;
+    const originalResponse = await fixture.app.handle(
+      jsonRequest(path, "POST", {}),
+    );
+    const original = (await originalResponse.json()) as { token: string };
+
+    const response = await fixture.app.handle(
+      jsonRequest(`${path}/replace`, "POST", {}),
+    );
+    expect(response.status).toBe(201);
+    const replacement = (await response.json()) as { token: string };
+    expect(replacement.token).not.toBe(original.token);
+    expect(
+      (
+        await fixture.app.handle(
+          trustedRequest(`/v1/public/invitations/${original.token}`),
+        )
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await fixture.app.handle(
+          trustedRequest(`/v1/public/invitations/${replacement.token}`),
+        )
+      ).status,
+    ).toBe(200);
+  });
+
   it("manages wedding-defined guest affiliations without seeded categories", async () => {
     const fixture = testFixture({ principal: couple("affiliations") });
     const weddingResponse = await fixture.app.handle(

@@ -13,6 +13,50 @@ afterEach(() => {
 });
 
 describe("GuestWorkspace", () => {
+  it("confirms replacement and shows only the newly issued invitation link", async () => {
+    const api = apiFixture();
+    const original = {
+      id: "original",
+      guestId: guest().id,
+      token: "old-secret",
+      publicUrl: "https://web.example.test/i/old-secret",
+    };
+    const replacement = {
+      ...original,
+      id: "replacement",
+      token: "new-secret",
+      publicUrl: "https://web.example.test/i/new-secret",
+    };
+    api.createInvitation = vi.fn(async () => original);
+    api.replaceInvitation = vi.fn(async () => replacement);
+    const confirm = vi
+      .spyOn(window, "confirm")
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(true);
+    const user = userEvent.setup();
+    renderWorkspace(api, page([guest()]));
+    await user.click(
+      screen.getByRole("button", { name: /create invitation/i }),
+    );
+    expect(
+      screen.getByRole("link", { name: /open nok's invitation/i }),
+    ).toHaveAttribute("href", original.publicUrl);
+
+    await user.click(
+      screen.getByRole("button", { name: /issue a new link for nok/i }),
+    );
+    expect(api.replaceInvitation).not.toHaveBeenCalled();
+    await user.click(
+      screen.getByRole("button", { name: /issue a new link for nok/i }),
+    );
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/old link/i));
+    expect(api.replaceInvitation).toHaveBeenCalledWith(weddingId, guest().id);
+    expect(
+      screen.getByRole("link", { name: /open nok's invitation/i }),
+    ).toHaveAttribute("href", replacement.publicUrl);
+    expect(screen.queryByText(original.publicUrl)).toBeNull();
+  });
   it("exports the search the user has typed even before list debounce completes", () => {
     vi.useFakeTimers();
     const api = apiFixture();

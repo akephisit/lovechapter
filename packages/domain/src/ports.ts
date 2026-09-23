@@ -287,6 +287,9 @@ export interface LoveChapterRepository {
   createInvitation(
     input: CreateInvitationRecord,
   ): Promise<Omit<InvitationCreated, "token" | "publicUrl">>;
+  replaceInvitation(
+    input: CreateInvitationRecord,
+  ): Promise<Omit<InvitationCreated, "token" | "publicUrl">>;
   findPublicInvitation(tokenHash: string): Promise<PublicInvitation | null>;
   upsertRsvp(
     tokenHash: string,

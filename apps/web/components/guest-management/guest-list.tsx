@@ -29,6 +29,8 @@ export function GuestList({
   onBulkArchive,
   invitations,
   onCreateInvitation,
+  canReplaceInvitation,
+  onReplaceInvitation,
   onCopyInvitation,
 }: {
   guests: GuestSummary[];
@@ -47,6 +49,8 @@ export function GuestList({
   onBulkArchive(): void;
   invitations: Record<string, InvitationCreated>;
   onCreateInvitation(guest: GuestSummary): void;
+  canReplaceInvitation: boolean;
+  onReplaceInvitation(guest: GuestSummary): void;
   onCopyInvitation(guest: GuestSummary): void;
 }) {
   const [bulkTarget, setBulkTarget] = useState("");
@@ -185,14 +189,33 @@ export function GuestList({
             </div>
             {view === "active" ? (
               <div className="mt-3">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={() => onCreateInvitation(guest)}
-                >
-                  Create invitation
-                </Button>
+                {!invitations[guest.id] ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={busy}
+                    onClick={() => onCreateInvitation(guest)}
+                  >
+                    Create invitation
+                  </Button>
+                ) : null}
+                {canReplaceInvitation ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={busy}
+                    aria-label={`Issue a new link for ${guest.name}`}
+                    onClick={() => onReplaceInvitation(guest)}
+                  >
+                    Issue new invitation link
+                  </Button>
+                ) : null}
+                {canReplaceInvitation ? (
+                  <p className="text-xs text-[#806d70]">
+                    If a link already exists, issuing a new one stops the old
+                    link from working.
+                  </p>
+                ) : null}
                 {invitations[guest.id] ? (
                   <div className="mt-3 rounded-xl bg-[#fff9f3] p-3">
                     <a

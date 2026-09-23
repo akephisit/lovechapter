@@ -5,7 +5,7 @@ import type {
   RsvpResponse,
   SubmitRsvpInput,
 } from "@lovechapter/contracts";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -13,6 +13,75 @@ import { ApiError } from "../lib/api-client";
 import { PublicRsvp, type PublicRsvpApi } from "./public-rsvp";
 
 describe("PublicRsvp", () => {
+  it("shows an unavailable invitation when the link is replaced during RSVP", async () => {
+    const api: PublicRsvpApi = {
+      getInvitation: vi.fn(async () => invitationFixture()),
+      submitRsvp: vi.fn(async () => {
+        throw new ApiError("not found", 404, "not_found");
+      }),
+    };
+    const user = userEvent.setup();
+    render(<PublicRsvp token="old-token" api={api} />);
+    await screen.findByRole("heading", { name: /you're invited/i });
+
+    await user.click(screen.getByRole("button", { name: /save rsvp/i }));
+
+    expect(
+      await screen.findByRole("heading", { name: /invitation unavailable/i }),
+    ).toBeVisible();
+    expect(screen.queryByRole("button", { name: /save rsvp/i })).toBeNull();
+  });
+
+  it("clears the saved confirmation when the guest edits their answer", async () => {
+    const api: PublicRsvpApi = {
+      getInvitation: vi.fn(async () => invitationFixture()),
+      submitRsvp: vi.fn(async (_token, input) => ({
+        ...input,
+        updatedAt: "2026-09-23T10:00:00.000Z",
+      })),
+    };
+    const user = userEvent.setup();
+    render(<PublicRsvp token="safe-token" api={api} />);
+    await screen.findByRole("heading", { name: /you're invited/i });
+
+    await user.click(screen.getByRole("button", { name: /save rsvp/i }));
+    expect(await screen.findByRole("status")).toHaveTextContent(/saved/i);
+    await user.type(screen.getByLabelText(/note/i), "Changed my note");
+    expect(screen.queryByRole("status")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: /save rsvp/i }));
+    expect(await screen.findByRole("status")).toHaveTextContent(/saved/i);
+    await user.click(screen.getByLabelText(/regretfully decline/i));
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("does not mark edits made during a pending save as saved", async () => {
+    let finish!: (response: RsvpResponse) => void;
+    const pending = new Promise<RsvpResponse>((resolve) => {
+      finish = resolve;
+    });
+    const api: PublicRsvpApi = {
+      getInvitation: vi.fn(async () => invitationFixture()),
+      submitRsvp: vi.fn(() => pending),
+    };
+    const user = userEvent.setup();
+    render(<PublicRsvp token="safe-token" api={api} />);
+    await screen.findByRole("heading", { name: /you're invited/i });
+    await user.click(screen.getByRole("button", { name: /save rsvp/i }));
+    await user.type(screen.getByLabelText(/note/i), "Changed after submit");
+
+    await act(async () => {
+      finish({
+        attendance: "attending",
+        partySize: 1,
+        updatedAt: "2026-09-23T10:00:00.000Z",
+      });
+      await pending;
+    });
+
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("button", { name: /save rsvp/i })).toBeEnabled();
+  });
   it("shows the invitation and submits an accessible attending response", async () => {
     const save = vi.fn(
       async (

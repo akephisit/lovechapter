@@ -15,6 +15,21 @@ afterEach(() => {
 });
 
 describe("LoveChapter API client", () => {
+  it("replaces invitations using the authenticated same-origin route", async () => {
+    const clientFetch = vi.fn<typeof fetch>(async () =>
+      jsonResponse({ token: "replacement" }),
+    );
+    vi.stubGlobal("fetch", clientFetch);
+
+    await createLoveChapterApi(vi.fn()).replaceInvitation("wedding", "guest");
+
+    expect(clientFetch.mock.calls[0]?.[0]).toBe(
+      "/api/v1/weddings/wedding/guests/guest/invitations/replace",
+    );
+    expect(clientFetch.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({ method: "POST", credentials: "same-origin" }),
+    );
+  });
   it("calls scoped envelope template CRUD and print-data endpoints", async () => {
     const clientFetch = vi.fn<typeof fetch>(async (_url, init) =>
       init?.method === "DELETE"

@@ -494,6 +494,104 @@ describe("PostgreSQL guest management", () => {
     }
   });
 
+  it("preserves RSVP and the prior link on failed replacement while rejecting cross-wedding guests", async () => {
+    const owner = await createUser("rotation-owner");
+    const other = await createUser("rotation-other");
+    const wedding = await createWedding(owner.id, "Rotation");
+    const guest = await runtime.loveChapterRepository.createGuest(
+      owner.id,
+      wedding.id,
+      crypto.randomUUID(),
+      { name: "Nok", allowedPartySize: 2 },
+    );
+    const oldHash = "a".repeat(64);
+    await runtime.loveChapterRepository.createInvitation({
+      id: crypto.randomUUID(),
+      weddingId: wedding.id,
+      guestId: guest.id,
+      createdByUserId: owner.id,
+      tokenHash: oldHash,
+    });
+    await runtime.loveChapterRepository.upsertRsvp(
+      oldHash,
+      crypto.randomUUID(),
+      {
+        attendance: "attending",
+        partySize: 2,
+      },
+    );
+    const otherWedding = await createWedding(owner.id, "Other rotation");
+    const foreignGuest = await runtime.loveChapterRepository.createGuest(
+      owner.id,
+      otherWedding.id,
+      crypto.randomUUID(),
+      { name: "Foreign", allowedPartySize: 1 },
+    );
+    await expect(
+      runtime.loveChapterRepository.replaceInvitation({
+        id: crypto.randomUUID(),
+        weddingId: wedding.id,
+        guestId: foreignGuest.id,
+        createdByUserId: owner.id,
+        tokenHash: "e".repeat(64),
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+
+    await expect(
+      runtime.loveChapterRepository.replaceInvitation({
+        id: crypto.randomUUID(),
+        weddingId: wedding.id,
+        guestId: guest.id,
+        createdByUserId: other.id,
+        tokenHash: "c".repeat(64),
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    const newHash = "b".repeat(64);
+    await runtime.loveChapterRepository.replaceInvitation({
+      id: crypto.randomUUID(),
+      weddingId: wedding.id,
+      guestId: guest.id,
+      createdByUserId: owner.id,
+      tokenHash: newHash,
+    });
+    await expect(
+      runtime.loveChapterRepository.findPublicInvitation(oldHash),
+    ).resolves.toBeNull();
+    await expect(
+      runtime.loveChapterRepository.findPublicInvitation(newHash),
+    ).resolves.toMatchObject({
+      guest: { name: "Nok" },
+      rsvp: { attendance: "attending", partySize: 2 },
+    });
+
+    const occupiedHash = "d".repeat(64);
+    const anotherGuest = await runtime.loveChapterRepository.createGuest(
+      owner.id,
+      wedding.id,
+      crypto.randomUUID(),
+      { name: "Dao", allowedPartySize: 1 },
+    );
+    await runtime.loveChapterRepository.createInvitation({
+      id: crypto.randomUUID(),
+      weddingId: wedding.id,
+      guestId: anotherGuest.id,
+      createdByUserId: owner.id,
+      tokenHash: occupiedHash,
+    });
+    await expect(
+      runtime.loveChapterRepository.replaceInvitation({
+        id: crypto.randomUUID(),
+        weddingId: wedding.id,
+        guestId: guest.id,
+        createdByUserId: owner.id,
+        tokenHash: occupiedHash,
+      }),
+    ).rejects.toThrow();
+    await expect(
+      runtime.loveChapterRepository.findPublicInvitation(newHash),
+    ).resolves.toMatchObject({ guest: { name: "Nok" } });
+  });
+
   it("rejects a mixed-wedding bulk archive without partial changes", async () => {
     const owner = await createUser("bulk-owner");
     const first = await createWedding(owner.id, "First bulk wedding");

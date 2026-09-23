@@ -395,4 +395,17 @@ describe("PostgreSQL query contracts", () => {
     expect(query.params).toContain(tokenHash);
     expect(query.sql.trim().endsWith(";")).toBe(false);
   });
+
+  it("locks the invitation row while accepting RSVP to serialize replacement", () => {
+    const query = dialect.sqlToQuery(
+      buildUpsertRsvpQuery({
+        id: guestId,
+        tokenHash: "b".repeat(64),
+        attendance: "attending",
+        partySize: 1,
+        note: null,
+      }),
+    );
+    expect(query.sql).toMatch(/for update of "invitations"/i);
+  });
 });

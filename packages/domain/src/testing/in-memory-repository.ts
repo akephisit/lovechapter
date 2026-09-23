@@ -524,6 +524,19 @@ export class InMemoryLoveChapterRepository implements LoveChapterRepository {
       : { id: input.id, guestId: input.guestId };
   }
 
+  async replaceInvitation(
+    input: CreateInvitationRecord,
+  ): Promise<Omit<InvitationCreated, "token" | "publicUrl">> {
+    this.requireMember(input.createdByUserId, input.weddingId);
+    const guest = this.requireGuest(input.weddingId, input.guestId);
+    if (guest.detail.archivedAt) throw new NotFoundError("Guest not found");
+    this.revokeInvitations(input.weddingId, new Set([input.guestId]));
+    this.invitations.set(input.id, { ...input, expired: false });
+    return input.expiresAt
+      ? { id: input.id, guestId: input.guestId, expiresAt: input.expiresAt }
+      : { id: input.id, guestId: input.guestId };
+  }
+
   async findPublicInvitation(
     tokenHash: string,
   ): Promise<PublicInvitation | null> {

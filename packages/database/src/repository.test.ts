@@ -5,6 +5,7 @@ import {
   NotFoundError,
 } from "@lovechapter/domain";
 import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -594,6 +595,34 @@ describe("PostgresLoveChapterRepository", () => {
       tokenHash: "a".repeat(64),
     });
     expect(executor.executeCount).toBe(2);
+  });
+
+  it("revokes the prior invitation inside the same transaction as replacement", async () => {
+    const guestId = crypto.randomUUID();
+    const invitationId = crypto.randomUUID();
+    const executor = new FakeExecutor(
+      [{ id: guestId }],
+      [],
+      [{ id: invitationId, guest_id: guestId, expires_at: null }],
+    );
+    const repository = new PostgresLoveChapterRepository(executor);
+    const created = await repository.replaceInvitation({
+      id: invitationId,
+      weddingId: crypto.randomUUID(),
+      guestId,
+      createdByUserId: crypto.randomUUID(),
+      tokenHash: "b".repeat(64),
+    });
+
+    expect(created).toMatchObject({ id: invitationId, guestId });
+    expect(executor.executeCount).toBe(3);
+    const statements = executor.queries.map(
+      (query) => new PgDialect().sqlToQuery(query).sql,
+    );
+    expect(statements[0]).toMatch(/for update of "guests"/i);
+    expect(statements[1]).toMatch(/update "invitations"/i);
+    expect(statements[1]).toMatch(/"revoked_at" = now\(\)/i);
+    expect(statements[2]).toMatch(/insert into "invitations"/i);
   });
 
   it("maps a token-scoped RSVP outcome without a second query", async () => {

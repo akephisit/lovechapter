@@ -313,6 +313,11 @@ export function createLoveChapterApi(
         `/v1/weddings/${encodeURIComponent(weddingId)}/guests/${encodeURIComponent(guestId)}/invitations`,
         { method: "POST", body: "{}" },
       ),
+    replaceInvitation: (weddingId: string, guestId: string) =>
+      request<InvitationCreated>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/guests/${encodeURIComponent(guestId)}/invitations/replace`,
+        { method: "POST", body: "{}" },
+      ),
   };
 }
 

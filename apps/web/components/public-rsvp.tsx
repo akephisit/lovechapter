@@ -7,7 +7,7 @@ import type {
   SubmitRsvpInput,
 } from "@lovechapter/contracts";
 import { CalendarDays, Check, Heart, MapPin } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { ApiError, loveChapterPublicApi } from "../lib/api-client";
 import { Badge } from "./ui/badge";
@@ -38,6 +38,7 @@ export function PublicRsvp({
   >("loading");
   const [error, setError] = useState<string | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const editVersion = useRef(0);
 
   useEffect(() => {
     let current = true;
@@ -72,6 +73,7 @@ export function PublicRsvp({
 
   async function saveRsvp(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const submittedVersion = editVersion.current;
     setState("saving");
     setError(null);
     try {
@@ -84,8 +86,16 @@ export function PublicRsvp({
       setInvitation((current) =>
         current ? { ...current, rsvp: saved } : current,
       );
-      setState("saved");
+      setState(editVersion.current === submittedVersion ? "saved" : "ready");
     } catch (caught) {
+      if (
+        caught instanceof ApiError &&
+        (caught.status === 404 || caught.status === 410)
+      ) {
+        setInvitation(null);
+        setState("unavailable");
+        return;
+      }
       setError(
         caught instanceof Error && caught.message
           ? caught.message
@@ -93,6 +103,11 @@ export function PublicRsvp({
       );
       setState("ready");
     }
+  }
+
+  function markEdited() {
+    editVersion.current += 1;
+    if (state === "saved") setState("ready");
   }
 
   if (state === "loading") {
@@ -205,6 +220,7 @@ export function PublicRsvp({
                       value="attending"
                       checked={attendance === "attending"}
                       onChange={() => {
+                        markEdited();
                         setAttendance("attending");
                         if (partySize < 1) setPartySize(1);
                       }}
@@ -214,6 +230,7 @@ export function PublicRsvp({
                       value="declined"
                       checked={attendance === "declined"}
                       onChange={() => {
+                        markEdited();
                         setAttendance("declined");
                         setPartySize(0);
                       }}
@@ -227,9 +244,10 @@ export function PublicRsvp({
                     <Select
                       id="party-size"
                       value={partySize}
-                      onChange={(event) =>
-                        setPartySize(Number(event.target.value))
-                      }
+                      onChange={(event) => {
+                        markEdited();
+                        setPartySize(Number(event.target.value));
+                      }}
                     >
                       {options.map((size) => (
                         <option key={size} value={size}>
@@ -250,7 +268,10 @@ export function PublicRsvp({
                     id="rsvp-note"
                     value={note}
                     maxLength={500}
-                    onChange={(event) => setNote(event.target.value)}
+                    onChange={(event) => {
+                      markEdited();
+                      setNote(event.target.value);
+                    }}
                     placeholder="Share a warm note with the couple…"
                   />
                 </div>

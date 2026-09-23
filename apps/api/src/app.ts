@@ -775,6 +775,17 @@ export function createApiApp(dependencies: ApiDependencies) {
           ),
         ),
     )
+    .post(
+      "/v1/weddings/:weddingId/guests/:guestId/invitations/replace",
+      { params: guestParams },
+      async ({ params, request }) =>
+        status(
+          201,
+          await dependencies.run(request, (service) =>
+            service.replaceInvitation(params.weddingId, params.guestId),
+          ),
+        ),
+    )
     .get(
       "/v1/public/invitations/:invitationToken",
       { params: invitationParams },

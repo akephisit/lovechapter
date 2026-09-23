@@ -944,6 +944,7 @@ export function buildUpsertRsvpQuery(input: {
         and ${guests.archivedAt} is null
         and (${invitations.expiresAt} is null or ${invitations.expiresAt} > now())
       limit 1
+      for update of ${invitations}
     ), "upserted" as (
       insert into ${rsvps}
         (${sql.identifier(rsvps.id.name)}, ${sql.identifier(rsvps.weddingId.name)}, ${sql.identifier(rsvps.guestId.name)}, ${sql.identifier(rsvps.invitationId.name)}, ${sql.identifier(rsvps.attendance.name)}, ${sql.identifier(rsvps.partySize.name)}, ${sql.identifier(rsvps.note.name)})

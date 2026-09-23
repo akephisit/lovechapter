@@ -80,6 +80,7 @@ weaken the approved security gates to answer the remaining questions.
 
 - Free guest limit
 - Custom wedding domains
-- Guest invitation recovery
+- Whether and when to add automatic email/QR delivery or guest self-service
+  recovery; couple-initiated link replacement and manual sharing are available
 - Advanced seating UX
 - AI provider/scope

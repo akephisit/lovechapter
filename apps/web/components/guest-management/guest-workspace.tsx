@@ -48,6 +48,10 @@ export interface GuestWorkspaceApi {
     weddingId: string,
     guestId: string,
   ): Promise<InvitationCreated>;
+  replaceInvitation?(
+    weddingId: string,
+    guestId: string,
+  ): Promise<InvitationCreated>;
   getGuest?(weddingId: string, guestId: string): Promise<GuestDetail>;
   updateGuest?(
     weddingId: string,
@@ -404,6 +408,26 @@ function WeddingGuestWorkspace({
     }
   }
 
+  async function replaceInvitation(guest: GuestSummary) {
+    if (
+      !api.replaceInvitation ||
+      !window.confirm(
+        `Issue a new invitation link for ${guest.name}? Any old link will stop working immediately. Share the new link with the guest.`,
+      )
+    )
+      return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const invitation = await api.replaceInvitation(weddingId, guest.id);
+      setInvitations((current) => ({ ...current, [guest.id]: invitation }));
+    } catch (error) {
+      setMessage(readableError(error, "We couldn't replace that invitation."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function copyInvitation(guest: GuestSummary) {
     const invitation = invitations[guest.id];
     if (!invitation) return;
@@ -556,6 +580,8 @@ function WeddingGuestWorkspace({
         onBulkArchive={() => void bulkArchive()}
         invitations={invitations}
         onCreateInvitation={(guest) => void createInvitation(guest)}
+        canReplaceInvitation={Boolean(api.replaceInvitation)}
+        onReplaceInvitation={(guest) => void replaceInvitation(guest)}
         onCopyInvitation={(guest) => void copyInvitation(guest)}
       />
 
