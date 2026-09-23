@@ -546,6 +546,9 @@ describe("PostgreSQL guest management", () => {
       { limit: 2, view: "active", search: "Same", rsvp: "pending" },
     );
     expect(first.nextCursor).not.toBeNull();
+    expect(first.items[1]?.createdAt).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+    );
     if (!first.nextCursor) throw new Error("Expected a second guest page");
     const second = await runtime.loveChapterRepository.listGuests(
       owner.id,

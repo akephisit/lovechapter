@@ -799,7 +799,7 @@ function toAuthenticatedUser(
 }
 
 function asTimestamp(value: string | Date): string {
-  return value instanceof Date ? value.toISOString() : value;
+  return (value instanceof Date ? value : new Date(value)).toISOString();
 }
 
 function isPostgresError(error: unknown, code: string): boolean {
