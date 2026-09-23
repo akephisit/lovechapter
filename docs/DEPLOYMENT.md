@@ -163,8 +163,8 @@ until Resend verifies the sender/domain.
 
 1. Confirm domain ownership, DNS, public TLS, and exact web/API origins.
 2. Select the VPS and Neon regions and supply staging credentials.
-3. Run the disposable PostgreSQL concurrency suite and representative live
-   query plans.
+3. Repeat the concurrency suite against a confirmed disposable staging database
+   and inspect representative live query plans.
 4. Verify the Resend sender/domain and end-to-end verification/reset email.
 5. Pass the scrypt budget on the selected VPS.
 6. Validate Worker dry-run/deploy output and prove no secrets enter client

@@ -379,6 +379,7 @@ Raw passwords, session tokens, action-token MACs, raw client addresses, and
 complete token-bearing URLs must never be selected for diagnostics or logged.
 Only hashes/metadata required by the operation belong in PostgreSQL.
 
-Generated SQL contract tests and `drizzle-kit check` are merge gates. Live query
-plans and the opt-in PostgreSQL concurrency suite remain staging gates and must
-target a confirmed disposable database, never an inferred `DATABASE_URL`.
+Generated SQL contract tests, `drizzle-kit check`, and the disposable PostgreSQL
+integration suite are CI merge gates. Representative live query plans remain a
+staging gate. Any manual rerun of the integration suite must target a confirmed
+disposable database, never an inferred `DATABASE_URL`.

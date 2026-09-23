@@ -73,7 +73,7 @@ weaken the approved security gates to answer the remaining questions.
 - Production query monitoring/observability strategy
 - Representative staging query-plan results after direct-pool provisioning
 - Measured API/job pool sizes within Neon and VPS connection budgets
-- Disposable staging credentials for the PostgreSQL concurrency suite and live
+- Disposable Neon staging credentials for a repeat concurrency run and live
   query-plan review
 
 ## Product

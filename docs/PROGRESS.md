@@ -182,12 +182,24 @@ The benchmark numbers describe only the current development runner. No
 `TEST_DATABASE_URL` or confirmation flag was configured, so the live PostgreSQL
 concurrency suite and representative query plans remain explicit staging gates.
 
+GitHub Actions CI run `35835254412` passed the full repository Verify gate
+(59 files / 384 tests, formatting, lint, typechecks, Drizzle check, Bun smoke
+and builds, Next/vinext builds, vinext compatibility, and deploy dry-run) and
+the new PostgreSQL integration job (4 files / 22 tests). The PostgreSQL job
+uses an isolated PostgreSQL 16 service with an explicit disposable URL and
+confirmation flag. The live run exposed and led to fixes for first-migration
+foreign-key ordering, SQL mutation target columns, UUID array parameters, and
+guest pagination timestamp normalization. CI now verifies guest ownership and
+concurrency, import transactions, and envelope template/data isolation against
+PostgreSQL. Representative Neon staging query plans, VPS behavior, and one
+physical test envelope remain external acceptance checks.
+
 ## External gates
 
 - ownership, DNS, public TLS, and exact origins for the intended domain
 - VPS provider/region/sizing and the Bun benchmark on that selected host
-- Neon region, disposable staging credentials, live concurrency suite, and
-  representative query plans
+- Neon region, disposable staging credentials for a repeat concurrency run,
+  and representative query plans
 - Resend sender/domain verification and end-to-end delivery/reputation controls
 - staged proxy/cookie, graceful-restart, lease-recovery, pool-exhaustion,
   firewall, rollback, backup-restore, and token-redaction exercises

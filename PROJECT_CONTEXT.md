@@ -137,8 +137,8 @@ decisions, and commits once per batch/idempotency key. Expired staging is
 cleaned in 500-batch maintenance runs. Browser envelope printing uses 1–500
 active guest IDs, optional postal addresses, validated DL/C5/C6/custom
 templates, self-hosted Thai fonts, and one text-only page per guest. The
-automated checks do not replace disposable PostgreSQL or physical-printer
-acceptance gates; these remain unverified in this runner.
+GitHub Actions runs the disposable PostgreSQL integration suite. Representative
+staging query plans and a physical-printer acceptance check remain unverified.
 
 ---
 
