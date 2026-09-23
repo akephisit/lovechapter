@@ -240,8 +240,10 @@ allowed party size; concurrent assignment locks the guest and table, and
 changes to an already seated party size are rejected until unassigned.
 Members can add, edit, list, and delete these records in the couple workspace.
 Provider-free tests, migration validation, and disposable PostgreSQL
-concurrency checks are part of this branch. The PostgreSQL suite and full
-build gate must pass in GitHub Actions before this slice is called complete.
+concurrency checks are part of this branch. GitHub Actions run
+`35888731352` passed the complete Verify gate (66 files / 429 tests, Bun,
+Next/vinext, and deployment dry-run checks) and the PostgreSQL integration
+gate (6 files / 29 tests), including the guest-size/seat-assignment race.
 
 On 2026-09-23 local formatting, lint, workspace typechecks, 66 test files /
 429 tests, Drizzle migration snapshot check, native Next production build,
