@@ -339,7 +339,7 @@ describe("PostgreSQL wedding operations", () => {
           (error: unknown) => error,
         );
       const waiters = async (count: number) => {
-        const deadline = Date.now() + 8000;
+        const deadline = Date.now() + 3000;
         while (Date.now() < deadline) {
           const result = await blocker.query<{ count: number }>(
             "select count(*)::int as count from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock' and pid <> pg_backend_pid()",
@@ -347,7 +347,16 @@ describe("PostgreSQL wedding operations", () => {
           if (result.rows[0]!.count >= count) return;
           await new Promise((resolve) => setTimeout(resolve, 20));
         }
-        throw new Error(`Expected ${count} guest lock waiter(s)`);
+        const activity = await blocker.query<{
+          state: string;
+          wait_event_type: string | null;
+          query: string;
+        }>(
+          "select state, wait_event_type, left(query, 350) as query from pg_stat_activity where datname = current_database() and pid <> pg_backend_pid()",
+        );
+        throw new Error(
+          `Expected ${count} guest lock waiter(s): ${JSON.stringify(activity.rows)}`,
+        );
       };
       await waiters(1);
       const resized = runtime.loveChapterRepository
