@@ -18,6 +18,7 @@ import {
   buildPublicInvitationQuery,
   buildLockGuestAffiliationScopeQuery,
   buildReorderGuestAffiliationsQuery,
+  buildRevokeGuestInvitationsQuery,
   buildRestoreGuestQuery,
   buildSetGuestAffiliationQuery,
   buildSyncUserQuery,
@@ -185,6 +186,13 @@ describe("PostgreSQL query contracts", () => {
         guestIds: [guestId],
       }),
     );
+    const revoke = dialect.sqlToQuery(
+      buildRevokeGuestInvitationsQuery({
+        userId,
+        weddingId,
+        guestIds: [guestId],
+      }),
+    );
 
     for (const query of [
       detail,
@@ -201,8 +209,11 @@ describe("PostgreSQL query contracts", () => {
     expect(detail.sql).toMatch(/left join "guest_postal_addresses"/i);
     expect(archive.sql).toMatch(/"archived_at" is null/i);
     expect(restore.sql).toMatch(/"archived_at" is not null/i);
-    expect(bulkAffiliation.sql).toMatch(/unnest\(\(\$\d+\)::uuid\[\]\)/i);
-    expect(bulkArchive.sql).toMatch(/unnest\(\(\$\d+\)::uuid\[\]\)/i);
+    expect(bulkAffiliation.sql).toMatch(/unnest\(\$\d+::uuid\[\]\)/i);
+    expect(bulkArchive.sql).toMatch(/unnest\(\$\d+::uuid\[\]\)/i);
+    expect(bulkAffiliation.params).toContainEqual([guestId]);
+    expect(bulkArchive.params).toContainEqual([guestId]);
+    expect(revoke.params).toContainEqual([guestId]);
   });
 
   it("creates a guest only through an authorized membership selection", () => {
@@ -307,7 +318,8 @@ describe("PostgreSQL query contracts", () => {
     expect(affiliationLock.sql).toMatch(
       /for update of "weddings", "guest_affiliations"/i,
     );
-    expect(reorder.sql).toMatch(/unnest\(\(\$\d+\)::uuid\[\]\)/i);
+    expect(reorder.sql).toMatch(/unnest\(\$\d+::uuid\[\]\)/i);
+    expect(reorder.params).toContainEqual([affiliationId]);
     expect(unassign.sql).toMatch(/update "guests"/i);
     expect(unassign.sql).toMatch(/"affiliation_id" = null/i);
     expect(remove.sql).toMatch(/^delete from "guest_affiliations"/i);

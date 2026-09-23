@@ -514,7 +514,7 @@ export function buildRevokeGuestInvitationsQuery(input: {
   return sql`update ${invitations}
     set ${sql.identifier(invitations.revokedAt.name)} = now(), ${sql.identifier(invitations.updatedAt.name)} = now()
     where ${invitations.weddingId} = ${input.weddingId}
-      and ${invitations.guestId} = any(${input.guestIds}::uuid[])
+      and ${invitations.guestId} = any(${sql.param(input.guestIds)}::uuid[])
       and ${invitations.revokedAt} is null
       and exists (
         select 1 from ${weddingMembers}
@@ -536,7 +536,7 @@ export function buildBulkArchiveGuestsQuery(input: {
       limit 1
     ), "requested" as (
       select distinct "value"::uuid as "id"
-      from unnest(${input.guestIds}::uuid[]) as "requested_ids"("value")
+      from unnest(${sql.param(input.guestIds)}::uuid[]) as "requested_ids"("value")
     ), "matched" as (
       select ${guests.id} as "id"
       from ${guests}
@@ -577,7 +577,7 @@ export function buildBulkSetGuestAffiliationQuery(input: {
       limit 1
     ), "requested" as (
       select distinct "value"::uuid as "id"
-      from unnest(${input.guestIds}::uuid[]) as "requested_ids"("value")
+      from unnest(${sql.param(input.guestIds)}::uuid[]) as "requested_ids"("value")
     ), "selected_affiliation" as (
       select ${guestAffiliations.id} as "id"
       from ${guestAffiliations}
@@ -729,7 +729,7 @@ export function buildReorderGuestAffiliationsQuery(input: {
     limit 1
   ), "requested_order" as (
     select "value"::uuid as "id", ("ordinality" - 1)::integer as "sort_order"
-    from unnest(${input.affiliationIds}::uuid[]) with ordinality
+    from unnest(${sql.param(input.affiliationIds)}::uuid[]) with ordinality
       as "requested"("value", "ordinality")
   ), "valid_order" as (
     select "authorized_wedding"."wedding_id"
@@ -741,7 +741,7 @@ export function buildReorderGuestAffiliationsQuery(input: {
       and not exists (
         select 1 from ${guestAffiliations}
         where ${guestAffiliations.weddingId} = "authorized_wedding"."wedding_id"
-          and not (${guestAffiliations.id} = any(${input.affiliationIds}::uuid[]))
+          and not (${guestAffiliations.id} = any(${sql.param(input.affiliationIds)}::uuid[]))
       )
   ), "updated_affiliations" as (
     update ${guestAffiliations}
