@@ -31,6 +31,10 @@ import {
   PlanningWorkspace,
   type PlanningWorkspaceApi,
 } from "./planning/planning-workspace";
+import {
+  OperationsWorkspace,
+  type OperationsWorkspaceApi,
+} from "./operations/operations-workspace";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -39,7 +43,10 @@ import { Label } from "./ui/label";
 import { Select } from "./ui/select";
 
 export interface CoupleWorkspaceApi
-  extends GuestWorkspaceApi, Partial<PlanningWorkspaceApi> {
+  extends
+    GuestWorkspaceApi,
+    Partial<PlanningWorkspaceApi>,
+    Partial<Omit<OperationsWorkspaceApi, "listGuests">> {
   listWeddings(cursor?: string): Promise<Page<WeddingSummary>>;
   createWedding(input: CreateWeddingInput): Promise<WeddingSummary>;
   listGuestAffiliations(weddingId: string): Promise<GuestAffiliation[]>;
@@ -644,6 +651,13 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
                     api={api}
                   />
                 ) : null}
+                {hasOperationsApi(api) ? (
+                  <OperationsWorkspace
+                    key={`operations:${selected.id}`}
+                    wedding={selected}
+                    api={api}
+                  />
+                ) : null}
                 <WeddingWorkspace
                   api={api}
                   wedding={selected}
@@ -697,6 +711,32 @@ function hasPlanningApi(
     api.createPlanningTask &&
     api.updatePlanningTask &&
     api.deletePlanningTask,
+  );
+}
+
+function hasOperationsApi(
+  api: CoupleWorkspaceApi,
+): api is CoupleWorkspaceApi & OperationsWorkspaceApi {
+  return Boolean(
+    api.getBudgetOverview &&
+    api.setBudget &&
+    api.listBudgetCategories &&
+    api.saveBudgetCategory &&
+    api.deleteBudgetCategory &&
+    api.listVendors &&
+    api.saveVendor &&
+    api.deleteVendor &&
+    api.listExpenses &&
+    api.saveExpense &&
+    api.deleteExpense &&
+    api.listRunSheet &&
+    api.saveRunSheetItem &&
+    api.deleteRunSheetItem &&
+    api.listSeatingTables &&
+    api.saveSeatingTable &&
+    api.deleteSeatingTable &&
+    api.listSeatingAssignments &&
+    api.assignSeating,
   );
 }
 

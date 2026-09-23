@@ -131,6 +131,7 @@ export async function runApiServer(): Promise<Bun.Server<undefined>> {
           postgres.guestImportRepository,
           postgres.envelopeRepository,
           postgres.planningRepository,
+          postgres.operationsRepository,
         ),
       ),
   }).compile();

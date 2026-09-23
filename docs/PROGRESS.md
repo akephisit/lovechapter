@@ -226,9 +226,28 @@ counts the full wedding's tasks and shows eight nearest unfinished deadlines.
 No task or category is prescribed. A new migration supplies the composite
 wedding key and list/deadline indexes. API and UI use existing membership and
 same-origin authentication. PostgreSQL integration covers tenant isolation,
-page cursors, progress, and date-only values; full CI must verify the migration
-before this branch is merged. The day-of run sheet is distinct from preparation
-deadlines and has not been implemented in this slice.
+page cursors, progress, and date-only values. GitHub Actions run
+`35881797651` passed 62 files / 411 tests and PostgreSQL 5 files / 24
+tests, plus the Bun, Next/vinext, and deployment dry-run checks. The day-of run
+sheet was added in the subsequent wedding operations slice.
+
+The wedding operations follow-up adds wedding-scoped budget configuration,
+custom categories, expenses and payments, vendor contacts and quotes, a
+private run sheet, and tables with whole-party guest assignments. Amounts use
+integer currency minor units, optional costs link categories/vendors, and
+paid amounts cannot exceed planned amounts. Tables reserve the guest's
+allowed party size; concurrent assignment locks the guest and table, and
+changes to an already seated party size are rejected until unassigned.
+Members can add, edit, list, and delete these records in the couple workspace.
+Provider-free tests, migration validation, and disposable PostgreSQL
+concurrency checks are part of this branch. The PostgreSQL suite and full
+build gate must pass in GitHub Actions before this slice is called complete.
+
+On 2026-09-23 local formatting, lint, workspace typechecks, 66 test files /
+429 tests, Drizzle migration snapshot check, native Next production build,
+and `git diff --check` passed. The PostgreSQL concurrency suite and Bun/vinext
+build gate run on the pull request CI service because this workstation has no
+PostgreSQL server or Bun runtime.
 
 ## External gates
 

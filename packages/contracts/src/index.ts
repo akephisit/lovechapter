@@ -81,6 +81,58 @@ export type PlanningOverview = {
   upcoming: PlanningTask[];
 };
 
+export type Budget = { currency: string; targetMinor: number | null };
+export type BudgetCategory = { id: string; name: string };
+export type BudgetCategoryInput = { name: string };
+export type VendorStatus = "researching" | "contacted" | "booked" | "cancelled";
+export type VendorInput = {
+  name: string;
+  status: VendorStatus;
+  contactName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  quoteMinor?: number | null;
+  note?: string | null;
+};
+export type Vendor = { id: string } & Required<VendorInput>;
+export type ExpenseInput = {
+  title: string;
+  plannedMinor: number;
+  paidMinor: number;
+  categoryId?: string | null;
+  vendorId?: string | null;
+  dueDate?: string | null;
+  note?: string | null;
+};
+export type Expense = { id: string } & Required<ExpenseInput>;
+export type BudgetOverview = {
+  budget: Budget | null;
+  plannedMinor: number;
+  paidMinor: number;
+  remainingMinor: number;
+};
+export type RunSheetItemInput = {
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  location?: string | null;
+  responsible?: string | null;
+  note?: string | null;
+};
+export type RunSheetItem = { id: string } & Required<RunSheetItemInput>;
+export type SeatingTableInput = { name: string; capacity: number };
+export type SeatingTable = SeatingTableInput & { id: string; reserved: number };
+export type SeatingAssignment = {
+  guestId: string;
+  guestName: string;
+  partySize: number;
+  tableId: string;
+};
+export type SeatingPlan = {
+  tables: SeatingTable[];
+  assignments: SeatingAssignment[];
+};
+
 export type GuestAffiliation = {
   id: string;
   name: string;

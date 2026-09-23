@@ -41,6 +41,19 @@ import type {
   PlanningTaskFilter,
   CreatePlanningTaskInput,
   UpdatePlanningTaskInput,
+  Budget,
+  BudgetCategory,
+  BudgetCategoryInput,
+  BudgetOverview,
+  Expense,
+  ExpenseInput,
+  Vendor,
+  VendorInput,
+  RunSheetItem,
+  RunSheetItemInput,
+  SeatingTable,
+  SeatingTableInput,
+  SeatingAssignment,
 } from "@lovechapter/contracts";
 
 export class ApiError extends Error {
@@ -193,6 +206,110 @@ export function createLoveChapterApi(
           method: "DELETE",
           body: "{}",
         },
+      ),
+    getBudgetOverview: (weddingId: string) =>
+      request<BudgetOverview>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/budget`,
+      ),
+    setBudget: (weddingId: string, input: Budget) =>
+      request<Budget>(`/v1/weddings/${encodeURIComponent(weddingId)}/budget`, {
+        method: "PUT",
+        body: JSON.stringify(input),
+      }),
+    listBudgetCategories: (weddingId: string) =>
+      request<BudgetCategory[]>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/budget/categories`,
+      ),
+    saveBudgetCategory: (
+      weddingId: string,
+      id: string | null,
+      input: BudgetCategoryInput,
+    ) =>
+      request<BudgetCategory>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/budget/categories${id ? `/${encodeURIComponent(id)}` : ""}`,
+        { method: id ? "PUT" : "POST", body: JSON.stringify(input) },
+      ),
+    deleteBudgetCategory: (weddingId: string, id: string) =>
+      request<void>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/budget/categories/${encodeURIComponent(id)}`,
+        { method: "DELETE", body: "{}" },
+      ),
+    listVendors: (weddingId: string, cursor?: string) =>
+      request<Page<Vendor>>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/vendors?${pageQuery(cursor)}`,
+      ),
+    saveVendor: (weddingId: string, id: string | null, input: VendorInput) =>
+      request<Vendor>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/vendors${id ? `/${encodeURIComponent(id)}` : ""}`,
+        { method: id ? "PUT" : "POST", body: JSON.stringify(input) },
+      ),
+    deleteVendor: (weddingId: string, id: string) =>
+      request<void>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/vendors/${encodeURIComponent(id)}`,
+        { method: "DELETE", body: "{}" },
+      ),
+    listExpenses: (weddingId: string, cursor?: string) =>
+      request<Page<Expense>>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/expenses?${pageQuery(cursor)}`,
+      ),
+    saveExpense: (weddingId: string, id: string | null, input: ExpenseInput) =>
+      request<Expense>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/expenses${id ? `/${encodeURIComponent(id)}` : ""}`,
+        { method: id ? "PUT" : "POST", body: JSON.stringify(input) },
+      ),
+    deleteExpense: (weddingId: string, id: string) =>
+      request<void>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/expenses/${encodeURIComponent(id)}`,
+        { method: "DELETE", body: "{}" },
+      ),
+    listRunSheet: (weddingId: string, cursor?: string) =>
+      request<Page<RunSheetItem>>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/run-sheet?${pageQuery(cursor)}`,
+      ),
+    saveRunSheetItem: (
+      weddingId: string,
+      id: string | null,
+      input: RunSheetItemInput,
+    ) =>
+      request<RunSheetItem>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/run-sheet${id ? `/${encodeURIComponent(id)}` : ""}`,
+        { method: id ? "PUT" : "POST", body: JSON.stringify(input) },
+      ),
+    deleteRunSheetItem: (weddingId: string, id: string) =>
+      request<void>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/run-sheet/${encodeURIComponent(id)}`,
+        { method: "DELETE", body: "{}" },
+      ),
+    listSeatingTables: (weddingId: string) =>
+      request<SeatingTable[]>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/seating/tables`,
+      ),
+    saveSeatingTable: (
+      weddingId: string,
+      id: string | null,
+      input: SeatingTableInput,
+    ) =>
+      request<SeatingTable>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/seating/tables${id ? `/${encodeURIComponent(id)}` : ""}`,
+        { method: id ? "PUT" : "POST", body: JSON.stringify(input) },
+      ),
+    deleteSeatingTable: (weddingId: string, id: string) =>
+      request<void>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/seating/tables/${encodeURIComponent(id)}`,
+        { method: "DELETE", body: "{}" },
+      ),
+    listSeatingAssignments: (weddingId: string, tableId: string) =>
+      request<SeatingAssignment[]>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/seating/tables/${encodeURIComponent(tableId)}/assignments`,
+      ),
+    assignSeating: (
+      weddingId: string,
+      guestId: string,
+      tableId: string | null,
+    ) =>
+      request<void>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/seating/guests/${encodeURIComponent(guestId)}`,
+        { method: "PUT", body: JSON.stringify({ tableId }) },
       ),
     listGuestAffiliations: (weddingId: string) =>
       request<GuestAffiliation[]>(

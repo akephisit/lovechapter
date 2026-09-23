@@ -225,6 +225,107 @@ const planningTaskQuery = t.Object(
   },
   { additionalProperties: false },
 );
+const operationsPageQuery = t.Object(
+  {
+    limit: t.Optional(t.Numeric({ minimum: 1, maximum: 50 })),
+    cursor: t.Optional(t.String({ minLength: 1, maxLength: 256 })),
+  },
+  { additionalProperties: false },
+);
+const amount = t.Integer({ minimum: 0, maximum: 1_000_000_000_000 });
+const nullable = <
+  T extends ReturnType<typeof t.String> | ReturnType<typeof t.Integer>,
+>(
+  field: T,
+) => t.Optional(t.Union([field, t.Null()]));
+const operationDate = t.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" });
+const utcInstant = t.String({
+  pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+});
+const budgetInput = t.Object(
+  {
+    currency: t.String({ pattern: "^[A-Za-z]{3}$" }),
+    targetMinor: nullable(amount),
+  },
+  { additionalProperties: false },
+);
+const categoryInput = t.Object(
+  { name: t.String({ minLength: 1, maxLength: 80 }) },
+  { additionalProperties: false },
+);
+const vendorInput = t.Object(
+  {
+    name: t.String({ minLength: 1, maxLength: 180 }),
+    status: t.Union([
+      t.Literal("researching"),
+      t.Literal("contacted"),
+      t.Literal("booked"),
+      t.Literal("cancelled"),
+    ]),
+    contactName: nullable(t.String({ maxLength: 120 })),
+    email: nullable(t.String({ maxLength: 320 })),
+    phone: nullable(t.String({ maxLength: 40 })),
+    quoteMinor: nullable(amount),
+    note: nullable(t.String({ maxLength: 2000 })),
+  },
+  { additionalProperties: false },
+);
+const expenseInput = t.Object(
+  {
+    title: t.String({ minLength: 1, maxLength: 180 }),
+    plannedMinor: amount,
+    paidMinor: amount,
+    categoryId: nullable(t.String({ format: "uuid" })),
+    vendorId: nullable(t.String({ format: "uuid" })),
+    dueDate: nullable(operationDate),
+    note: nullable(t.String({ maxLength: 2000 })),
+  },
+  { additionalProperties: false },
+);
+const runSheetInput = t.Object(
+  {
+    title: t.String({ minLength: 1, maxLength: 180 }),
+    startsAt: utcInstant,
+    endsAt: utcInstant,
+    location: nullable(t.String({ maxLength: 180 })),
+    responsible: nullable(t.String({ maxLength: 120 })),
+    note: nullable(t.String({ maxLength: 2000 })),
+  },
+  { additionalProperties: false },
+);
+const tableInput = t.Object(
+  {
+    name: t.String({ minLength: 1, maxLength: 80 }),
+    capacity: t.Integer({ minimum: 1, maximum: 100 }),
+  },
+  { additionalProperties: false },
+);
+const assignmentInput = t.Object(
+  {
+    tableId: t.Union([t.String({ format: "uuid" }), t.Null()]),
+  },
+  { additionalProperties: false },
+);
+const categoryParams = t.Object({
+  weddingId: t.String({ format: "uuid" }),
+  categoryId: t.String({ format: "uuid" }),
+});
+const vendorParams = t.Object({
+  weddingId: t.String({ format: "uuid" }),
+  vendorId: t.String({ format: "uuid" }),
+});
+const expenseParams = t.Object({
+  weddingId: t.String({ format: "uuid" }),
+  expenseId: t.String({ format: "uuid" }),
+});
+const runSheetParams = t.Object({
+  weddingId: t.String({ format: "uuid" }),
+  itemId: t.String({ format: "uuid" }),
+});
+const seatingTableParams = t.Object({
+  weddingId: t.String({ format: "uuid" }),
+  tableId: t.String({ format: "uuid" }),
+});
 const postalAddressInput = t.Object(
   {
     addressLine1: t.String({ minLength: 1, maxLength: 180 }),
@@ -583,6 +684,237 @@ export function createApiApp(dependencies: ApiDependencies) {
       async ({ params, request }) => {
         await dependencies.run(request, (service) =>
           service.deletePlanningTask(params.weddingId, params.taskId),
+        );
+        return status(204);
+      },
+    )
+    .get(
+      "/v1/weddings/:weddingId/budget",
+      { params: idParams },
+      ({ params, request }) =>
+        dependencies.run(request, (service) =>
+          service.getBudgetOverview(params.weddingId),
+        ),
+    )
+    .put(
+      "/v1/weddings/:weddingId/budget",
+      { params: idParams, body: budgetInput },
+      ({ params, body, request }) =>
+        dependencies.run(request, (service) =>
+          service.setBudget(params.weddingId, {
+            currency: body.currency,
+            targetMinor: body.targetMinor ?? null,
+          }),
+        ),
+    )
+    .get(
+      "/v1/weddings/:weddingId/budget/categories",
+      { params: idParams },
+      ({ params, request }) =>
+        dependencies.run(request, (service) =>
+          service.listBudgetCategories(params.weddingId),
+        ),
+    )
+    .post(
+      "/v1/weddings/:weddingId/budget/categories",
+      { params: idParams, body: categoryInput },
+      async ({ params, body, request }) =>
+        status(
+          201,
+          await dependencies.run(request, (service) =>
+            service.saveBudgetCategory(params.weddingId, null, body),
+          ),
+        ),
+    )
+    .put(
+      "/v1/weddings/:weddingId/budget/categories/:categoryId",
+      { params: categoryParams, body: categoryInput },
+      ({ params, body, request }) =>
+        dependencies.run(request, (service) =>
+          service.saveBudgetCategory(params.weddingId, params.categoryId, body),
+        ),
+    )
+    .delete(
+      "/v1/weddings/:weddingId/budget/categories/:categoryId",
+      { params: categoryParams },
+      async ({ params, request }) => {
+        await dependencies.run(request, (service) =>
+          service.deleteBudgetCategory(params.weddingId, params.categoryId),
+        );
+        return status(204);
+      },
+    )
+    .get(
+      "/v1/weddings/:weddingId/vendors",
+      { params: idParams, query: operationsPageQuery },
+      ({ params, query, request }) =>
+        dependencies.run(request, (service) =>
+          service.listVendors(params.weddingId, {
+            limit: query.limit ?? 20,
+            ...(query.cursor ? { cursor: query.cursor } : {}),
+          }),
+        ),
+    )
+    .post(
+      "/v1/weddings/:weddingId/vendors",
+      { params: idParams, body: vendorInput },
+      async ({ params, body, request }) =>
+        status(
+          201,
+          await dependencies.run(request, (service) =>
+            service.saveVendor(params.weddingId, null, body),
+          ),
+        ),
+    )
+    .put(
+      "/v1/weddings/:weddingId/vendors/:vendorId",
+      { params: vendorParams, body: vendorInput },
+      ({ params, body, request }) =>
+        dependencies.run(request, (service) =>
+          service.saveVendor(params.weddingId, params.vendorId, body),
+        ),
+    )
+    .delete(
+      "/v1/weddings/:weddingId/vendors/:vendorId",
+      { params: vendorParams },
+      async ({ params, request }) => {
+        await dependencies.run(request, (service) =>
+          service.deleteVendor(params.weddingId, params.vendorId),
+        );
+        return status(204);
+      },
+    )
+    .get(
+      "/v1/weddings/:weddingId/expenses",
+      { params: idParams, query: operationsPageQuery },
+      ({ params, query, request }) =>
+        dependencies.run(request, (service) =>
+          service.listExpenses(params.weddingId, {
+            limit: query.limit ?? 20,
+            ...(query.cursor ? { cursor: query.cursor } : {}),
+          }),
+        ),
+    )
+    .post(
+      "/v1/weddings/:weddingId/expenses",
+      { params: idParams, body: expenseInput },
+      async ({ params, body, request }) =>
+        status(
+          201,
+          await dependencies.run(request, (service) =>
+            service.saveExpense(params.weddingId, null, body),
+          ),
+        ),
+    )
+    .put(
+      "/v1/weddings/:weddingId/expenses/:expenseId",
+      { params: expenseParams, body: expenseInput },
+      ({ params, body, request }) =>
+        dependencies.run(request, (service) =>
+          service.saveExpense(params.weddingId, params.expenseId, body),
+        ),
+    )
+    .delete(
+      "/v1/weddings/:weddingId/expenses/:expenseId",
+      { params: expenseParams },
+      async ({ params, request }) => {
+        await dependencies.run(request, (service) =>
+          service.deleteExpense(params.weddingId, params.expenseId),
+        );
+        return status(204);
+      },
+    )
+    .get(
+      "/v1/weddings/:weddingId/run-sheet",
+      { params: idParams, query: operationsPageQuery },
+      ({ params, query, request }) =>
+        dependencies.run(request, (service) =>
+          service.listRunSheet(params.weddingId, {
+            limit: query.limit ?? 20,
+            ...(query.cursor ? { cursor: query.cursor } : {}),
+          }),
+        ),
+    )
+    .post(
+      "/v1/weddings/:weddingId/run-sheet",
+      { params: idParams, body: runSheetInput },
+      async ({ params, body, request }) =>
+        status(
+          201,
+          await dependencies.run(request, (service) =>
+            service.saveRunSheetItem(params.weddingId, null, body),
+          ),
+        ),
+    )
+    .put(
+      "/v1/weddings/:weddingId/run-sheet/:itemId",
+      { params: runSheetParams, body: runSheetInput },
+      ({ params, body, request }) =>
+        dependencies.run(request, (service) =>
+          service.saveRunSheetItem(params.weddingId, params.itemId, body),
+        ),
+    )
+    .delete(
+      "/v1/weddings/:weddingId/run-sheet/:itemId",
+      { params: runSheetParams },
+      async ({ params, request }) => {
+        await dependencies.run(request, (service) =>
+          service.deleteRunSheetItem(params.weddingId, params.itemId),
+        );
+        return status(204);
+      },
+    )
+    .get(
+      "/v1/weddings/:weddingId/seating/tables",
+      { params: idParams },
+      ({ params, request }) =>
+        dependencies.run(request, (service) =>
+          service.listSeatingTables(params.weddingId),
+        ),
+    )
+    .post(
+      "/v1/weddings/:weddingId/seating/tables",
+      { params: idParams, body: tableInput },
+      async ({ params, body, request }) =>
+        status(
+          201,
+          await dependencies.run(request, (service) =>
+            service.saveSeatingTable(params.weddingId, null, body),
+          ),
+        ),
+    )
+    .put(
+      "/v1/weddings/:weddingId/seating/tables/:tableId",
+      { params: seatingTableParams, body: tableInput },
+      ({ params, body, request }) =>
+        dependencies.run(request, (service) =>
+          service.saveSeatingTable(params.weddingId, params.tableId, body),
+        ),
+    )
+    .delete(
+      "/v1/weddings/:weddingId/seating/tables/:tableId",
+      { params: seatingTableParams },
+      async ({ params, request }) => {
+        await dependencies.run(request, (service) =>
+          service.deleteSeatingTable(params.weddingId, params.tableId),
+        );
+        return status(204);
+      },
+    )
+    .get(
+      "/v1/weddings/:weddingId/seating/tables/:tableId/assignments",
+      { params: seatingTableParams },
+      ({ params, request }) =>
+        dependencies.run(request, (service) =>
+          service.listSeatingAssignments(params.weddingId, params.tableId),
+        ),
+    )
+    .put(
+      "/v1/weddings/:weddingId/seating/guests/:guestId",
+      { params: guestParams, body: assignmentInput },
+      async ({ params, body, request }) => {
+        await dependencies.run(request, (service) =>
+          service.assignSeating(params.weddingId, params.guestId, body.tableId),
         );
         return status(204);
       },

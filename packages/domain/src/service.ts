@@ -33,6 +33,19 @@ import type {
   PlanningTask,
   PlanningTaskFilter,
   PlanningOverview,
+  Budget,
+  BudgetCategory,
+  BudgetCategoryInput,
+  BudgetOverview,
+  Vendor,
+  VendorInput,
+  Expense,
+  ExpenseInput,
+  RunSheetItem,
+  RunSheetItemInput,
+  SeatingTable,
+  SeatingTableInput,
+  SeatingAssignment,
 } from "@lovechapter/contracts";
 
 import { decodeCursor } from "./cursor";
@@ -74,6 +87,15 @@ import {
   normalizePlanningTaskPatch,
 } from "./planning";
 import type { PlanningRepository } from "./ports";
+import type { WeddingOperationsRepository } from "./ports";
+import {
+  normalizeBudget,
+  normalizeBudgetCategory,
+  normalizeExpense,
+  normalizeRunSheetItem,
+  normalizeSeatingTable,
+  normalizeVendor,
+} from "./wedding-operations";
 
 export class LoveChapterService {
   private readonly publicWebOrigin: string;
@@ -94,8 +116,206 @@ export class LoveChapterService {
     >,
     private readonly envelopeRepository?: EnvelopeRepository,
     private readonly planningRepository?: PlanningRepository,
+    private readonly operationsRepository?: WeddingOperationsRepository,
   ) {
     this.publicWebOrigin = publicWebOrigin.replace(/\/$/, "");
+  }
+
+  private operations(): WeddingOperationsRepository {
+    if (!this.operationsRepository)
+      throw new Error("Wedding operations repository is not configured");
+    return this.operationsRepository;
+  }
+
+  private async operationsUser(): Promise<string> {
+    return (await this.requireOnboardedUser()).id;
+  }
+
+  private operationId(id: string): string {
+    if (!isUuid(id)) throw new DomainValidationError("Invalid record ID");
+    return id;
+  }
+
+  private operationPage(page: PageInput): RepositoryPageInput {
+    if (!Number.isInteger(page.limit) || page.limit < 1 || page.limit > 50)
+      throw new DomainValidationError("Page must have 1–50 items");
+    return normalizePage(page);
+  }
+
+  async getBudgetOverview(weddingId: string): Promise<BudgetOverview> {
+    const userId = await this.operationsUser();
+    return this.operations().getBudgetOverview(userId, weddingId);
+  }
+  async setBudget(weddingId: string, input: Budget): Promise<Budget> {
+    return this.operations().setBudget(
+      await this.operationsUser(),
+      weddingId,
+      normalizeBudget(input),
+    );
+  }
+  async listBudgetCategories(weddingId: string): Promise<BudgetCategory[]> {
+    return this.operations().listBudgetCategories(
+      await this.operationsUser(),
+      weddingId,
+    );
+  }
+  async saveBudgetCategory(
+    weddingId: string,
+    id: string | null,
+    input: BudgetCategoryInput,
+  ): Promise<BudgetCategory> {
+    return this.operations().saveBudgetCategory(
+      await this.operationsUser(),
+      weddingId,
+      id ? this.operationId(id) : crypto.randomUUID(),
+      normalizeBudgetCategory(input),
+      !id,
+    );
+  }
+  async deleteBudgetCategory(weddingId: string, id: string): Promise<void> {
+    return this.operations().deleteBudgetCategory(
+      await this.operationsUser(),
+      weddingId,
+      this.operationId(id),
+    );
+  }
+  async listVendors(weddingId: string, page: PageInput): Promise<Page<Vendor>> {
+    return this.operations().listVendors(
+      await this.operationsUser(),
+      weddingId,
+      this.operationPage(page),
+    );
+  }
+  async saveVendor(
+    weddingId: string,
+    id: string | null,
+    input: VendorInput,
+  ): Promise<Vendor> {
+    return this.operations().saveVendor(
+      await this.operationsUser(),
+      weddingId,
+      id ? this.operationId(id) : crypto.randomUUID(),
+      normalizeVendor(input),
+      !id,
+    );
+  }
+  async deleteVendor(weddingId: string, id: string): Promise<void> {
+    return this.operations().deleteVendor(
+      await this.operationsUser(),
+      weddingId,
+      this.operationId(id),
+    );
+  }
+  async listExpenses(
+    weddingId: string,
+    page: PageInput,
+  ): Promise<Page<Expense>> {
+    return this.operations().listExpenses(
+      await this.operationsUser(),
+      weddingId,
+      this.operationPage(page),
+    );
+  }
+  async saveExpense(
+    weddingId: string,
+    id: string | null,
+    input: ExpenseInput,
+  ): Promise<Expense> {
+    const normalized = normalizeExpense(input);
+    for (const foreignId of [normalized.categoryId, normalized.vendorId])
+      if (foreignId) this.operationId(foreignId);
+    return this.operations().saveExpense(
+      await this.operationsUser(),
+      weddingId,
+      id ? this.operationId(id) : crypto.randomUUID(),
+      normalized,
+      !id,
+    );
+  }
+  async deleteExpense(weddingId: string, id: string): Promise<void> {
+    return this.operations().deleteExpense(
+      await this.operationsUser(),
+      weddingId,
+      this.operationId(id),
+    );
+  }
+  async listRunSheet(
+    weddingId: string,
+    page: PageInput,
+  ): Promise<Page<RunSheetItem>> {
+    return this.operations().listRunSheet(
+      await this.operationsUser(),
+      weddingId,
+      this.operationPage(page),
+    );
+  }
+  async saveRunSheetItem(
+    weddingId: string,
+    id: string | null,
+    input: RunSheetItemInput,
+  ): Promise<RunSheetItem> {
+    return this.operations().saveRunSheetItem(
+      await this.operationsUser(),
+      weddingId,
+      id ? this.operationId(id) : crypto.randomUUID(),
+      normalizeRunSheetItem(input),
+      !id,
+    );
+  }
+  async deleteRunSheetItem(weddingId: string, id: string): Promise<void> {
+    return this.operations().deleteRunSheetItem(
+      await this.operationsUser(),
+      weddingId,
+      this.operationId(id),
+    );
+  }
+  async listSeatingTables(weddingId: string): Promise<SeatingTable[]> {
+    return this.operations().listSeatingTables(
+      await this.operationsUser(),
+      weddingId,
+    );
+  }
+  async saveSeatingTable(
+    weddingId: string,
+    id: string | null,
+    input: SeatingTableInput,
+  ): Promise<SeatingTable> {
+    return this.operations().saveSeatingTable(
+      await this.operationsUser(),
+      weddingId,
+      id ? this.operationId(id) : crypto.randomUUID(),
+      normalizeSeatingTable(input),
+      !id,
+    );
+  }
+  async deleteSeatingTable(weddingId: string, id: string): Promise<void> {
+    return this.operations().deleteSeatingTable(
+      await this.operationsUser(),
+      weddingId,
+      this.operationId(id),
+    );
+  }
+  async listSeatingAssignments(
+    weddingId: string,
+    tableId: string,
+  ): Promise<SeatingAssignment[]> {
+    return this.operations().listSeatingAssignments(
+      await this.operationsUser(),
+      weddingId,
+      this.operationId(tableId),
+    );
+  }
+  async assignSeating(
+    weddingId: string,
+    guestId: string,
+    tableId: string | null,
+  ): Promise<void> {
+    return this.operations().assignSeating(
+      await this.operationsUser(),
+      weddingId,
+      this.operationId(guestId),
+      tableId ? this.operationId(tableId) : null,
+    );
   }
 
   async getMe(): Promise<AuthenticatedUser> {

@@ -35,6 +35,8 @@ import type { SQL } from "drizzle-orm";
 
 import {
   buildArchiveGuestQuery,
+  buildAssignedGuestQuery,
+  buildLockGuestForSeatingQuery,
   buildBulkArchiveGuestsQuery,
   buildBulkSetGuestAffiliationQuery,
   buildCreateGuestAffiliationQuery,
@@ -422,10 +424,38 @@ export class PostgresLoveChapterRepository implements LoveChapterRepository {
     patch: NormalizedGuestUpdate,
   ): Promise<GuestDetail> {
     return this.executor.transaction(async (transaction) => {
+      if (patch.allowedPartySize !== undefined) {
+        // Read assignment state in a fresh statement after acquiring the guest
+        // lock. A single UPDATE could see an old snapshot after waiting.
+        const locked = await transaction.execute<{
+          allowed_party_size: number;
+        }>(buildLockGuestForSeatingQuery({ userId, weddingId, guestId }));
+        if (!locked.rows[0]) throw new NotFoundError("Guest not found");
+        if (locked.rows[0].allowed_party_size !== patch.allowedPartySize) {
+          const assigned = await transaction.execute<{ id: string }>(
+            buildAssignedGuestQuery({ userId, weddingId, guestId }),
+          );
+          if (assigned.rows[0])
+            throw new ConflictError(
+              "Unassign this guest from their table before changing party size",
+            );
+        }
+      }
       const result = await transaction.execute<{ id: string }>(
         buildUpdateGuestQuery({ userId, weddingId, guestId, patch }),
       );
-      if (!result.rows[0]) throw new NotFoundError("Guest not found");
+      if (!result.rows[0]) {
+        if (patch.allowedPartySize !== undefined) {
+          const assigned = await transaction.execute<{ id: string }>(
+            buildAssignedGuestQuery({ userId, weddingId, guestId }),
+          );
+          if (assigned.rows[0])
+            throw new ConflictError(
+              "Unassign this guest from their table before changing party size",
+            );
+        }
+        throw new NotFoundError("Guest not found");
+      }
       if (patch.postalAddress !== undefined) {
         await transaction.execute(
           patch.postalAddress

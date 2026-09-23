@@ -9,6 +9,7 @@ import {
   type IdentityProvider,
   LoveChapterService,
   type Principal,
+  type WeddingOperationsRepository,
 } from "@lovechapter/domain";
 import {
   InMemoryGuestImportRepository,
@@ -32,6 +33,128 @@ const fingerprintKey = new Uint8Array(32).fill(7);
 const password = "correct horse battery staple";
 
 describe("LoveChapter API", () => {
+  it("passes authenticated budget, vendor, schedule, and seating writes through the service", async () => {
+    const operations = {
+      setBudget: vi.fn(
+        async (_userId: string, _weddingId: string, input: unknown) => input,
+      ),
+      saveVendor: vi.fn(
+        async (
+          _userId: string,
+          _weddingId: string,
+          id: string,
+          input: unknown,
+        ) => ({ id, ...(input as object) }),
+      ),
+      saveRunSheetItem: vi.fn(
+        async (
+          _userId: string,
+          _weddingId: string,
+          id: string,
+          input: unknown,
+        ) => ({ id, ...(input as object) }),
+      ),
+      saveSeatingTable: vi.fn(
+        async (
+          _userId: string,
+          _weddingId: string,
+          id: string,
+          input: unknown,
+        ) => ({ id, ...(input as object), reserved: 0 }),
+      ),
+      assignSeating: vi.fn(async () => {}),
+    } as unknown as WeddingOperationsRepository;
+    const fixture = testFixture({
+      principal: couple("operations-owner"),
+      operationsRepository: operations,
+    });
+    const createdWedding = await fixture.app.handle(
+      jsonRequest("/v1/weddings", "POST", {
+        name: "Event",
+        timeZone: "UTC",
+        locale: "en",
+      }),
+    );
+    const weddingId = ((await createdWedding.json()) as { id: string }).id;
+    const budget = await fixture.app.handle(
+      jsonRequest(`/v1/weddings/${weddingId}/budget`, "PUT", {
+        currency: "thb",
+        targetMinor: 100000,
+      }),
+    );
+    expect(budget.status).toBe(200);
+    expect(await budget.json()).toMatchObject({
+      currency: "THB",
+      targetMinor: 100000,
+    });
+    const vendor = await fixture.app.handle(
+      jsonRequest(`/v1/weddings/${weddingId}/vendors`, "POST", {
+        name: "Studio",
+        status: "booked",
+        quoteMinor: 1200,
+      }),
+    );
+    expect(vendor.status).toBe(201);
+    const schedule = await fixture.app.handle(
+      jsonRequest(`/v1/weddings/${weddingId}/run-sheet`, "POST", {
+        title: "Ceremony",
+        startsAt: "2026-12-19T02:00:00Z",
+        endsAt: "2026-12-19T03:00:00Z",
+      }),
+    );
+    expect(schedule.status).toBe(201);
+    expect(await schedule.json()).toMatchObject({
+      startsAt: "2026-12-19T02:00:00.000Z",
+    });
+    const table = await fixture.app.handle(
+      jsonRequest(`/v1/weddings/${weddingId}/seating/tables`, "POST", {
+        name: "A",
+        capacity: 8,
+      }),
+    );
+    expect(table.status).toBe(201);
+    const assignment = await fixture.app.handle(
+      jsonRequest(
+        `/v1/weddings/${weddingId}/seating/guests/${crypto.randomUUID()}`,
+        "PUT",
+        { tableId: null },
+      ),
+    );
+    expect(assignment.status).toBe(204);
+    expect(vi.mocked(operations.assignSeating)).toHaveBeenCalledWith(
+      expect.any(String),
+      weddingId,
+      expect.any(String),
+      null,
+    );
+  });
+  it("validates wedding operations bodies and requires an authenticated member", async () => {
+    const fixture = testFixture();
+    const weddingId = crypto.randomUUID();
+    for (const [path, body] of [
+      ["budget", { currency: "USD", targetMinor: -1 }],
+      ["vendors", { name: "Supplier", status: "unknown" }],
+      ["expenses", { title: "Venue", plannedMinor: -1, paidMinor: 0 }],
+      [
+        "run-sheet",
+        { title: "Ceremony", startsAt: "tomorrow", endsAt: "later" },
+      ],
+      ["seating/tables", { name: "A", capacity: 0 }],
+    ] as const) {
+      const response = await fixture.app.handle(
+        jsonRequest(
+          `/v1/weddings/${weddingId}/${path}`,
+          path === "budget" ? "PUT" : "POST",
+          body,
+        ),
+      );
+      expect(response.status).toBe(400);
+    }
+    const protectedResponse = await fixture.app.handle(
+      trustedRequest(`/v1/weddings/${weddingId}/budget`),
+    );
+    expect(protectedResponse.status).toBe(401);
+  });
   it("creates, lists, completes and removes a planning task within its wedding", async () => {
     const fixture = testFixture({ principal: couple("planning-owner") });
     const createWedding = async (name: string) => {
@@ -971,6 +1094,7 @@ function testFixture(
   options: {
     readiness?: () => Promise<void>;
     principal?: Principal;
+    operationsRepository?: WeddingOperationsRepository;
   } = {},
 ) {
   const authRepository = new InMemoryAuthRepository();
@@ -1021,6 +1145,7 @@ function testFixture(
           guestImportRepository,
           envelopeRepository,
           planningRepository,
+          options.operationsRepository,
         ),
       ),
   }).compile();

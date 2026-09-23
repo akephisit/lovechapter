@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   check,
   date,
@@ -161,6 +162,230 @@ export const planningTasks = pgTable(
       "planning_tasks_title_nonblank",
       sql`length(trim(${table.title})) > 0`,
     ),
+  ],
+);
+
+export const budgetConfigs = pgTable(
+  "budget_configs",
+  {
+    weddingId: uuid("wedding_id")
+      .primaryKey()
+      .references(() => weddings.id, { onDelete: "cascade" }),
+    currency: varchar("currency", { length: 3 }).notNull(),
+    targetMinor: bigint("target_minor", { mode: "number" }),
+  },
+  (table) => [
+    check(
+      "budget_configs_currency_check",
+      sql`${table.currency} ~ '^[A-Z]{3}$'`,
+    ),
+    check(
+      "budget_configs_target_check",
+      sql`${table.targetMinor} between 0 and 1000000000000`,
+    ),
+  ],
+);
+
+export const budgetCategories = pgTable(
+  "budget_categories",
+  {
+    id: uuid("id").notNull(),
+    weddingId: uuid("wedding_id")
+      .notNull()
+      .references(() => weddings.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 80 }).notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    primaryKey({
+      name: "budget_categories_pkey",
+      columns: [table.weddingId, table.id],
+    }),
+    uniqueIndex("budget_categories_name_unique").on(
+      table.weddingId,
+      sql`lower(${table.name})`,
+    ),
+    check(
+      "budget_categories_name_nonblank",
+      sql`length(trim(${table.name})) > 0`,
+    ),
+  ],
+);
+
+export const vendors = pgTable(
+  "vendors",
+  {
+    id: uuid("id").notNull(),
+    weddingId: uuid("wedding_id")
+      .notNull()
+      .references(() => weddings.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 180 }).notNull(),
+    status: varchar("status", { length: 16 }).notNull(),
+    contactName: varchar("contact_name", { length: 120 }),
+    email: varchar("email", { length: 320 }),
+    phone: varchar("phone", { length: 40 }),
+    quoteMinor: bigint("quote_minor", { mode: "number" }),
+    note: varchar("note", { length: 2_000 }),
+    ...timestamps,
+  },
+  (table) => [
+    primaryKey({ name: "vendors_pkey", columns: [table.weddingId, table.id] }),
+    index("vendors_wedding_created_idx").on(
+      table.weddingId,
+      table.createdAt.desc(),
+      table.id.desc(),
+    ),
+    check(
+      "vendors_status_check",
+      sql`${table.status} in ('researching','contacted','booked','cancelled')`,
+    ),
+    check(
+      "vendors_quote_check",
+      sql`${table.quoteMinor} between 0 and 1000000000000`,
+    ),
+    check("vendors_name_nonblank", sql`length(trim(${table.name})) > 0`),
+  ],
+);
+
+export const expenses = pgTable(
+  "expenses",
+  {
+    id: uuid("id").notNull(),
+    weddingId: uuid("wedding_id")
+      .notNull()
+      .references(() => weddings.id, { onDelete: "cascade" }),
+    title: varchar("title", { length: 180 }).notNull(),
+    plannedMinor: bigint("planned_minor", { mode: "number" }).notNull(),
+    paidMinor: bigint("paid_minor", { mode: "number" }).notNull().default(0),
+    categoryId: uuid("category_id"),
+    vendorId: uuid("vendor_id"),
+    dueDate: date("due_date", { mode: "string" }),
+    note: varchar("note", { length: 2_000 }),
+    ...timestamps,
+  },
+  (table) => [
+    primaryKey({ name: "expenses_pkey", columns: [table.weddingId, table.id] }),
+    foreignKey({
+      name: "expenses_category_scope_fk",
+      columns: [table.weddingId, table.categoryId],
+      foreignColumns: [budgetCategories.weddingId, budgetCategories.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "expenses_vendor_scope_fk",
+      columns: [table.weddingId, table.vendorId],
+      foreignColumns: [vendors.weddingId, vendors.id],
+    }).onDelete("restrict"),
+    index("expenses_wedding_created_idx").on(
+      table.weddingId,
+      table.createdAt.desc(),
+      table.id.desc(),
+    ),
+    index("expenses_wedding_category_idx")
+      .on(table.weddingId, table.categoryId)
+      .where(sql`${table.categoryId} is not null`),
+    index("expenses_wedding_vendor_idx")
+      .on(table.weddingId, table.vendorId)
+      .where(sql`${table.vendorId} is not null`),
+    check(
+      "expenses_amounts_check",
+      sql`${table.plannedMinor} between 0 and 1000000000000 and ${table.paidMinor} between 0 and ${table.plannedMinor}`,
+    ),
+    check("expenses_title_nonblank", sql`length(trim(${table.title})) > 0`),
+  ],
+);
+
+export const runSheetItems = pgTable(
+  "run_sheet_items",
+  {
+    id: uuid("id").notNull(),
+    weddingId: uuid("wedding_id")
+      .notNull()
+      .references(() => weddings.id, { onDelete: "cascade" }),
+    title: varchar("title", { length: 180 }).notNull(),
+    startsAt: timestamp("starts_at", {
+      withTimezone: true,
+      mode: "string",
+    }).notNull(),
+    endsAt: timestamp("ends_at", {
+      withTimezone: true,
+      mode: "string",
+    }).notNull(),
+    location: varchar("location", { length: 180 }),
+    responsible: varchar("responsible", { length: 120 }),
+    note: varchar("note", { length: 2_000 }),
+    ...timestamps,
+  },
+  (table) => [
+    primaryKey({
+      name: "run_sheet_items_pkey",
+      columns: [table.weddingId, table.id],
+    }),
+    index("run_sheet_items_wedding_start_idx").on(
+      table.weddingId,
+      table.startsAt,
+      table.id,
+    ),
+    check(
+      "run_sheet_items_time_check",
+      sql`${table.endsAt} > ${table.startsAt}`,
+    ),
+    check(
+      "run_sheet_items_title_nonblank",
+      sql`length(trim(${table.title})) > 0`,
+    ),
+  ],
+);
+
+export const seatingTables = pgTable(
+  "seating_tables",
+  {
+    id: uuid("id").notNull(),
+    weddingId: uuid("wedding_id")
+      .notNull()
+      .references(() => weddings.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 80 }).notNull(),
+    capacity: integer("capacity").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    primaryKey({
+      name: "seating_tables_pkey",
+      columns: [table.weddingId, table.id],
+    }),
+    uniqueIndex("seating_tables_name_unique").on(
+      table.weddingId,
+      sql`lower(${table.name})`,
+    ),
+    check(
+      "seating_tables_capacity_check",
+      sql`${table.capacity} between 1 and 100`,
+    ),
+  ],
+);
+
+export const seatingAssignments = pgTable(
+  "seating_assignments",
+  {
+    weddingId: uuid("wedding_id").notNull(),
+    guestId: uuid("guest_id").notNull(),
+    tableId: uuid("table_id").notNull(),
+  },
+  (table) => [
+    primaryKey({
+      name: "seating_assignments_pkey",
+      columns: [table.weddingId, table.guestId],
+    }),
+    foreignKey({
+      name: "seating_assignments_guest_scope_fk",
+      columns: [table.weddingId, table.guestId],
+      foreignColumns: [guests.weddingId, guests.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "seating_assignments_table_scope_fk",
+      columns: [table.weddingId, table.tableId],
+      foreignColumns: [seatingTables.weddingId, seatingTables.id],
+    }).onDelete("cascade"),
+    index("seating_assignments_table_idx").on(table.weddingId, table.tableId),
   ],
 );
 

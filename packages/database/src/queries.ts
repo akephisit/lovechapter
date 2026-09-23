@@ -12,6 +12,7 @@ import {
   guests,
   invitations,
   rsvps,
+  seatingAssignments,
   users,
   weddingMembers,
   weddings,
@@ -415,6 +416,15 @@ export function buildUpdateGuestQuery(input: {
           where ${guestAffiliations.weddingId} = ${input.weddingId}
             and ${guestAffiliations.id} = ${input.patch.affiliationId}
         )`;
+  const seatingPredicate =
+    input.patch.allowedPartySize === undefined
+      ? sql``
+      : sql`and (
+        ${guests.allowedPartySize} = ${input.patch.allowedPartySize}
+        or not exists (select 1 from ${seatingAssignments}
+          where ${seatingAssignments.weddingId} = ${input.weddingId}
+            and ${seatingAssignments.guestId} = ${input.guestId})
+      )`;
   return sql`update ${guests}
     set ${sql.join(assignments, sql`, `)}
     where ${guests.weddingId} = ${input.weddingId}
@@ -425,7 +435,33 @@ export function buildUpdateGuestQuery(input: {
           and ${weddingMembers.userId} = ${input.userId}
       )
       ${affiliationPredicate}
+      ${seatingPredicate}
     returning ${guests.id} as "id"`;
+}
+
+export function buildAssignedGuestQuery(input: {
+  userId: string;
+  weddingId: string;
+  guestId: string;
+}): SQL {
+  return sql`select ${seatingAssignments.guestId} as "id" from ${seatingAssignments}
+    where ${seatingAssignments.weddingId} = ${input.weddingId}
+      and ${seatingAssignments.guestId} = ${input.guestId}
+      and exists (select 1 from ${weddingMembers} where ${weddingMembers.weddingId} = ${input.weddingId}
+        and ${weddingMembers.userId} = ${input.userId}) limit 1`;
+}
+
+export function buildLockGuestForSeatingQuery(input: {
+  userId: string;
+  weddingId: string;
+  guestId: string;
+}): SQL {
+  return sql`select ${guests.allowedPartySize} as "allowed_party_size" from ${guests}
+    where ${guests.weddingId} = ${input.weddingId}
+      and ${guests.id} = ${input.guestId}
+      and exists (select 1 from ${weddingMembers} where ${weddingMembers.weddingId} = ${input.weddingId}
+        and ${weddingMembers.userId} = ${input.userId})
+    for update`;
 }
 
 export function buildUpsertGuestPostalAddressQuery(input: {

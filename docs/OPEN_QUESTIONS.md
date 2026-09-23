@@ -84,5 +84,9 @@ weaken the approved security gates to answer the remaining questions.
   recovery; couple-initiated link replacement and manual sharing are available
 - Advanced seating UX
 - AI provider/scope
-- Wedding-day run sheet conventions: time slots, venue/time-zone changes,
-  ownership, and whether to expose a public schedule to guests
+- Whether to publish any part of the private day-of run sheet as a separate
+  guest-facing schedule, and who may edit/publish it
+- Whether future seating assigns individual attendees within a guest party
+  instead of the whole invited party to a table
+- Whether budgets later track individual payment transactions, taxes, vendor
+  quote attachments, or multiple currencies with explicit conversion

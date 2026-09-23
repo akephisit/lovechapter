@@ -10,3 +10,4 @@ export * from "./ports";
 export * from "./planning";
 export * from "./rsvp";
 export * from "./service";
+export * from "./wedding-operations";

@@ -15,6 +15,32 @@ afterEach(() => {
 });
 
 describe("LoveChapter API client", () => {
+  it("routes budget, vendor, run sheet, and seating through the same origin", async () => {
+    const clientFetch = vi.fn<typeof fetch>(async (_url, init) =>
+      init?.method === "DELETE" ||
+      (init?.method === "PUT" && String(_url).includes("/seating/guests/"))
+        ? new Response(null, { status: 204 })
+        : jsonResponse({ items: [], nextCursor: null }),
+    );
+    vi.stubGlobal("fetch", clientFetch);
+    const api = createLoveChapterApi(vi.fn());
+    await api.getBudgetOverview("wed");
+    await api.listVendors("wed", "next");
+    await api.listExpenses("wed");
+    await api.listRunSheet("wed");
+    await api.listSeatingTables("wed");
+    await api.assignSeating("wed", "guest", "table");
+    expect(
+      clientFetch.mock.calls.map(([url, init]) => [url, init?.method ?? "GET"]),
+    ).toEqual([
+      ["/api/v1/weddings/wed/budget", "GET"],
+      ["/api/v1/weddings/wed/vendors?limit=20&cursor=next", "GET"],
+      ["/api/v1/weddings/wed/expenses?limit=20", "GET"],
+      ["/api/v1/weddings/wed/run-sheet?limit=20", "GET"],
+      ["/api/v1/weddings/wed/seating/tables", "GET"],
+      ["/api/v1/weddings/wed/seating/guests/guest", "PUT"],
+    ]);
+  });
   it("uses the same-origin scoped planning endpoints", async () => {
     const clientFetch = vi.fn<typeof fetch>(async (_url, init) =>
       init?.method === "DELETE"

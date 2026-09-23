@@ -10,6 +10,7 @@ export default defineConfig({
       "src/guest-import-postgres.integration.ts",
       "src/envelope-postgres.integration.ts",
       "src/planning-postgres.integration.ts",
+      "src/wedding-operations-postgres.integration.ts",
     ],
   },
 });

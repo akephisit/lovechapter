@@ -30,6 +30,19 @@ import type {
   PlanningOverview,
   PlanningTaskFilter,
   UpdatePlanningTaskInput,
+  Budget,
+  BudgetCategory,
+  BudgetCategoryInput,
+  BudgetOverview,
+  Vendor,
+  VendorInput,
+  Expense,
+  ExpenseInput,
+  RunSheetItem,
+  RunSheetItemInput,
+  SeatingTable,
+  SeatingTableInput,
+  SeatingAssignment,
 } from "@lovechapter/contracts";
 
 import type { ListCursor } from "./cursor";
@@ -62,6 +75,94 @@ export interface PlanningRepository {
     userId: string,
     weddingId: string,
     taskId: string,
+  ): Promise<void>;
+}
+
+export interface WeddingOperationsRepository {
+  getBudgetOverview(userId: string, weddingId: string): Promise<BudgetOverview>;
+  setBudget(userId: string, weddingId: string, input: Budget): Promise<Budget>;
+  listBudgetCategories(
+    userId: string,
+    weddingId: string,
+  ): Promise<BudgetCategory[]>;
+  saveBudgetCategory(
+    userId: string,
+    weddingId: string,
+    id: string,
+    input: BudgetCategoryInput,
+    create: boolean,
+  ): Promise<BudgetCategory>;
+  deleteBudgetCategory(
+    userId: string,
+    weddingId: string,
+    id: string,
+  ): Promise<void>;
+  listVendors(
+    userId: string,
+    weddingId: string,
+    page: RepositoryPageInput,
+  ): Promise<Page<Vendor>>;
+  saveVendor(
+    userId: string,
+    weddingId: string,
+    id: string,
+    input: Required<VendorInput>,
+    create: boolean,
+  ): Promise<Vendor>;
+  deleteVendor(userId: string, weddingId: string, id: string): Promise<void>;
+  listExpenses(
+    userId: string,
+    weddingId: string,
+    page: RepositoryPageInput,
+  ): Promise<Page<Expense>>;
+  saveExpense(
+    userId: string,
+    weddingId: string,
+    id: string,
+    input: Required<ExpenseInput>,
+    create: boolean,
+  ): Promise<Expense>;
+  deleteExpense(userId: string, weddingId: string, id: string): Promise<void>;
+  listRunSheet(
+    userId: string,
+    weddingId: string,
+    page: RepositoryPageInput,
+  ): Promise<Page<RunSheetItem>>;
+  saveRunSheetItem(
+    userId: string,
+    weddingId: string,
+    id: string,
+    input: Required<RunSheetItemInput>,
+    create: boolean,
+  ): Promise<RunSheetItem>;
+  deleteRunSheetItem(
+    userId: string,
+    weddingId: string,
+    id: string,
+  ): Promise<void>;
+  listSeatingTables(userId: string, weddingId: string): Promise<SeatingTable[]>;
+  saveSeatingTable(
+    userId: string,
+    weddingId: string,
+    id: string,
+    input: SeatingTableInput,
+    create: boolean,
+  ): Promise<SeatingTable>;
+  deleteSeatingTable(
+    userId: string,
+    weddingId: string,
+    id: string,
+  ): Promise<void>;
+  listSeatingAssignments(
+    userId: string,
+    weddingId: string,
+    tableId: string,
+  ): Promise<SeatingAssignment[]>;
+  assignSeating(
+    userId: string,
+    weddingId: string,
+    guestId: string,
+    tableId: string | null,
   ): Promise<void>;
 }
 

@@ -8,5 +8,6 @@ export * from "./guest-import-repository";
 export * from "./queries";
 export * from "./planning-queries";
 export * from "./planning-repository";
+export * from "./wedding-operations-repository";
 export * from "./repository";
 export * from "./schema";
