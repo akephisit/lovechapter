@@ -341,13 +341,15 @@ describe("PostgreSQL wedding operations", () => {
       const waiters = async (count: number) => {
         const deadline = Date.now() + 3000;
         while (Date.now() < deadline) {
-          const result = await blocker.query<{ count: number }>(
+          // A monitor query must run outside the blocker transaction: PostgreSQL
+          // caches activity snapshots for the lifetime of that transaction.
+          const result = await runtime.pool.query<{ count: number }>(
             "select count(*)::int as count from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock' and pid <> pg_backend_pid()",
           );
           if (result.rows[0]!.count >= count) return;
           await new Promise((resolve) => setTimeout(resolve, 20));
         }
-        const activity = await blocker.query<{
+        const activity = await runtime.pool.query<{
           state: string;
           wait_event_type: string | null;
           query: string;
