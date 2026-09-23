@@ -125,6 +125,45 @@ export const weddingMembers = pgTable(
   ],
 );
 
+export const planningTasks = pgTable(
+  "planning_tasks",
+  {
+    id: uuid("id").notNull(),
+    weddingId: uuid("wedding_id")
+      .notNull()
+      .references(() => weddings.id, { onDelete: "cascade" }),
+    title: varchar("title", { length: 180 }).notNull(),
+    category: varchar("category", { length: 80 }),
+    note: varchar("note", { length: 2_000 }),
+    dueDate: date("due_date", { mode: "string" }),
+    completedAt: timestamp("completed_at", {
+      withTimezone: true,
+      mode: "string",
+    }),
+    ...timestamps,
+  },
+  (table) => [
+    primaryKey({
+      name: "planning_tasks_pkey",
+      columns: [table.weddingId, table.id],
+    }),
+    index("planning_tasks_wedding_created_idx").on(
+      table.weddingId,
+      table.createdAt.desc(),
+      table.id.desc(),
+    ),
+    index("planning_tasks_open_due_idx")
+      .on(table.weddingId, table.dueDate, table.id)
+      .where(
+        sql`${table.completedAt} is null and ${table.dueDate} is not null`,
+      ),
+    check(
+      "planning_tasks_title_nonblank",
+      sql`length(trim(${table.title})) > 0`,
+    ),
+  ],
+);
+
 export const guestAffiliations = pgTable(
   "guest_affiliations",
   {

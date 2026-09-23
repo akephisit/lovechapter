@@ -13,6 +13,7 @@ import {
 import {
   InMemoryGuestImportRepository,
   InMemoryEnvelopeRepository,
+  InMemoryPlanningRepository,
   InMemoryLoveChapterRepository,
 } from "@lovechapter/domain/testing";
 import { describe, expect, it, vi } from "vitest";
@@ -31,6 +32,74 @@ const fingerprintKey = new Uint8Array(32).fill(7);
 const password = "correct horse battery staple";
 
 describe("LoveChapter API", () => {
+  it("creates, lists, completes and removes a planning task within its wedding", async () => {
+    const fixture = testFixture({ principal: couple("planning-owner") });
+    const createWedding = async (name: string) => {
+      const response = await fixture.app.handle(
+        jsonRequest("/v1/weddings", "POST", {
+          name,
+          timeZone: "UTC",
+          locale: "en",
+        }),
+      );
+      return (await response.json()) as { id: string };
+    };
+    const wedding = await createWedding("First");
+    const other = await createWedding("Second");
+    const path = `/v1/weddings/${wedding.id}/planning-tasks`;
+    const invalid = await fixture.app.handle(
+      jsonRequest(path, "POST", { title: "Bad", dueDate: "2026-02-30" }),
+    );
+    expect(invalid.status).toBe(400);
+    const created = await fixture.app.handle(
+      jsonRequest(path, "POST", { title: "Book venue", dueDate: "2026-12-01" }),
+    );
+    expect(created.status).toBe(201);
+    const saved = (await created.json()) as {
+      id: string;
+      completedAt: string | null;
+    };
+    expect(saved.completedAt).toBeNull();
+    const list = await fixture.app.handle(
+      trustedRequest(`${path}?limit=1&filter=open`),
+    );
+    expect(await list.json()).toMatchObject({
+      items: [{ id: saved.id }],
+      nextCursor: null,
+    });
+    const denied = await fixture.app.handle(
+      jsonRequest(
+        `/v1/weddings/${other.id}/planning-tasks/${saved.id}`,
+        "PATCH",
+        { completed: true },
+      ),
+    );
+    expect(denied.status).toBe(404);
+    const changed = await fixture.app.handle(
+      jsonRequest(`${path}/${saved.id}`, "PATCH", { completed: true }),
+    );
+    expect(changed.status).toBe(200);
+    expect((await changed.json()) as { completedAt: string }).toHaveProperty(
+      "completedAt",
+      expect.any(String),
+    );
+    const overview = await fixture.app.handle(
+      trustedRequest(`/v1/weddings/${wedding.id}/planning-overview`),
+    );
+    expect(await overview.json()).toMatchObject({
+      total: 1,
+      completed: 1,
+      upcoming: [],
+    });
+    const removed = await fixture.app.handle(
+      jsonRequest(`${path}/${saved.id}`, "DELETE", {}),
+    );
+    expect(removed.status).toBe(204);
+    const missing = await fixture.app.handle(
+      jsonRequest(`${path}/${saved.id}`, "PATCH", { completed: false }),
+    );
+    expect(missing.status).toBe(404);
+  });
   it("rejects unauthenticated CSV upload before reading its bytes", async () => {
     const fixture = testFixture();
     const request = trustedRequest(
@@ -934,6 +1003,7 @@ function testFixture(
     domainRepository,
   );
   const envelopeRepository = new InMemoryEnvelopeRepository(domainRepository);
+  const planningRepository = new InMemoryPlanningRepository(domainRepository);
   const app = createApiApp({
     authService,
     nodeEnvironment: "test",
@@ -950,6 +1020,7 @@ function testFixture(
           request,
           guestImportRepository,
           envelopeRepository,
+          planningRepository,
         ),
       ),
   }).compile();

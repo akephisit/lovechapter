@@ -12,6 +12,7 @@ import {
 } from "./repository";
 import { PostgresGuestImportRepository } from "./guest-import-repository";
 import { PostgresEnvelopeRepository } from "./envelope-repository";
+import { PostgresPlanningRepository } from "./planning-repository";
 
 class DrizzleQueryExecutor implements QueryExecutor {
   constructor(private readonly database: NodePgDatabase) {}
@@ -44,6 +45,7 @@ export type PostgresRuntime = {
   loveChapterRepository: PostgresLoveChapterRepository;
   guestImportRepository: PostgresGuestImportRepository;
   envelopeRepository: PostgresEnvelopeRepository;
+  planningRepository: PostgresPlanningRepository;
   authRepository: PostgresAuthRepository;
   emailJobStore: PostgresEmailJobStore;
   close(): Promise<void>;
@@ -86,6 +88,7 @@ export function createPostgresRuntime(
     loveChapterRepository: new PostgresLoveChapterRepository(executor),
     guestImportRepository: new PostgresGuestImportRepository(executor),
     envelopeRepository: new PostgresEnvelopeRepository(executor),
+    planningRepository: new PostgresPlanningRepository(executor),
     authRepository: new PostgresAuthRepository(executor),
     emailJobStore: new PostgresEmailJobStore(executor),
     close: () => pool.end(),

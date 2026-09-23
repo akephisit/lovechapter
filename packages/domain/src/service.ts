@@ -28,6 +28,11 @@ import type {
   UpdateGuestInput,
   UpdateProfileInput,
   WeddingSummary,
+  CreatePlanningTaskInput,
+  UpdatePlanningTaskInput,
+  PlanningTask,
+  PlanningTaskFilter,
+  PlanningOverview,
 } from "@lovechapter/contracts";
 
 import { decodeCursor } from "./cursor";
@@ -64,6 +69,11 @@ import type {
   RepositoryPageInput,
 } from "./ports";
 import { validateRsvp } from "./rsvp";
+import {
+  normalizePlanningTaskCreate,
+  normalizePlanningTaskPatch,
+} from "./planning";
+import type { PlanningRepository } from "./ports";
 
 export class LoveChapterService {
   private readonly publicWebOrigin: string;
@@ -83,6 +93,7 @@ export class LoveChapterService {
       | "commitGuestImport"
     >,
     private readonly envelopeRepository?: EnvelopeRepository,
+    private readonly planningRepository?: PlanningRepository,
   ) {
     this.publicWebOrigin = publicWebOrigin.replace(/\/$/, "");
   }
@@ -95,6 +106,72 @@ export class LoveChapterService {
     if (!this.envelopeRepository)
       throw new Error("Envelope repository is not configured");
     return this.envelopeRepository;
+  }
+
+  private requirePlanningRepository(): PlanningRepository {
+    if (!this.planningRepository)
+      throw new Error("Planning repository is not configured");
+    return this.planningRepository;
+  }
+
+  async listPlanningTasks(
+    weddingId: string,
+    page: PageInput & { filter: PlanningTaskFilter },
+  ): Promise<Page<PlanningTask>> {
+    const user = await this.requireOnboardedUser();
+    if (!Number.isInteger(page.limit) || page.limit < 1 || page.limit > 50)
+      throw new DomainValidationError(
+        "Planning task page must have 1–50 items",
+      );
+    if (!["all", "open", "completed"].includes(page.filter))
+      throw new DomainValidationError("Invalid task filter");
+    return this.requirePlanningRepository().listPlanningTasks(
+      user.id,
+      weddingId,
+      { ...normalizePage(page), filter: page.filter },
+    );
+  }
+  async getPlanningOverview(weddingId: string): Promise<PlanningOverview> {
+    const user = await this.requireOnboardedUser();
+    return this.requirePlanningRepository().getPlanningOverview(
+      user.id,
+      weddingId,
+    );
+  }
+  async createPlanningTask(
+    weddingId: string,
+    input: CreatePlanningTaskInput,
+  ): Promise<PlanningTask> {
+    const user = await this.requireOnboardedUser();
+    return this.requirePlanningRepository().createPlanningTask(
+      user.id,
+      weddingId,
+      crypto.randomUUID(),
+      normalizePlanningTaskCreate(input),
+    );
+  }
+  async updatePlanningTask(
+    weddingId: string,
+    taskId: string,
+    input: UpdatePlanningTaskInput,
+  ): Promise<PlanningTask> {
+    const user = await this.requireOnboardedUser();
+    if (!isUuid(taskId)) throw new DomainValidationError("Invalid task ID");
+    return this.requirePlanningRepository().updatePlanningTask(
+      user.id,
+      weddingId,
+      taskId,
+      normalizePlanningTaskPatch(input),
+    );
+  }
+  async deletePlanningTask(weddingId: string, taskId: string): Promise<void> {
+    const user = await this.requireOnboardedUser();
+    if (!isUuid(taskId)) throw new DomainValidationError("Invalid task ID");
+    return this.requirePlanningRepository().deletePlanningTask(
+      user.id,
+      weddingId,
+      taskId,
+    );
   }
 
   async listEnvelopeTemplates(weddingId: string): Promise<EnvelopeTemplate[]> {

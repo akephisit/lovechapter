@@ -15,6 +15,35 @@ afterEach(() => {
 });
 
 describe("LoveChapter API client", () => {
+  it("uses the same-origin scoped planning endpoints", async () => {
+    const clientFetch = vi.fn<typeof fetch>(async (_url, init) =>
+      init?.method === "DELETE"
+        ? new Response(null, { status: 204 })
+        : jsonResponse({ items: [], nextCursor: null }),
+    );
+    vi.stubGlobal("fetch", clientFetch);
+    const api = createLoveChapterApi(vi.fn());
+    await api.getPlanningOverview("wed");
+    await api.listPlanningTasks("wed", { filter: "open", cursor: "cursor" });
+    await api.createPlanningTask("wed", { title: "Flowers" });
+    await api.updatePlanningTask("wed", "task", { completed: true });
+    await api.deletePlanningTask("wed", "task");
+    expect(
+      clientFetch.mock.calls.map(([url, init]) => [url, init?.method ?? "GET"]),
+    ).toEqual([
+      ["/api/v1/weddings/wed/planning-overview", "GET"],
+      [
+        "/api/v1/weddings/wed/planning-tasks?limit=20&filter=open&cursor=cursor",
+        "GET",
+      ],
+      ["/api/v1/weddings/wed/planning-tasks", "POST"],
+      ["/api/v1/weddings/wed/planning-tasks/task", "PATCH"],
+      ["/api/v1/weddings/wed/planning-tasks/task", "DELETE"],
+    ]);
+    expect(clientFetch.mock.calls[3]?.[1]?.body).toBe(
+      JSON.stringify({ completed: true }),
+    );
+  });
   it("replaces invitations using the authenticated same-origin route", async () => {
     const clientFetch = vi.fn<typeof fetch>(async () =>
       jsonResponse({ token: "replacement" }),

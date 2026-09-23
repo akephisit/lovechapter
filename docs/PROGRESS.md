@@ -219,6 +219,17 @@ web client, and components. The disposable PostgreSQL integration test for
 replacement is checked in for CI execution. Invitation delivery
 remains manual; automatic email requires verified sender configuration.
 
+The first planning slice adds a wedding-scoped preparation checklist. Members
+can create, edit, complete/reopen, filter, paginate, and delete their own tasks,
+with optional category, private note, and date-only deadline. The overview
+counts the full wedding's tasks and shows eight nearest unfinished deadlines.
+No task or category is prescribed. A new migration supplies the composite
+wedding key and list/deadline indexes. API and UI use existing membership and
+same-origin authentication. PostgreSQL integration covers tenant isolation,
+page cursors, progress, and date-only values; full CI must verify the migration
+before this branch is merged. The day-of run sheet is distinct from preparation
+deadlines and has not been implemented in this slice.
+
 ## External gates
 
 - ownership, DNS, public TLS, and exact origins for the intended domain

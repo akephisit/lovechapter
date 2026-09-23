@@ -18,14 +18,38 @@ import {
   users,
   weddingMembers,
   weddings,
+  planningTasks,
 } from "./schema";
 
 describe("MVP PostgreSQL schema", () => {
+  it("scopes planning tasks to a wedding and indexes paged tasks and open deadlines", () => {
+    const config = getTableConfig(planningTasks);
+    expect(config.primaryKeys).toHaveLength(1);
+    expect(columnNames(planningTasks)).toEqual(
+      expect.arrayContaining([
+        "wedding_id",
+        "title",
+        "category",
+        "note",
+        "due_date",
+        "completed_at",
+        "created_at",
+        "updated_at",
+      ]),
+    );
+    expect(indexNames(planningTasks)).toEqual(
+      expect.arrayContaining([
+        "planning_tasks_wedding_created_idx",
+        "planning_tasks_open_due_idx",
+      ]),
+    );
+  });
   it("defines the business and local-auth tables needed by the vertical slice", () => {
     expect(
       [
         users,
         weddings,
+        planningTasks,
         weddingMembers,
         guestAffiliations,
         guests,
@@ -56,6 +80,7 @@ describe("MVP PostgreSQL schema", () => {
       "guest_postal_addresses",
       "guests",
       "invitations",
+      "planning_tasks",
       "rsvps",
       "users",
       "wedding_members",

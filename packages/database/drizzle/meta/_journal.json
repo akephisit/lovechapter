@@ -50,6 +50,13 @@
       "when": 1790134874578,
       "tag": "0006_lazy_namor",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790176249264,
+      "tag": "0007_square_starfox",
+      "breakpoints": true
     }
   ]
 }

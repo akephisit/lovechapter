@@ -19,6 +19,7 @@ import type {
 } from "@lovechapter/contracts";
 
 export { InMemoryEnvelopeRepository } from "./in-memory-envelope-repository";
+export { InMemoryPlanningRepository } from "./in-memory-planning-repository";
 
 export { InMemoryGuestImportRepository } from "./in-memory-guest-import-repository";
 

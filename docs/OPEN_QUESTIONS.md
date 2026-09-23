@@ -84,3 +84,5 @@ weaken the approved security gates to answer the remaining questions.
   recovery; couple-initiated link replacement and manual sharing are available
 - Advanced seating UX
 - AI provider/scope
+- Wedding-day run sheet conventions: time slots, venue/time-zone changes,
+  ownership, and whether to expose a public schedule to guests

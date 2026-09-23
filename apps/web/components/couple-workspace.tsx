@@ -27,6 +27,10 @@ import {
   GuestWorkspace,
   type GuestWorkspaceApi,
 } from "./guest-management/guest-workspace";
+import {
+  PlanningWorkspace,
+  type PlanningWorkspaceApi,
+} from "./planning/planning-workspace";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -34,7 +38,8 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Select } from "./ui/select";
 
-export interface CoupleWorkspaceApi extends GuestWorkspaceApi {
+export interface CoupleWorkspaceApi
+  extends GuestWorkspaceApi, Partial<PlanningWorkspaceApi> {
   listWeddings(cursor?: string): Promise<Page<WeddingSummary>>;
   createWedding(input: CreateWeddingInput): Promise<WeddingSummary>;
   listGuestAffiliations(weddingId: string): Promise<GuestAffiliation[]>;
@@ -631,29 +636,38 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
             </div>
 
             {selected ? (
-              <WeddingWorkspace
-                api={api}
-                wedding={selected}
-                guests={guests}
-                affiliations={affiliations}
-                invitations={invitations}
-                busy={busy}
-                nextCursor={guestCursor}
-                copiedGuestId={copiedGuestId}
-                onAddGuest={addGuest}
-                onCreateAffiliation={createGuestAffiliation}
-                onUpdateAffiliation={updateGuestAffiliation}
-                onMoveAffiliation={moveGuestAffiliation}
-                onDeleteAffiliation={deleteGuestAffiliation}
-                onSetGuestAffiliation={setGuestAffiliation}
-                onCreateInvitation={createInvitation}
-                onCopyInvitation={copyInvitation}
-                onLoadMore={loadMoreGuests}
-                onRefresh={refreshGuests}
-                onImportedAffiliation={(affiliation) =>
-                  setAffiliations((current) => [...current, affiliation])
-                }
-              />
+              <div className="space-y-6">
+                {hasPlanningApi(api) ? (
+                  <PlanningWorkspace
+                    key={selected.id}
+                    wedding={selected}
+                    api={api}
+                  />
+                ) : null}
+                <WeddingWorkspace
+                  api={api}
+                  wedding={selected}
+                  guests={guests}
+                  affiliations={affiliations}
+                  invitations={invitations}
+                  busy={busy}
+                  nextCursor={guestCursor}
+                  copiedGuestId={copiedGuestId}
+                  onAddGuest={addGuest}
+                  onCreateAffiliation={createGuestAffiliation}
+                  onUpdateAffiliation={updateGuestAffiliation}
+                  onMoveAffiliation={moveGuestAffiliation}
+                  onDeleteAffiliation={deleteGuestAffiliation}
+                  onSetGuestAffiliation={setGuestAffiliation}
+                  onCreateInvitation={createInvitation}
+                  onCopyInvitation={copyInvitation}
+                  onLoadMore={loadMoreGuests}
+                  onRefresh={refreshGuests}
+                  onImportedAffiliation={(affiliation) =>
+                    setAffiliations((current) => [...current, affiliation])
+                  }
+                />
+              </div>
             ) : (
               <Card className="relative overflow-hidden p-8 sm:p-10">
                 <div className="absolute top-0 right-0 size-44 translate-x-16 -translate-y-16 rounded-full bg-[#e7d2cb]/60" />
@@ -671,6 +685,18 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
         )}
       </div>
     </main>
+  );
+}
+
+function hasPlanningApi(
+  api: CoupleWorkspaceApi,
+): api is CoupleWorkspaceApi & PlanningWorkspaceApi {
+  return Boolean(
+    api.listPlanningTasks &&
+    api.getPlanningOverview &&
+    api.createPlanningTask &&
+    api.updatePlanningTask &&
+    api.deletePlanningTask,
   );
 }
 

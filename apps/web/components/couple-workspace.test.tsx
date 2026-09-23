@@ -17,6 +17,37 @@ import { describe, expect, it, vi } from "vitest";
 import { CoupleWorkspace, type CoupleWorkspaceApi } from "./couple-workspace";
 
 describe("CoupleWorkspace", () => {
+  it("shows the selected wedding's planning checklist", async () => {
+    const wedding = weddingFixture();
+    const api: CoupleWorkspaceApi = {
+      ...affiliationApi(),
+      listWeddings: vi.fn(async () => page([wedding])),
+      createWedding: vi.fn(),
+      listGuests: vi.fn(async () => page([])),
+      addGuest: vi.fn(),
+      createInvitation: vi.fn(),
+      listPlanningTasks: vi.fn(async () => page([])),
+      getPlanningOverview: vi.fn(async () => ({
+        total: 0,
+        completed: 0,
+        upcoming: [],
+      })),
+      createPlanningTask: vi.fn(),
+      updatePlanningTask: vi.fn(),
+      deletePlanningTask: vi.fn(),
+    };
+    render(
+      <CoupleWorkspace
+        identity={userFixture()}
+        api={api}
+        onSignOut={vi.fn()}
+      />,
+    );
+    expect(
+      await screen.findByRole("heading", { name: /planning checklist/i }),
+    ).toBeVisible();
+    expect(api.getPlanningOverview).toHaveBeenCalledWith(wedding.id);
+  });
   it("opens the full guest management workspace when detail endpoints are available", async () => {
     const wedding = weddingFixture();
     const guest = guestFixture();

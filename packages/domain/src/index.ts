@@ -7,5 +7,6 @@ export * from "./guest-import";
 export * from "./identity";
 export * from "./invitations";
 export * from "./ports";
+export * from "./planning";
 export * from "./rsvp";
 export * from "./service";

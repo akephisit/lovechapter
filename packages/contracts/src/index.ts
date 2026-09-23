@@ -51,6 +51,36 @@ export type WeddingSummary = CreateWeddingInput & {
   createdAt: string;
 };
 
+export type PlanningTask = {
+  id: string;
+  title: string;
+  category: string | null;
+  note: string | null;
+  dueDate: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+export type CreatePlanningTaskInput = {
+  title: string;
+  category?: string;
+  note?: string;
+  dueDate?: string;
+};
+export type UpdatePlanningTaskInput = Partial<{
+  title: string;
+  category: string | null;
+  note: string | null;
+  dueDate: string | null;
+  completed: boolean;
+}>;
+export type PlanningTaskFilter = "all" | "open" | "completed";
+export type PlanningOverview = {
+  total: number;
+  completed: number;
+  upcoming: PlanningTask[];
+};
+
 export type GuestAffiliation = {
   id: string;
   name: string;

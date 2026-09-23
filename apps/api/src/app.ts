@@ -190,6 +190,41 @@ const weddingInput = t.Object(
   },
   { additionalProperties: false },
 );
+const planningTaskCreateInput = t.Object(
+  {
+    title: t.String({ minLength: 1, maxLength: 180 }),
+    category: t.Optional(t.String({ maxLength: 80 })),
+    note: t.Optional(t.String({ maxLength: 2_000 })),
+    dueDate: t.Optional(t.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
+  },
+  { additionalProperties: false },
+);
+const planningTaskPatchInput = t.Object(
+  {
+    title: t.Optional(t.String({ minLength: 1, maxLength: 180 })),
+    category: t.Optional(t.Union([t.String({ maxLength: 80 }), t.Null()])),
+    note: t.Optional(t.Union([t.String({ maxLength: 2_000 }), t.Null()])),
+    dueDate: t.Optional(
+      t.Union([t.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" }), t.Null()]),
+    ),
+    completed: t.Optional(t.Boolean()),
+  },
+  { additionalProperties: false },
+);
+const planningTaskParams = t.Object({
+  weddingId: t.String({ format: "uuid" }),
+  taskId: t.String({ format: "uuid" }),
+});
+const planningTaskQuery = t.Object(
+  {
+    limit: t.Optional(t.Numeric({ minimum: 1, maximum: 50 })),
+    cursor: t.Optional(t.String({ minLength: 1, maxLength: 256 })),
+    filter: t.Optional(
+      t.Union([t.Literal("all"), t.Literal("open"), t.Literal("completed")]),
+    ),
+  },
+  { additionalProperties: false },
+);
 const postalAddressInput = t.Object(
   {
     addressLine1: t.String({ minLength: 1, maxLength: 180 }),
@@ -502,6 +537,55 @@ export function createApiApp(dependencies: ApiDependencies) {
           service.createWedding(body),
         ),
       ),
+    )
+    .get(
+      "/v1/weddings/:weddingId/planning-overview",
+      { params: idParams },
+      ({ params, request }) =>
+        dependencies.run(request, (service) =>
+          service.getPlanningOverview(params.weddingId),
+        ),
+    )
+    .get(
+      "/v1/weddings/:weddingId/planning-tasks",
+      { params: idParams, query: planningTaskQuery },
+      ({ params, query, request }) =>
+        dependencies.run(request, (service) =>
+          service.listPlanningTasks(params.weddingId, {
+            limit: query.limit ?? 20,
+            filter: query.filter ?? "all",
+            ...(query.cursor ? { cursor: query.cursor } : {}),
+          }),
+        ),
+    )
+    .post(
+      "/v1/weddings/:weddingId/planning-tasks",
+      { params: idParams, body: planningTaskCreateInput },
+      async ({ params, body, request }) =>
+        status(
+          201,
+          await dependencies.run(request, (service) =>
+            service.createPlanningTask(params.weddingId, body),
+          ),
+        ),
+    )
+    .patch(
+      "/v1/weddings/:weddingId/planning-tasks/:taskId",
+      { params: planningTaskParams, body: planningTaskPatchInput },
+      ({ params, body, request }) =>
+        dependencies.run(request, (service) =>
+          service.updatePlanningTask(params.weddingId, params.taskId, body),
+        ),
+    )
+    .delete(
+      "/v1/weddings/:weddingId/planning-tasks/:taskId",
+      { params: planningTaskParams },
+      async ({ params, request }) => {
+        await dependencies.run(request, (service) =>
+          service.deletePlanningTask(params.weddingId, params.taskId),
+        );
+        return status(204);
+      },
     )
     .get(
       "/v1/weddings/:weddingId/guest-affiliations",

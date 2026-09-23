@@ -10,6 +10,7 @@ import {
 import { LoveChapterService } from "./service";
 import { InMemoryLoveChapterRepository } from "./testing/in-memory-repository";
 import { InMemoryGuestImportRepository } from "./testing/in-memory-guest-import-repository";
+import { InMemoryPlanningRepository } from "./testing/in-memory-planning-repository";
 
 const couple: Principal = {
   provider: "development",
@@ -47,6 +48,70 @@ function service(
 }
 
 describe("LoveChapterService", () => {
+  it("manages a wedding-scoped checklist and preserves completion when editing", async () => {
+    const repository = new InMemoryLoveChapterRepository();
+    const planning = new InMemoryPlanningRepository(repository);
+    const owner = new LoveChapterService(
+      identity(couple),
+      repository,
+      "https://web.example.test",
+      undefined,
+      undefined,
+      undefined,
+      planning,
+    );
+    const outsider = new LoveChapterService(
+      identity(otherCouple),
+      repository,
+      "https://web.example.test",
+      undefined,
+      undefined,
+      undefined,
+      planning,
+    );
+    const wedding = await owner.createWedding({
+      name: "Planning",
+      timeZone: "UTC",
+      locale: "en",
+    });
+    const task = await owner.createPlanningTask(wedding.id, {
+      title: "  Confirm flowers  ",
+      dueDate: "2026-12-01",
+    });
+    expect(task).toMatchObject({ title: "Confirm flowers", completedAt: null });
+    expect(await owner.getPlanningOverview(wedding.id)).toMatchObject({
+      total: 1,
+      completed: 0,
+      upcoming: [task],
+    });
+    const done = await owner.updatePlanningTask(wedding.id, task.id, {
+      completed: true,
+    });
+    expect(done.completedAt).toBeTruthy();
+    const changed = await owner.updatePlanningTask(wedding.id, task.id, {
+      note: "  Call supplier  ",
+    });
+    expect(changed).toMatchObject({
+      note: "Call supplier",
+      completedAt: done.completedAt,
+    });
+    expect(
+      (
+        await owner.listPlanningTasks(wedding.id, {
+          limit: 20,
+          filter: "completed",
+        })
+      ).items,
+    ).toHaveLength(1);
+    await expect(
+      outsider.getPlanningOverview(wedding.id),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      outsider.updatePlanningTask(wedding.id, task.id, { completed: false }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await owner.deletePlanningTask(wedding.id, task.id);
+    expect((await owner.getPlanningOverview(wedding.id)).total).toBe(0);
+  });
   it("stages, pages, remaps and excludes guest CSV rows without inventing affiliations", async () => {
     const repository = new InMemoryLoveChapterRepository();
     const guestImportRepository = new InMemoryGuestImportRepository(repository);

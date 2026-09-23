@@ -26,10 +26,44 @@ import type {
   UpdateGuestAffiliationInput,
   UpdateProfileInput,
   WeddingSummary,
+  PlanningTask,
+  PlanningOverview,
+  PlanningTaskFilter,
+  UpdatePlanningTaskInput,
 } from "@lovechapter/contracts";
 
 import type { ListCursor } from "./cursor";
 import type { Principal } from "./identity";
+import type { NormalizedPlanningTaskInput } from "./planning";
+
+export interface PlanningRepository {
+  listPlanningTasks(
+    userId: string,
+    weddingId: string,
+    input: RepositoryPageInput & { filter: PlanningTaskFilter },
+  ): Promise<Page<PlanningTask>>;
+  getPlanningOverview(
+    userId: string,
+    weddingId: string,
+  ): Promise<PlanningOverview>;
+  createPlanningTask(
+    userId: string,
+    weddingId: string,
+    id: string,
+    input: NormalizedPlanningTaskInput,
+  ): Promise<PlanningTask>;
+  updatePlanningTask(
+    userId: string,
+    weddingId: string,
+    taskId: string,
+    input: UpdatePlanningTaskInput,
+  ): Promise<PlanningTask>;
+  deletePlanningTask(
+    userId: string,
+    weddingId: string,
+    taskId: string,
+  ): Promise<void>;
+}
 
 export type RepositoryPageInput = {
   limit: number;

@@ -36,6 +36,11 @@ import type {
   UpdateProfileInput,
   VerifyEmailInput,
   WeddingSummary,
+  PlanningTask,
+  PlanningOverview,
+  PlanningTaskFilter,
+  CreatePlanningTaskInput,
+  UpdatePlanningTaskInput,
 } from "@lovechapter/contracts";
 
 export class ApiError extends Error {
@@ -144,6 +149,51 @@ export function createLoveChapterApi(
         method: "POST",
         body: JSON.stringify(input),
       }),
+    getPlanningOverview: (weddingId: string) =>
+      request<PlanningOverview>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/planning-overview`,
+      ),
+    listPlanningTasks: (
+      weddingId: string,
+      options: { filter?: PlanningTaskFilter; cursor?: string } = {},
+    ) => {
+      const query = new URLSearchParams({
+        limit: "20",
+        filter: options.filter ?? "all",
+      });
+      if (options.cursor) query.set("cursor", options.cursor);
+      return request<Page<PlanningTask>>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/planning-tasks?${query}`,
+      );
+    },
+    createPlanningTask: (weddingId: string, input: CreatePlanningTaskInput) =>
+      request<PlanningTask>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/planning-tasks`,
+        {
+          method: "POST",
+          body: JSON.stringify(input),
+        },
+      ),
+    updatePlanningTask: (
+      weddingId: string,
+      taskId: string,
+      input: UpdatePlanningTaskInput,
+    ) =>
+      request<PlanningTask>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/planning-tasks/${encodeURIComponent(taskId)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(input),
+        },
+      ),
+    deletePlanningTask: (weddingId: string, taskId: string) =>
+      request<void>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/planning-tasks/${encodeURIComponent(taskId)}`,
+        {
+          method: "DELETE",
+          body: "{}",
+        },
+      ),
     listGuestAffiliations: (weddingId: string) =>
       request<GuestAffiliation[]>(
         `/v1/weddings/${encodeURIComponent(weddingId)}/guest-affiliations`,
