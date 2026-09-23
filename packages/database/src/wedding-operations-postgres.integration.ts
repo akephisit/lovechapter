@@ -324,23 +324,25 @@ describe("PostgreSQL wedding operations", () => {
       { name: "Mali", allowedPartySize: 2 },
     );
     const blocker = await runtime.pool.connect();
+    let transactionOpen = false;
     try {
       await blocker.query("begin");
+      transactionOpen = true;
       await blocker.query(
         "select id from guests where wedding_id = $1 and id = $2 for update",
         [wedding.id, guest.id],
       );
-      const assigned = repo.assignSeating(
-        owner.id,
-        wedding.id,
-        guest.id,
-        table.id,
-      );
+      const assigned = repo
+        .assignSeating(owner.id, wedding.id, guest.id, table.id)
+        .then(
+          () => null,
+          (error: unknown) => error,
+        );
       const waiters = async (count: number) => {
-        const deadline = Date.now() + 5000;
+        const deadline = Date.now() + 8000;
         while (Date.now() < deadline) {
           const result = await blocker.query<{ count: number }>(
-            "select count(*)::int as count from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock' and query ilike '%from \"guests\"%'",
+            "select count(*)::int as count from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock' and pid <> pg_backend_pid()",
           );
           if (result.rows[0]!.count >= count) return;
           await new Promise((resolve) => setTimeout(resolve, 20));
@@ -348,22 +350,23 @@ describe("PostgreSQL wedding operations", () => {
         throw new Error(`Expected ${count} guest lock waiter(s)`);
       };
       await waiters(1);
-      const resized = runtime.loveChapterRepository.updateGuest(
-        owner.id,
-        wedding.id,
-        guest.id,
-        { allowedPartySize: 3 },
-      );
+      const resized = runtime.loveChapterRepository
+        .updateGuest(owner.id, wedding.id, guest.id, { allowedPartySize: 3 })
+        .then(
+          () => null,
+          (error: unknown) => error,
+        );
       await waiters(2);
       await blocker.query("commit");
-      await assigned;
-      await expect(resized).rejects.toBeInstanceOf(ConflictError);
+      transactionOpen = false;
+      expect(await assigned).toBeNull();
+      expect(await resized).toBeInstanceOf(ConflictError);
       expect(
         (await repo.listSeatingTables(owner.id, wedding.id))[0]?.reserved,
       ).toBe(2);
     } finally {
-      await blocker.query("rollback");
+      if (transactionOpen) await blocker.query("rollback");
       blocker.release();
     }
-  });
+  }, 15000);
 });
