@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-23
 
-**Status:** Proposed written specification awaiting owner review
+**Status:** Approved by the owner on 2026-09-23
 
 **Scope:** Complete couple-facing guest management, bounded CSV import/export,
 and print-ready envelope layouts
@@ -345,3 +345,10 @@ path because browser preview cannot prove printer feed alignment.
 Implementation planning starts only after the owner reviews the product
 decisions in section 2, especially archive behavior, creation-only import, and
 browser-based envelope printing.
+
+Approved implementation plans:
+
+- `docs/superpowers/plans/2026-09-23-guest-management.md`
+- `docs/superpowers/plans/2026-09-23-guest-csv-export.md`
+- `docs/superpowers/plans/2026-09-23-guest-csv-import.md`
+- `docs/superpowers/plans/2026-09-23-envelope-printing.md`
