@@ -10,7 +10,7 @@ import type {
   Page,
   WeddingSummary,
 } from "@lovechapter/contracts";
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -46,7 +46,9 @@ describe("CoupleWorkspace", () => {
     expect(
       await screen.findByRole("heading", { name: /planning checklist/i }),
     ).toBeVisible();
-    expect(api.getPlanningOverview).toHaveBeenCalledWith(wedding.id);
+    await waitFor(() => {
+      expect(api.getPlanningOverview).toHaveBeenCalledWith(wedding.id);
+    });
   });
   it("opens the full guest management workspace when detail endpoints are available", async () => {
     const wedding = weddingFixture();
