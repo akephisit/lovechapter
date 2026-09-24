@@ -321,6 +321,10 @@ The frontend targets Cloudflare Workers. An installation selects **one**
 backend deployment: an always-on Bun API plus separate Bun jobs process on a
 VPS, or a Cloudflare API Worker with scheduled jobs in that same Worker. The
 application must not run both backend alternatives for one installation.
+Future backend features must remain usable with either selection: share the
+Elysia routes, domain rules, authorization, schema, and durable job behavior,
+while adapting process lifecycle and database connections to the selected
+runtime. A change is not complete if it silently removes one deployment path.
 
 Do not default to:
 
@@ -420,9 +424,11 @@ Hyperdrive binding backed by Neon; database migrations use a separate direct
 connection outside the Worker. Disable Hyperdrive query caching because account
 and tenant authorization require fresh reads.
 
-The initial connection budgets are a maximum of 6 connections for the API
+The VPS initial connection budgets are a maximum of 6 connections for the API
 process and 2 for the job process. Changes require measurement against the
-deployed Neon and VPS limits.
+deployed Neon and VPS limits. Worker invocations use a lazy client through
+cache-disabled Hyperdrive; response streams may keep that client until the
+stream ends or is canceled.
 
 Use migrations.
 
@@ -587,7 +593,7 @@ Include:
 - frontend Cloudflare Worker configuration;
 - selectable Bun/VPS or Cloudflare Workers API and background-job configuration;
 - environment strategy;
-- Neon + bounded direct PostgreSQL pools + Drizzle foundation;
+- Neon + Drizzle foundation with bounded direct VPS pools and Worker Hyperdrive;
 - MVP schema/migrations;
 - wedding membership/authorization;
 - guest management;

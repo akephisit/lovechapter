@@ -44,10 +44,12 @@ The Hyperdrive configuration **must disable query caching**. Auth state,
 membership checks and writes require fresh reads; a cached SELECT can retain
 permissions after revocation or hide a newly verified account.
 
-Close Worker clients in `finally` on success and failure; never create a global
-client or a pool per request. Migrate outside Workers with a separate direct
-PostgreSQL URL. VPS pool-size changes require measurement against concurrency
-and Neon connection budgets; do not multiply pools per repository.
+Close scheduled Worker clients in `finally`; for HTTP responses close the
+client after a streamed body finishes or is canceled, including CSV exports
+that query lazily. Never create a global Worker client or a pool per request.
+Migrate outside Workers with a separate direct PostgreSQL URL. VPS pool-size
+changes require measurement against concurrency and Neon connection budgets;
+do not multiply pools per repository.
 
 ---
 

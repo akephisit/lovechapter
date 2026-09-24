@@ -105,7 +105,7 @@ Frontend-supporting Cloudflare services only when needed:
 
 Bun:
 
-- pinned to 1.4.2 for backend production;
+- pinned to 1.4.2 for backend production on the VPS option;
 - used for the API HTTP process and background-job process on VPS installs;
 - Bun-only APIs stay in bootstrap/runtime modules.
 
@@ -114,6 +114,31 @@ Do not use Bun-only server/runtime APIs in domain, authentication, or repository
 Do not replace Elysia 2 with another HTTP framework without explicit approval.
 
 Elysia 2 is version-sensitive. If a blocker exists, reproduce and document it rather than silently changing architecture.
+
+### Backend runtime parity — MANDATORY
+
+Every new or changed backend capability must work when an installation chooses
+**either** Bun/VPS **or** Cloudflare Workers. An installation runs one backend
+choice at a time; this rule does not require running both deployments together.
+
+- Keep routes, request/response contracts, authorization, sessions, business
+  rules, database schema, and outbox semantics shared across the two choices.
+- Keep Bun HTTP/process lifecycle and polling in their Bun bootstrap modules.
+  Keep Worker fetch/scheduled handlers and invocation-owned connections in
+  their Worker modules. Do not introduce a Bun-only or Worker-only dependency
+  into shared auth, domain, or repository code without a compatible adapter.
+- When adding durable background work, implement both the bounded Bun job path
+  and the bounded Worker scheduled path, with the same retry, lease, cleanup,
+  and idempotency rules. Do not use detached Worker work as the sole durable
+  delivery mechanism.
+- Preserve the frontend Worker's same-origin proxy, ingress credential,
+  tenant checks, and cookie behavior for either selected backend origin.
+- VPS uses bounded direct `pg.Pool` instances. Workers use Hyperdrive with
+  query caching disabled and a lazy `pg.Client` scoped to each invocation;
+  streamed responses retain the client until completion or cancellation.
+- A feature is incomplete if it works only on one runtime. If a capability is
+  genuinely unavailable on one platform, document and reproduce the blocker
+  before changing the agreed runtime support.
 
 Authentication:
 
@@ -309,6 +334,13 @@ After meaningful changes run applicable:
 - type-check;
 - tests;
 - build.
+
+For backend behavior changes, verify shared tests and **both** deployment
+paths: Bun API/job builds and runtime smoke, plus the API Worker Wrangler
+bundle dry-run. Exercise the affected HTTP and background behavior on both
+paths where it can be tested locally or in CI. Keep CI gates for both choices;
+if real infrastructure is unavailable, state the unverified staging behavior
+instead of calling either path production-verified.
 
 For database changes also check:
 

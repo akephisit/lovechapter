@@ -328,6 +328,10 @@ process on a VPS, or one Cloudflare API Worker serving the Elysia fetch routes
 and two scheduled UTC cron triggers. The two backend alternatives are never
 run together for one installation. The Next.js frontend Worker continues to
 proxy same-origin `/api` requests to the selected backend over HTTPS.
+Every later backend feature must preserve equivalent HTTP, authorization,
+data, and durable job behavior for both runtime choices; implementation may
+use separate bootstrap and connection adapters without duplicating domain
+rules.
 
 The VPS retains separately bounded direct `pg.Pool` instances. The API Worker
 uses one lazy invocation-scoped `pg.Client` via a configured Hyperdrive binding

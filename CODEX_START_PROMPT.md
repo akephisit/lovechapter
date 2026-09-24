@@ -59,23 +59,29 @@ Backend:
 
 - Elysia 2
 - TypeScript
-- Bun 1.4.2
-- always-on VPS HTTP process
-- separate Bun background-job process
+- choose one runtime per installation: Bun 1.4.2 on a VPS, or Cloudflare Workers
+- VPS option: always-on Bun HTTP process and separate Bun background-job process
+- Worker option: API fetch handler and bounded scheduled email/cleanup handlers
 - same-origin browser access through a server-only frontend Worker proxy
 
 Database:
 
 - Neon PostgreSQL
 - Drizzle ORM
-- bounded direct `pg` / node-postgres pools
+- VPS: bounded direct `pg` / node-postgres pools
+- Workers: invocation-scoped `pg.Client` via cache-disabled Hyperdrive
 
 Do not use Cloudflare D1 as primary data store.
 
-Do not use Hyperdrive or a backend Worker in production.
-
 Bun-only APIs belong in API/job bootstrap modules, not domain, authentication,
 or repository logic.
+
+Every future backend feature must support **both** runtime choices, including
+HTTP routes, authentication, database behavior, durable email and maintenance
+jobs, while one installation runs only its selected choice. Keep shared domain
+and repository logic portable; implement runtime-specific entrypoints or
+adapters where necessary. A feature is not finished if either choice loses
+behavior. Follow the full parity and validation rules in `AGENTS.md`.
 
 ## Elysia 2 requirement
 
@@ -87,10 +93,10 @@ Therefore:
 
 1. inspect the current official Elysia documentation;
 2. use the current Elysia 2 line appropriate at implementation time;
-3. verify the Bun HTTP adapter and lifecycle;
+3. verify the Bun HTTP and Worker fetch/scheduled paths;
 4. do not assume Elysia 1.x examples are correct;
 5. verify required compile/adapter/build behavior for the selected version;
-6. do not silently replace Elysia 2 or add a second backend runtime.
+6. do not silently replace Elysia 2 or require simultaneous backend deployments.
 
 If Elysia 2 is actually blocked:
 
@@ -144,7 +150,7 @@ Implement:
 2. current frontend Worker-compatible local dev;
 3. frontend Worker configuration;
 4. environment strategy;
-5. Neon + bounded `pg` pools + Drizzle foundation;
+5. Neon + Drizzle, bounded VPS `pg` pools, and Worker Hyperdrive access;
 6. MVP schema and migrations;
 7. auth boundary for Couple/Planner;
 8. wedding creation;
@@ -186,7 +192,7 @@ Unless genuinely necessary:
 - complex analytics;
 - Redis;
 - Kubernetes;
-- a backend Worker or second backend runtime.
+- simultaneous deployments of the two backend alternatives for one installation.
 
 ## Asynchronous work
 
@@ -251,6 +257,11 @@ Run applicable:
 - tests;
 - build;
 - migration generation/validation.
+
+For every backend behavior change, run the shared tests, Bun API/jobs builds
+and Bun runtime smoke, plus the API Worker bundle dry-run. Verify affected
+HTTP and scheduled/background flows on both paths where CI or staging permits;
+record any real-runtime check that remains unverified.
 
 For important database operations:
 

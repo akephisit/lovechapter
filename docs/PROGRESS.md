@@ -270,13 +270,20 @@ Worker smoke test and real Neon/Hyperdrive remain external staging gates.
 The Worker choice requires a cache-disabled Hyperdrive configuration and a
 deployed same-account frontend-to-API proxy check; local auth validates the
 email sender's configuration before accepting requests.
+The following documentation pass makes backend parity mandatory for future
+features in `AGENTS.md` and aligns `README.md`, `CODEX_START_PROMPT.md`, the
+product context, and database guidance with the two selectable runtimes. CI run
+`35979999551` passed both Verify and PostgreSQL integration for the runtime
+implementation; these documentation changes were checked separately.
 
 ## External gates
 
 - choice of production backend runtime (one of Worker or VPS), live Worker
   Hyperdrive configuration and target-plan CPU/scrypt/email/CSV staging checks
-- ownership, DNS, public TLS, and exact origins for the intended domain
-- VPS provider/region/sizing and the Bun benchmark on that selected host
+- exact generated frontend/API origins; custom-domain ownership, DNS, and TLS
+  are needed only if a custom domain is selected
+- if VPS is selected: provider/region/sizing, trusted HTTPS API hostname, and
+  the Bun benchmark on that host
 - Neon region, disposable staging credentials for a repeat concurrency run,
   and representative query plans
 - Resend sender/domain verification and end-to-end delivery/reputation controls
