@@ -83,9 +83,10 @@ Backend:
 
 - Elysia 2
 - TypeScript
-- Bun 1.4.2 production runtime
-- always-on VPS HTTP process
-- separate Bun background-job process
+- select one production runtime per installation: Bun 1.4.2 on a VPS or
+  Cloudflare Workers
+- VPS: always-on Bun HTTP process and separate Bun background-job process
+- Workers: Elysia fetch handler and bounded scheduled job handlers
 - browser traffic reaches the API only through the frontend Worker's server-side
   same-origin proxy
 
@@ -93,7 +94,8 @@ Database:
 
 - Neon PostgreSQL
 - Drizzle ORM
-- bounded direct `pg` / node-postgres pools
+- VPS: bounded direct `pg` / node-postgres pools
+- Workers: invocation-scoped `pg.Client` through Hyperdrive
 
 Frontend-supporting Cloudflare services only when needed:
 
@@ -104,7 +106,7 @@ Frontend-supporting Cloudflare services only when needed:
 Bun:
 
 - pinned to 1.4.2 for backend production;
-- used for the API HTTP process and background-job process;
+- used for the API HTTP process and background-job process on VPS installs;
 - Bun-only APIs stay in bootstrap/runtime modules.
 
 Do not use Bun-only server/runtime APIs in domain, authentication, or repository logic.
@@ -249,7 +251,7 @@ Prefer:
 Avoid:
 
 - premature microservices;
-- a second backend runtime or API Worker;
+- simultaneous backend runtime deployments for one installation;
 - Kubernetes;
 - Redis without a demonstrated requirement;
 - giant service files;

@@ -11,7 +11,9 @@ cannot supply by itself.
 - Will ownership, DNS, and publicly trusted TLS for `lovechapter.net` be
   confirmed?
 - If not, what will the final custom domain be?
-- Which stable HTTPS hostname will expose the VPS API to the frontend Worker?
+- If the VPS option is selected, which stable HTTPS hostname will expose its
+  API to the frontend Worker? On the Worker option, use the generated API
+  `workers.dev` HTTPS origin until a domain is registered.
 - Final logo/visual identity
 
 Until ownership is verified, keep every origin and hostname configurable. The
@@ -58,21 +60,26 @@ weaken the approved security gates to answer the remaining questions.
 
 ## Backend/operations
 
-- VPS provider, region, sizing, backup, and recovery ownership
+- Which one backend option will the first production installation use:
+  Cloudflare API Worker with Hyperdrive, or Bun 1.4.2 on a VPS?
+- If VPS is chosen: provider, region, sizing, backup, and recovery ownership
 - Production result of the passing Bun 1.4.2 scrypt benchmark on the selected
   VPS class (the local development-runner result is not a substitute)
 - Stable HTTPS backend hostname, DNS, certificate, and reverse-proxy ownership
 - Production monitoring and token-safe observability strategy
 - Upgrade cadence for Bun 1.4.2 and Elysia 2.0.0-beta.16
 - When Elysia 2 no longer needs the localized TypeBox compatibility shim
+- If Workers are chosen: Hyperdrive configuration and Neon direct connection,
+  target Worker plan/CPU budget, scrypt performance, cron backlog handling,
+  and streaming CSV end-to-end measurements
 
 ## Database
 
 - Neon region
 - PostgreSQL Row Level Security decision
 - Production query monitoring/observability strategy
-- Representative staging query-plan results after direct-pool provisioning
-- Measured API/job pool sizes within Neon and VPS connection budgets
+- Representative staging query-plan results after the chosen connection path
+- If VPS is chosen: measured API/job pool sizes within Neon connection budgets
 - Disposable Neon staging credentials for a repeat concurrency run and live
   query-plan review
 

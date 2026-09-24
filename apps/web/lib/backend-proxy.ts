@@ -35,6 +35,9 @@ export async function proxyApiRequest(
   environment: ProxyEnvironment,
 ): Promise<Response> {
   const upstreamOrigin = parseUpstreamOrigin(environment.apiUpstreamOrigin);
+  if (upstreamOrigin === new URL(request.url).origin) {
+    throw new Error("API_UPSTREAM_ORIGIN must differ from the frontend origin");
+  }
   validateProxySecret(environment.proxySharedSecret);
   const method = request.method.toUpperCase();
   if (!(SUPPORTED_METHODS as readonly string[]).includes(method)) {

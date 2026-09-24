@@ -2,17 +2,23 @@
 
 ## Current phase
 
-The approved Bun/VPS backend migration and first-party authentication vertical
-slice are implemented. The repository includes buildable API/job artifacts,
+The backend can be packaged either for Bun/VPS or for a Cloudflare API Worker;
+choose one backend runtime per installation. The repository includes API/job artifacts,
 the same-origin web proxy, account UI, provider-free tests, example systemd and
 Caddy assets, and an operational handoff.
 
-This is locally verified code, not a production deployment. No VPS, custom
+This is locally verified code, not a production deployment. No Hyperdrive
+configuration, VPS, custom
 domain, Neon production database, Resend sender, or live URL is provisioned or
 claimed.
 
 ## Implemented
 
+- Cloudflare API Worker fetch/scheduled entry reusing Elysia routes and the
+  same-origin web proxy, with Hyperdrive invocation-scoped lazy pg clients;
+  bounded email and retention cron handlers; response-stream-aware cleanup
+- Worker Wrangler config and deploy dry-run command alongside the unchanged
+  Bun/VPS and systemd installation choice
 - Bun 1.4.2 API runtime with bounded request/body/time limits, graceful drain,
   readiness, and fail-closed validated configuration
 - Separate bounded Bun auth-email job process with leases, retries,
@@ -251,8 +257,24 @@ and `git diff --check` passed. The PostgreSQL concurrency suite and Bun/vinext
 build gate run on the pull request CI service because this workstation has no
 PostgreSQL server or Bun runtime.
 
+The 2026-09-24 selectable-runtime change includes Worker handlers, a
+Hyperdrive-aware invocation connection with streaming-response lifetime,
+scheduled outbox/cleanup, and an API Worker Wrangler dry-run. Focused Worker
+and database lifecycle tests passed locally. The full local run passed
+formatting, lint, all workspace typechecks, 70 files / 444 tests, Drizzle
+snapshot check, native Next and vinext builds, vinext compatibility, web
+deployment dry-run, and the API Worker bundle dry-run. This runner could bundle the
+Worker but could not start the local Wrangler dev server because the sandbox
+reports `uv_interface_addresses returned Unknown system error 1`; a deployed
+Worker smoke test and real Neon/Hyperdrive remain external staging gates.
+The Worker choice requires a cache-disabled Hyperdrive configuration and a
+deployed same-account frontend-to-API proxy check; local auth validates the
+email sender's configuration before accepting requests.
+
 ## External gates
 
+- choice of production backend runtime (one of Worker or VPS), live Worker
+  Hyperdrive configuration and target-plan CPU/scrypt/email/CSV staging checks
 - ownership, DNS, public TLS, and exact origins for the intended domain
 - VPS provider/region/sizing and the Bun benchmark on that selected host
 - Neon region, disposable staging credentials for a repeat concurrency run,

@@ -2,34 +2,40 @@
 
 ## Status and topology
 
-The deployable API/job artifacts, configuration parsers, example systemd
-services, Caddy example, and local validation commands exist. No infrastructure
-is provisioned or claimed by this repository. Domain ownership, DNS/TLS, VPS,
-Neon staging/production credentials, Resend verification, and the frontend
-Worker deployment remain external gates.
+Choose one backend path for each installation: **Cloudflare API Worker** or
+**Bun/VPS**. Never run both APIs or both job processors against the same
+deployment. Both paths use the same Elysia API, Neon schema and frontend
+same-origin proxy. No infrastructure is provisioned or claimed by this
+repository; credentials, Resend verification and live deployments are external
+gates. Neither a VPS nor a custom domain is required for the Worker path.
 
 ```text
 Browser -> Cloudflare frontend Worker -> same-origin /api proxy
-        -> verified HTTPS API hostname -> Caddy -> 127.0.0.1:3001
-        -> Elysia/Bun API -> bounded pg pool -> Neon PostgreSQL
+        -> selected HTTPS backend origin
 
-systemd -> Bun jobs -> bounded pg pool -> auth email outbox -> Resend
+Worker choice: Elysia API Worker -> Hyperdrive -> Neon PostgreSQL
+               scheduled email/cleanup handlers -> Hyperdrive -> Neon/Resend
+
+VPS choice:    Caddy -> Elysia/Bun API -> bounded pg pool -> Neon PostgreSQL
+               systemd Bun jobs -> bounded pg pool -> Neon/Resend
 ```
 
-The host floor is 2 vCPU and 2 GiB RAM. A smaller class requires fresh scrypt,
-pool, and concurrent-request measurements.
+The VPS host floor is 2 vCPU and 2 GiB RAM. A smaller class requires fresh
+scrypt, pool, and concurrent-request measurements. Measure Worker CPU, memory,
+and scrypt latency on the selected Cloudflare plan before enabling local auth.
 
 ## Runtime environment contract
 
-Store API and job variables in root-owned files under `/etc/lovechapter` with
-mode `0600`. Store Worker secrets in the hosting platform's secret store. Never
-commit real values.
+For VPS deployments, store API and job variables in root-owned files under
+`/etc/lovechapter` with mode `0600`. For Workers use secret bindings and a
+Hyperdrive binding. Never commit real values.
 
-| Process | Required environment                                                                                                                                                                                                            |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| API     | `DATABASE_URL`, `DATABASE_POOL_MAX=6`, `AUTH_MODE=local`, `PUBLIC_WEB_ORIGIN`, `WEB_PROXY_SHARED_SECRET`, `RATE_LIMIT_HMAC_KEY`, `AUTH_TOKEN_ACTIVE_KEY_VERSION`, `AUTH_TOKEN_HMAC_KEYS`, `API_HOST=127.0.0.1`, `API_PORT=3001` |
-| Jobs    | `DATABASE_URL`, `DATABASE_POOL_MAX=2`, `PUBLIC_WEB_ORIGIN`, `AUTH_TOKEN_ACTIVE_KEY_VERSION`, `AUTH_TOKEN_HMAC_KEYS`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`                                                                      |
-| Web     | `API_UPSTREAM_ORIGIN`, `WEB_PROXY_SHARED_SECRET`                                                                                                                                                                                |
+| Process    | Required environment                                                                                                                                                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| VPS API    | `DATABASE_URL`, `DATABASE_POOL_MAX=6`, `AUTH_MODE=local`, `PUBLIC_WEB_ORIGIN`, `WEB_PROXY_SHARED_SECRET`, `RATE_LIMIT_HMAC_KEY`, `AUTH_TOKEN_ACTIVE_KEY_VERSION`, `AUTH_TOKEN_HMAC_KEYS`, `API_HOST=127.0.0.1`, `API_PORT=3001`       |
+| VPS Jobs   | `DATABASE_URL`, `DATABASE_POOL_MAX=2`, `PUBLIC_WEB_ORIGIN`, `AUTH_TOKEN_ACTIVE_KEY_VERSION`, `AUTH_TOKEN_HMAC_KEYS`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`                                                                            |
+| API Worker | `HYPERDRIVE` binding, `NODE_ENV=production`, `AUTH_MODE=local`, `PUBLIC_WEB_ORIGIN`, `WEB_PROXY_SHARED_SECRET`, `RATE_LIMIT_HMAC_KEY`, `AUTH_TOKEN_ACTIVE_KEY_VERSION`, `AUTH_TOKEN_HMAC_KEYS`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL` |
+| Web        | `API_UPSTREAM_ORIGIN`, `WEB_PROXY_SHARED_SECRET`                                                                                                                                                                                      |
 
 `API_HOST` and `API_PORT` are the implementation's names for the plan's generic
 host/port settings. The checked-in systemd unit pins both so only the API gets a
@@ -40,6 +46,63 @@ independently as canonical 32-byte base64url values. `AUTH_TOKEN_HMAC_KEYS` is a
 JSON object whose keys are positive integer versions, for example
 `{"1":"<32-byte-base64url>"}`. API and jobs must receive the same retained key
 set and active version.
+
+## Cloudflare API Worker choice
+
+1. Create Neon and apply existing Drizzle migrations **once** from a trusted
+   machine/CI using a separate direct migration credential:
+
+   ```bash
+   DATABASE_URL='postgres://MIGRATION_ROLE:SECRET@HOST/DB?sslmode=require' \
+     npm run db:migrate --workspace @lovechapter/database
+   ```
+
+2. Create a Hyperdrive configuration for Neon using its direct/unpooled TLS
+   connection string **with query caching disabled** (use `--caching-disabled`
+   when creating it via Wrangler). Authentication, membership, and invitation
+   changes require fresh reads; Hyperdrive's default query cache does not
+   invalidate after writes. Verify caching is disabled on the actual
+   configuration before deploying. Give the application database role only
+   the needed privileges. Replace `REPLACE_WITH_HYPERDRIVE_ID` in
+   `apps/api/wrangler.jsonc` with the actual configuration ID; never commit a
+   database password. Configure `HYPERDRIVE` with the same binding name.
+3. Set `PUBLIC_WEB_ORIGIN` to the frontend Worker's generated HTTPS origin.
+   Add `WEB_PROXY_SHARED_SECRET`, `RATE_LIMIT_HMAC_KEY`,
+   `AUTH_TOKEN_ACTIVE_KEY_VERSION`, `AUTH_TOKEN_HMAC_KEYS`, `RESEND_API_KEY`, and
+   `RESEND_FROM_EMAIL` as API Worker secrets (for example,
+   `npx wrangler secret put WEB_PROXY_SHARED_SECRET --config apps/api/wrangler.jsonc`)
+   before deploying. The proxy secret and retained action-token keys must
+   match across the web and backend configuration. Keep `AUTH_MODE=disabled`
+   until Neon, Resend, proxy, mail delivery and scrypt on the target Worker
+   pass staging checks; then set `AUTH_MODE=local` in the API Worker config.
+4. Verify locally without deploying using
+   `npm run build:worker --workspace @lovechapter/api`. Deploy with
+   `npm run deploy:worker --workspace @lovechapter/api` after bindings are real.
+   Set the frontend Worker's `API_UPSTREAM_ORIGIN` to the deployed API Worker's
+   `https://...workers.dev` origin and `WEB_PROXY_SHARED_SECRET` to the same
+   credential, then deploy the frontend. The frontend Worker config enables
+   `global_fetch_strictly_public` so server-side `fetch` can reach the API
+   Worker on the same account. Confirm the target is the API Worker and not
+   the frontend's own URL. Do not enable a second backend.
+5. The API Worker's `* * * * *` UTC cron processes up to 10 outbox jobs per
+   tick; `*/15 * * * *` runs one bounded 500-row retention pass for auth and
+   guest imports. Monitor backlog and retry behavior. Test generated URL
+   liveness, authenticated proxy, registration/email verification, session,
+   CSV streaming, and both cron handlers with a disposable staging database.
+
+For local Worker development, Wrangler also requires a local PostgreSQL URL:
+set `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` to a disposable
+database URL. This is separate from the deployed Hyperdrive ID. The Worker
+liveness handler does not open that database.
+
+The API Worker creates a lazy `pg.Client` for each fetch or scheduled
+invocation and closes it after the response stream or scheduled task finishes.
+No process-wide Worker connection is shared. The existing frontend proxy has
+a 1 MiB body cap and rejects unapproved headers; the public API Worker rejects
+business requests without the private proxy credential. Cloudflare invocation
+logs/traces remain disabled because invitation paths contain bearer tokens.
+
+## Bun/VPS choice
 
 ## Host preparation
 

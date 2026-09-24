@@ -27,7 +27,7 @@ Keep separate:
 
 ## ADR-004 — Cloudflare-first
 
-**Status:** Accepted historically; backend-runtime portion superseded by ADR-016
+**Status:** Accepted historically; backend-runtime portion superseded by ADR-016 and ADR-023
 
 Frontend and API target Cloudflare Workers.
 
@@ -35,7 +35,7 @@ Do not introduce VPS/Kubernetes/Redis by default.
 
 ## ADR-005 — Elysia 2 backend
 
-**Status:** Accepted with known compatibility risk; runtime portion superseded by ADR-016
+**Status:** Accepted with known compatibility risk; runtime portion superseded by ADR-016 and ADR-023
 
 Elysia 2 is the chosen API framework.
 
@@ -60,7 +60,7 @@ Compatibility must be verified before relying on version-sensitive features.
 
 ## ADR-007 — Neon PostgreSQL + Hyperdrive + Drizzle
 
-**Status:** Accepted historically; connection path superseded by ADR-016
+**Status:** Accepted historically; connection path governed by ADR-023
 
 Primary database: Neon PostgreSQL.
 
@@ -216,14 +216,14 @@ prebuilt sign-in/sign-up components, while the separate Elysia API uses
 `@clerk/backend`. Reassess compatibility before introducing Clerk server helpers
 inside the Next.js application.
 
-## ADR-016 — Bun/VPS is the sole backend production runtime
+## ADR-016 — Bun/VPS backend production runtime
 
-**Status:** Accepted; supersedes the backend-runtime portions of ADR-004, ADR-005, and ADR-007
+**Status:** Superseded in its exclusivity by ADR-023; VPS implementation retained
 
 The Next.js/vinext frontend remains on Cloudflare Workers. Elysia 2 runs as an
 always-on Bun HTTP process on a VPS, with a separate Bun background-job process.
 Both use bounded direct PostgreSQL pools. Hyperdrive and backend Workers are no
-longer production targets.
+longer production targets under this historical decision.
 
 The browser calls the API through a server-only same-origin proxy on the
 frontend Worker. The proxy forwards to one configured HTTPS backend origin and
@@ -318,3 +318,25 @@ and booleans. Presets are DL, C5, and C6; custom dimensions stay within
 solely from validated values, Thai fonts are self-hosted, and Print waits for
 font readiness. Hardware, driver scaling, feed orientation, and margins are
 external acceptance checks, not inferred from automated tests.
+
+## ADR-023 — Backend runtime is selected per installation
+
+**Status:** Accepted; supersedes ADR-016's sole-runtime restriction
+
+One installation runs either the Bun 1.4.2 API and separate background job
+process on a VPS, or one Cloudflare API Worker serving the Elysia fetch routes
+and two scheduled UTC cron triggers. The two backend alternatives are never
+run together for one installation. The Next.js frontend Worker continues to
+proxy same-origin `/api` requests to the selected backend over HTTPS.
+
+The VPS retains separately bounded direct `pg.Pool` instances. The API Worker
+uses one lazy invocation-scoped `pg.Client` via a configured Hyperdrive binding
+for fetch and scheduled work; every invocation closes its client. A one-minute
+cron claims one bounded email batch and a 15-minute cron performs bounded
+retention cleanup. Both share the existing Neon schema, Elysia routes,
+first-party authorization, Resend outbox, and action-token key set. Migration
+credentials stay outside the Worker. Production must validate runtime scrypt
+costs and end-to-end email before enabling local authentication. Disable
+Hyperdrive query caching so revocations and writes are immediately visible;
+the frontend enables `global_fetch_strictly_public` to call the API Worker's
+generated HTTPS URL from its server-side proxy.

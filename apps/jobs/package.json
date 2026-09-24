@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./processor": "./src/processor.ts",
+    "./resend-email-sender": "./src/resend-email-sender.ts",
+    "./runtime-config": "./src/runtime-config.ts"
+  },
   "scripts": {
     "build": "bun build src/index.ts --target=bun --sourcemap=linked --outdir=dist",
     "start": "bun dist/index.js",

@@ -315,10 +315,12 @@ Store money using a machine-safe amount representation and ISO currency code. Do
 
 ---
 
-## 9. Frontend Worker and Bun/VPS backend architecture — LOCKED
+## 9. Frontend Worker and selectable backend runtime — LOCKED
 
-The frontend targets Cloudflare Workers. The backend targets an always-on Bun
-process on a VPS, with a separate Bun background-job process.
+The frontend targets Cloudflare Workers. An installation selects **one**
+backend deployment: an always-on Bun API plus separate Bun jobs process on a
+VPS, or a Cloudflare API Worker with scheduled jobs in that same Worker. The
+application must not run both backend alternatives for one installation.
 
 Do not default to:
 
@@ -346,13 +348,13 @@ Current Cloudflare recommendation for new Next.js Workers applications is vinext
 
 - Elysia 2
 - TypeScript
-- Bun 1.4.2 production runtime
-- always-on VPS HTTP process
-- separate Bun background-job process
+- Bun 1.4.2 with an always-on VPS HTTP process and separate Bun jobs process,
+  or a Cloudflare Worker with Elysia fetch and scheduled job handlers
 
 Elysia 2 is an explicit project decision.
 
-The current Elysia 2 release line is beta and version-sensitive. Its Bun runtime behavior is an accepted project risk that must be actively validated.
+The current Elysia 2 release line is beta and version-sensitive. Validate both
+the Bun HTTP and Cloudflare Worker bundle/runtime paths before launch.
 
 Do not silently replace Elysia 2.
 
@@ -366,9 +368,10 @@ performs normal session authentication and server-side authorization.
 
 The proxy must keep the backend origin and ingress credential out of browser
 assets, remove spoofed forwarding headers, preserve approved `Set-Cookie`
-headers, and keep origins configurable. Production requires a stable backend
-hostname with publicly trusted TLS; a bare IP or self-signed certificate is not
-an accepted production path.
+headers, and keep origins configurable. On the VPS path production requires a
+stable backend hostname with publicly trusted TLS. On the Worker path the
+generated API `workers.dev` HTTPS origin is sufficient until a custom domain
+is registered. A bare IP or self-signed certificate is not an accepted path.
 
 If a blocker occurs:
 
@@ -399,7 +402,9 @@ Primary database:
 
 Access path:
 
-`Bun API/job process -> bounded pg.Pool -> Neon PostgreSQL`
+VPS: `Bun API/job processes -> bounded pg.Pool -> Neon PostgreSQL`
+
+Workers: `API fetch/scheduled invocation -> Hyperdrive -> Neon PostgreSQL`
 
 ORM:
 
@@ -407,10 +412,13 @@ ORM:
 
 Preferred PostgreSQL driver:
 
-- `pg` / node-postgres with separately bounded API and job-process pools
+- VPS: `pg` with separately bounded API and job-process pools
+- Workers: one lazy `pg.Client` per invocation, closed at invocation end
 
-Use a direct TLS PostgreSQL connection. Hyperdrive and backend Workers are not
-production targets.
+The VPS uses a direct TLS PostgreSQL connection. Workers use a configured
+Hyperdrive binding backed by Neon; database migrations use a separate direct
+connection outside the Worker. Disable Hyperdrive query caching because account
+and tenant authorization require fresh reads.
 
 The initial connection budgets are a maximum of 6 connections for the API
 process and 2 for the job process. Changes require measurement against the
@@ -577,7 +585,7 @@ Include:
 
 - monorepo foundation;
 - frontend Cloudflare Worker configuration;
-- Bun/VPS API and background-job configuration;
+- selectable Bun/VPS or Cloudflare Workers API and background-job configuration;
 - environment strategy;
 - Neon + bounded direct PostgreSQL pools + Drizzle foundation;
 - MVP schema/migrations;

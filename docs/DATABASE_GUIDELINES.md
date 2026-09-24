@@ -2,8 +2,9 @@
 
 ## Goal
 
-LoveChapter uses Neon PostgreSQL through bounded direct `pg` / node-postgres
-pools and Drizzle ORM.
+LoveChapter uses Neon PostgreSQL through `pg` / node-postgres and Drizzle ORM.
+VPS deployments use bounded direct pools; Worker deployments use Hyperdrive
+and a client scoped to each invocation.
 
 The ORM is a tool, not a substitute for SQL design.
 
@@ -19,7 +20,7 @@ Every engineer/agent must care about:
 
 ## 1. Connection architecture
 
-Production path:
+VPS production path:
 
 Elysia API and background-job processes on Bun/VPS
 -> separately bounded `pg.Pool` instances
@@ -33,9 +34,20 @@ Preferred:
 - one process-wide pool per backend process
 - initial maximum of 6 API connections and 2 job-process connections
 
-Hyperdrive and backend Cloudflare Workers are not production targets. Pool-size
-changes require measurement against the VPS concurrency and Neon connection
-budgets; do not multiply connection pools per request or repository.
+Worker production path:
+
+API fetch/scheduled invocation on Cloudflare Workers
+-> one lazy `pg.Client` via Hyperdrive per invocation
+-> Neon PostgreSQL
+
+The Hyperdrive configuration **must disable query caching**. Auth state,
+membership checks and writes require fresh reads; a cached SELECT can retain
+permissions after revocation or hide a newly verified account.
+
+Close Worker clients in `finally` on success and failure; never create a global
+client or a pool per request. Migrate outside Workers with a separate direct
+PostgreSQL URL. VPS pool-size changes require measurement against concurrency
+and Neon connection budgets; do not multiply pools per repository.
 
 ---
 

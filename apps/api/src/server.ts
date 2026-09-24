@@ -1,13 +1,6 @@
-import {
-  AuthService,
-  createActionTokenCodec,
-  createScryptPasswordHasher,
-} from "@lovechapter/auth";
 import { createPostgresRuntime } from "@lovechapter/database";
-import { LoveChapterService } from "@lovechapter/domain";
 
-import { createApiIdentityProvider } from "./api-identity";
-import { createApiApp } from "./app";
+import { createApiHandler } from "./api-handler";
 import { approvedBunVersion, parseApiRuntimeConfig } from "./runtime-config";
 
 type FetchHandler = (request: Request) => Promise<Response> | Response;
@@ -92,49 +85,12 @@ export async function runApiServer(): Promise<Bun.Server<undefined>> {
   const environment = Bun.env as Record<string, string | undefined>;
   const config = parseApiRuntimeConfig(environment);
   const postgres = createPostgresRuntime(config);
-  const authService = new AuthService({
-    repository: postgres.authRepository,
-    passwordHasher: createScryptPasswordHasher(),
-    actionTokenCodec: createActionTokenCodec({
-      activeVersion: config.authTokenActiveKeyVersion,
-      keys: config.authTokenHmacKeys,
-    }),
-    clock: { now: () => new Date() },
-    rateLimitSecret: config.rateLimitHmacKey,
-  });
-  const identity = createApiIdentityProvider(
-    {
-      ...environment,
-      AUTH_MODE: config.authMode,
-    },
-    {
-      authService,
-      nodeEnvironment: config.nodeEnvironment,
-    },
-  );
-  const app = createApiApp({
-    authService,
-    nodeEnvironment: config.nodeEnvironment,
-    publicWebOrigin: config.publicWebOrigin,
-    proxyCredential: config.proxyCredential,
-    fingerprintKey: config.rateLimitHmacKey,
+  const app = createApiHandler(environment, config, {
+    ...postgres,
     readiness: async () => {
       await postgres.pool.query("select 1");
     },
-    run: (request, operation) =>
-      operation(
-        new LoveChapterService(
-          identity,
-          postgres.loveChapterRepository,
-          config.publicWebOrigin,
-          request,
-          postgres.guestImportRepository,
-          postgres.envelopeRepository,
-          postgres.planningRepository,
-          postgres.operationsRepository,
-        ),
-      ),
-  }).compile();
+  });
   const lifecycle = createGracefulHttpLifecycle({
     fetch: app.fetch,
     close: () => postgres.close(),

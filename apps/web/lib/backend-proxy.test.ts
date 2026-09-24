@@ -5,6 +5,21 @@ import { proxyApiRequest, type ProxyEnvironment } from "./backend-proxy";
 const secret = Buffer.alloc(32, 7).toString("base64url");
 
 describe("same-origin backend proxy", () => {
+  it("refuses to proxy into the frontend Worker itself", async () => {
+    const fetchMock = vi.fn();
+    await expect(
+      proxyApiRequest(
+        new Request("https://web.example.workers.dev/api/v1/auth/session"),
+        ["v1", "auth", "session"],
+        {
+          apiUpstreamOrigin: "https://web.example.workers.dev",
+          proxySharedSecret: secret,
+          fetch: fetchMock,
+        },
+      ),
+    ).rejects.toThrow("API_UPSTREAM_ORIGIN must differ");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it("passes safe CSV download headers while forcing no-store", async () => {
     const fetchMock = vi.fn(
       async () =>

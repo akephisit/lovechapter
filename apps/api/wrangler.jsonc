@@ -1,0 +1,21 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "lovechapter-api",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-21",
+  "compatibility_flags": ["nodejs_compat"],
+  // Replace this ID with Neon Hyperdrive; disable query caching on that config.
+  // Account and membership reads must always reflect revocations.
+  "hyperdrive": [
+    { "binding": "HYPERDRIVE", "id": "REPLACE_WITH_HYPERDRIVE_ID" },
+  ],
+  "vars": { "NODE_ENV": "production", "AUTH_MODE": "disabled" },
+  "triggers": { "crons": ["* * * * *", "*/15 * * * *"] },
+  // Keep dashboard-managed secrets when updating Worker code.
+  "keep_vars": true,
+  "observability": {
+    "enabled": true,
+    "logs": { "invocation_logs": false },
+    "traces": { "enabled": false },
+  },
+}
