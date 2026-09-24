@@ -49,8 +49,10 @@ set and active version.
 
 ## Cloudflare API Worker choice
 
-1. Create Neon and apply existing Drizzle migrations **once** from a trusted
-   machine/CI using a separate direct migration credential:
+1. Create Neon and apply existing Drizzle migrations from a trusted machine/CI
+   using a separate direct migration credential. The GitHub Actions release
+   workflow below runs pending migrations automatically before every production
+   deploy; a manual first migration is an alternative during setup:
 
    ```bash
    DATABASE_URL='postgres://MIGRATION_ROLE:SECRET@HOST/DB?sslmode=require' \
@@ -69,10 +71,11 @@ set and active version.
 3. Set `PUBLIC_WEB_ORIGIN` to the frontend Worker's generated HTTPS origin.
    Add `WEB_PROXY_SHARED_SECRET`, `RATE_LIMIT_HMAC_KEY`,
    `AUTH_TOKEN_ACTIVE_KEY_VERSION`, `AUTH_TOKEN_HMAC_KEYS`, `RESEND_API_KEY`, and
-   `RESEND_FROM_EMAIL` as API Worker secrets (for example,
-   `npx wrangler secret put WEB_PROXY_SHARED_SECRET --config apps/api/wrangler.jsonc`)
-   before deploying. The proxy secret and retained action-token keys must
-   match across the web and backend configuration. Keep `AUTH_MODE=disabled`
+   `RESEND_FROM_EMAIL` as API Worker secrets before deploying. Set secrets in
+   the dashboard on an existing Worker or upload them with the first deployment
+   using Wrangler's `--secrets-file`; `wrangler secret put` deploys a new Worker
+   version immediately. The proxy secret must match on the web and API Workers;
+   action-token signing keys are API-only on this path. Keep `AUTH_MODE=disabled`
    until Neon, Resend, proxy, mail delivery and scrypt on the target Worker
    pass staging checks; then set `AUTH_MODE=local` in the API Worker config.
 4. Verify locally without deploying using
@@ -101,6 +104,42 @@ No process-wide Worker connection is shared. The existing frontend proxy has
 a 1 MiB body cap and rejects unapproved headers; the public API Worker rejects
 business requests without the private proxy credential. Cloudflare invocation
 logs/traces remain disabled because invitation paths contain bearer tokens.
+
+### Automatic migration and deployment from GitHub
+
+`.github/workflows/ci.yml` verifies pull requests without touching production.
+After a push to `main`, its production job waits for both verification jobs,
+applies pending Drizzle migrations once, deploys the API Worker, deploys the web
+Worker, then checks API liveness and readiness through the web proxy. A failing
+check or migration prevents later deployment steps. Main-branch runs are not
+canceled mid-migration. This job uses the `production` GitHub environment.
+
+Configure these GitHub environment values **before merging** the release
+workflow to `main`:
+
+| Kind     | Name                          | Value                                                                                                |
+| -------- | ----------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Secret   | `NEON_MIGRATION_DATABASE_URL` | Direct/unpooled TLS Neon URL for a dedicated migration role; never the Hyperdrive runtime credential |
+| Secret   | `CLOUDFLARE_ACCOUNT_ID`       | Target Cloudflare account ID                                                                         |
+| Secret   | `CLOUDFLARE_API_TOKEN`        | Cloudflare API token scoped to deploy Workers in that account                                        |
+| Variable | `API_WORKER_ORIGIN`           | Actual API Worker HTTPS origin without a trailing slash                                              |
+| Variable | `WEB_WORKER_ORIGIN`           | Actual web Worker HTTPS origin without a trailing slash                                              |
+
+Provision Hyperdrive with caching disabled and replace its placeholder binding
+ID in `apps/api/wrangler.jsonc` before the first automated release. Configure
+the API and web runtime secrets in their respective Cloudflare Worker settings;
+GitHub build secrets are not automatically Worker runtime secrets. The web
+Worker's `API_UPSTREAM_ORIGIN` must equal `API_WORKER_ORIGIN`; the API Worker's
+`PUBLIC_WEB_ORIGIN` must equal `WEB_WORKER_ORIGIN`. Keep their
+`WEB_PROXY_SHARED_SECRET` values identical. Check the two readiness URLs on
+the generated `workers.dev` origins before relying on the automated release.
+
+Do not enable independent Cloudflare Git-triggered production deployments for
+these same Workers. Otherwise they may deploy before GitHub Actions finishes the
+database migration. Review every schema change for compatibility with the
+previously deployed Worker: if migration succeeds but deployment fails, the
+database remains migrated, and recovery needs a compatible deployment or a
+reviewed forward migration rather than an assumed SQL rollback.
 
 ## Bun/VPS choice
 

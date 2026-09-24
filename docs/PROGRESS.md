@@ -5,7 +5,9 @@
 The backend can be packaged either for Bun/VPS or for a Cloudflare API Worker;
 choose one backend runtime per installation. The repository includes API/job artifacts,
 the same-origin web proxy, account UI, provider-free tests, example systemd and
-Caddy assets, and an operational handoff.
+Caddy assets, an operational handoff, and a GitHub Actions production release
+path that verifies, migrates, and deploys the Worker choice in order after a
+push to `main`.
 
 This is locally verified code, not a production deployment. No Hyperdrive
 configuration, VPS, custom
@@ -14,6 +16,9 @@ claimed.
 
 ## Implemented
 
+- Main-branch production release job gated on CI and PostgreSQL integration,
+  with dedicated Neon migration credentials, sequential API/web Worker deploys,
+  readiness checks, and no production work on pull requests
 - Cloudflare API Worker fetch/scheduled entry reusing Elysia routes and the
   same-origin web proxy, with Hyperdrive invocation-scoped lazy pg clients;
   bounded email and retention cron handlers; response-stream-aware cleanup
