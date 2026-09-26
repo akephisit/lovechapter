@@ -126,3 +126,22 @@ keys enforce the singleton and lease identity. No secondary index is
 justified by this tiny transient set yet; revisit count/status plans if
 real lease cardinality grows. The mutating admission function was not run
 under `EXPLAIN ANALYZE`.
+
+The exact corrected Worker SHA reran the seven representative read plans on
+`staging-test` with the synthetic transaction rolled back. Single-run
+execution times were wedding page 0.918 ms, guest page 1.336 ms, invitation
+lookup 0.059 ms, account lookup 0.028 ms, session lookup 0.043 ms, due email
+jobs 0.039 ms, and expired rate-limit page 1.128 ms. The relevant invitation,
+account, session, due-job, and expiry indexes remained in use; small-table
+or low-selectivity scans remained reasonable. These are not production
+latency guarantees.
+
+A warm, alternating 40-request direct staging API probe measured p95
+53.7 ms for protected release-state (one control read) and 88.3 ms for an
+unauthenticated wedding list (admission function, lease release, and auth
+rejection). The 34.6 ms difference is **not** an isolated release-gate
+overhead estimate: the routes perform different work, and this was not a
+production-load benchmark. Admission adds one Worker→PostgreSQL round trip
+and release adds one; the function internally locks the singleton and
+inserts one lease. A comparable pre-gate p95 baseline for this SHA does not
+exist, so no production performance acceptance is inferred from this probe.

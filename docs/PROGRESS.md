@@ -877,3 +877,60 @@ query plans and the remaining cardinality caveat are recorded in
 `docs/QUERY_REVIEW.md`. Active staging has not yet received migration 0010 or
 the corrected Worker revision; the staging closure and acceptance drill
 remain open.
+
+## Worker staging maintenance drill on the corrected SHA (2026-09-26)
+
+Commit `e463dc8e9627ee1d5d542b3fb811e56302377c3b` passed local CI
+(78 files / 514 tests, format, lint, typechecks, builds, migration check,
+Bun smoke, Next/vinext checks, and Worker dry-runs) and 7 PostgreSQL
+integration files / 39 tests on a disposable recovery branch. API and web
+staging dry-runs selected the staging configurations. Active staging received
+additive migration 0010 and the narrowed app grants before API deployment;
+the existing direct lease `INSERT` was revoked only after the new API served
+all traffic. Catalog checks showed no app control-row `UPDATE`, no direct
+lease `INSERT`, app function `EXECUTE`/lease `SELECT (id)`/`DELETE`, and no
+`PUBLIC` function execution. The retained staging data was 1 user and 2
+weddings. API Worker version
+`7d53e8a7-eb31-4ef0-9f96-2c2c5d808ba0` and web Worker version
+`a13126e9-b02c-40d7-ab91-f54fa98f3141` were deployed from that SHA.
+Protected readiness and release-state returned 200/open, direct business
+ingress returned 403, the public sign-in page returned 200, and an
+unauthenticated web-proxied business request returned the expected 401
+instead of the earlier 503.
+
+On active staging, a synthetic HTTP lease admitted while open remained
+visible after CLI closure. New HTTP/email/cleanup admissions returned null.
+Public sign-in and API returned no-store 503; protected readiness stayed
+200, valid private GET probe rendered sign-in, and an invalid probe stayed 503. The synthetic lease was released, CLI drain confirmed zero active
+leases, and evidence-gated CLI open restored the same SHA. A first `open`
+invocation used a relative evidence path from the workspace package and
+failed closed; the absolute path succeeded. After reopening, the gate was
+open with zero leases, sign-in returned 200, and unauthenticated business
+access returned 401. The earlier no-compute staging checkpoint and
+disposable PITR rehearsal remain the recovery evidence; no production
+branch or service was touched.
+
+On this exact deployed SHA, the verified staging test account requested a
+fresh reset through the web proxy. Real minute Worker cron sent the new job
+once; its persisted token hash matched reconstructed metadata, and the owner
+confirmed inbox receipt. Reset, sign-in, session, sign-out, and revoked
+session checks passed. A disposable wedding and Unicode guest completed
+public invitation/RSVP without a guest account; an over-limit RSVP was
+rejected and readback retained the valid party size. CSV upload preview
+flagged one invalid row, mapping excluded it, stale mapping returned 409,
+commit created one guest, same-key replay matched, and no-store export
+contained Unicode data. Only the wedding created by this test was removed;
+the account password is now an ephemeral test value unknown to the owner and
+can be changed through Forgot password. The earlier verified account and
+verification-inbox evidence still apply; no new verification email was
+requested for this already-verified account.
+
+The controlled Resend 429→success retry integration passed on isolated
+`staging-test` PostgreSQL (1 test); no staging Resend key was changed and a
+real provider failure was not claimed. Seven representative SELECT plans
+were rerun against synthetic transactional data on `staging-test` and rolled
+back; details are in `docs/QUERY_REVIEW.md`. A separately scoped expired
+rate-limit marker was present before the next deployed quarter-hour cleanup
+tick and absent afterward; the gate remained open with zero leases and the
+two pre-existing weddings. Remote PR CI and any merge decision remain
+pending. Production deployment and automatic promotion remain disabled.
