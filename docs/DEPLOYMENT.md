@@ -422,6 +422,15 @@ staging/production, or assumes backward compatibility. The query-plan
 transaction later rolls its synthetic rows back. Creation and expiration of
 the fixed test branch remain manual until separately designed.
 
+For the current test branch, the direct migration URL uses its own
+branch-specific `neondb_owner` password, not the password still shared by
+active staging and production. The query-plan URL uses the SQL-created,
+branch-only `lovechapter_test_probe` role. It needs SELECT/INSERT only on the
+eleven fixture tables, SELECT on migration-ledger `id`/`hash`, and
+`pg_maintain` to run `ANALYZE`; it must not inherit `neon_superuser`. Keep
+these as distinct GitHub staging environment secrets. Rotating the test
+branch owner password invalidates any older machine-local test-branch URL.
+
 The API Worker/Hyperdrive application role needs `USAGE` on `ops`, `SELECT`
 on `ops.release_control`, `EXECUTE` on `ops.admit_release_lease(text)`, and
 `SELECT (id)` plus `DELETE` on `ops.release_leases`. The admission function

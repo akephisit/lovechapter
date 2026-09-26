@@ -1316,3 +1316,27 @@ by this implementation. Local `npm run ci` passed with Bun 1.4.2 (107 test
 files / 669 tests, migration snapshot check, Bun smoke, Worker dry-run,
 Next/vinext builds and checks, and web deploy dry-run). It does not replace
 the hosted PostgreSQL job or a live staging acceptance run.
+
+On 2026-09-27, the owner approved rotating only the disposable
+`staging-test` branch's `neondb_owner` password after read-only checks confirmed
+that its old password matched both active `staging` and unbootstrapped
+`production`. The Neon branch-scoped reset completed; a new connection to
+`staging-test` works, the old password is rejected there, and the existing
+`staging`/`production` owner connections still work. Those two branches retain
+their previously accepted shared-password risk. No other role password was
+rotated.
+
+The SQL-created `lovechapter_test_probe` role exists only on `staging-test`
+and does not inherit `neon_superuser`. It has ledger `id`/`hash` read access,
+SELECT/INSERT on the eleven tables used by the representative query-plan
+fixture, and `pg_maintain` for `ANALYZE`. All seven real query-plan probes
+passed in their rollback transaction. GitHub's `staging` environment now
+holds `RELEASE_TEST_DATABASE_URL` and
+`RELEASE_TEST_MIGRATION_DATABASE_URL` as secrets, with
+`RELEASE_TEST_BRANCH_ID` and `RELEASE_TEST_MIGRATION_DATABASE_ROLE` as
+variables. Secret values were not committed or printed. Readback confirmed
+the secret/variable names and branch-only probe role. The migration ledger on
+`staging-test` and active `staging` remains at `0010_release_gate_admission`;
+production still has no Drizzle ledger. No schema migration, maintenance
+transition, Worker deployment, or release-flag change occurred. The remaining
+staging release environment values and a live rehearsal are still pending.
