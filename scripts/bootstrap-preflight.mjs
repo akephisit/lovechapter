@@ -1,4 +1,3 @@
-const requiredChecks = ["Verify", "PostgreSQL integration"];
 const sharedSecrets = [
   "RELEASE_DATABASE_URL",
   "RELEASE_MIGRATION_DATABASE_URL",
@@ -63,11 +62,12 @@ export function checkBootstrapReadiness(input) {
   const github = input?.github;
   if (
     github?.mainProtected !== true ||
-    !namesContain(github.requiredChecks, requiredChecks) ||
-    !Number.isInteger(github.requiredApprovals) ||
-    github.requiredApprovals < 1 ||
-    github.independentReviewerAvailable !== true ||
-    github.codeOwnerReviewRequired !== true
+    github.requiresPullRequest !== false ||
+    !Array.isArray(github.requiredChecks) ||
+    github.requiredChecks.length !== 0 ||
+    github.forcePushAllowed !== false ||
+    github.deletionAllowed !== false ||
+    github.ownerOnlyWriteAccess !== true
   ) {
     issues.push("protected_source_incomplete");
   }

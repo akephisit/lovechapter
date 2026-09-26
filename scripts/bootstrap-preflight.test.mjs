@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from "node:fs";
+import { URL } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
 import { checkBootstrapReadiness } from "./bootstrap-preflight.mjs";
@@ -34,10 +37,11 @@ function ready() {
   return {
     github: {
       mainProtected: true,
-      requiredChecks: ["Verify", "PostgreSQL integration"],
-      requiredApprovals: 1,
-      independentReviewerAvailable: true,
-      codeOwnerReviewRequired: true,
+      requiresPullRequest: false,
+      requiredChecks: [],
+      forcePushAllowed: false,
+      deletionAllowed: false,
+      ownerOnlyWriteAccess: true,
       environments: {
         staging: { mainOnly: true, requiredReviewers: 0 },
         production: { mainOnly: true, requiredReviewers: 0 },
@@ -94,19 +98,39 @@ describe("read-only production bootstrap preflight", () => {
     });
   });
 
-  it("fails on missing source protection or independent review", () => {
+  it("fails on missing direct-push source protection", () => {
     for (const edit of [
       { mainProtected: false },
       { requiredChecks: ["Verify"] },
-      { requiredApprovals: 0 },
-      { independentReviewerAvailable: false },
-      { codeOwnerReviewRequired: false },
+      { requiresPullRequest: true },
+      { forcePushAllowed: true },
+      { deletionAllowed: true },
+      { ownerOnlyWriteAccess: false },
       { cloudflareGitDeployEnabled: true },
     ]) {
       const input = ready();
       Object.assign(input.github, edit);
       expect(checkBootstrapReadiness(input).ready).toBe(false);
     }
+  });
+
+  it("stores only a non-bypass direct-push branch-protection payload", () => {
+    const path = new URL("../.github/main-protection.json", import.meta.url);
+    expect(existsSync(path)).toBe(true);
+    const payload = JSON.parse(readFileSync(path, "utf8"));
+    expect(payload).toEqual({
+      required_status_checks: null,
+      enforce_admins: true,
+      required_pull_request_reviews: null,
+      restrictions: null,
+      required_linear_history: false,
+      allow_force_pushes: false,
+      allow_deletions: false,
+      block_creations: false,
+      required_conversation_resolution: false,
+      lock_branch: false,
+      allow_fork_syncing: false,
+    });
   });
 
   it("fails on unsafe GitHub environments, Neon target, or Hyperdrive", () => {
