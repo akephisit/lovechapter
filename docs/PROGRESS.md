@@ -1169,3 +1169,9 @@ After the migration it checks the expected schema hash and gate closure again.
 The Bun subprocess wrapper rejects malformed results and hides child errors.
 Its unit tests passed locally; a disposable PostgreSQL integration and wiring
 into the disabled release entrypoint are still pending. No live migration ran.
+
+A small staging-acceptance combiner now rejects missing or wrong-SHA HTTP,
+cron, query-plan, or same-SHA PostgreSQL retry evidence and projects only the
+named checks plus the explicit inbox waiver. It does not run those probes or
+claim real staging acceptance by itself. The release CLI still lacks live
+inputs and neither release flag has been enabled.
