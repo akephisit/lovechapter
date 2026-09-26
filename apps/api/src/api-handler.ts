@@ -7,16 +7,16 @@ import type { InvocationPostgresRuntime } from "@lovechapter/database";
 import { LoveChapterService } from "@lovechapter/domain";
 
 import { createApiIdentityProvider } from "./api-identity";
-import { createApiApp } from "./app";
+import { createApiApp, type ApiDependencies } from "./app";
 import type { ApiRuntimeConfig } from "./runtime-config";
 
-export function createApiHandler(
+export function createApiDependencies(
   environment: Record<string, string | undefined>,
   config: ApiRuntimeConfig,
   postgres: Omit<InvocationPostgresRuntime, "readiness"> & {
     readiness(): Promise<void>;
   },
-) {
+): ApiDependencies {
   const authService = new AuthService({
     repository: postgres.authRepository,
     passwordHasher: createScryptPasswordHasher(),
@@ -31,7 +31,7 @@ export function createApiHandler(
     { ...environment, AUTH_MODE: config.authMode },
     { authService, nodeEnvironment: config.nodeEnvironment },
   );
-  return createApiApp({
+  return {
     authService,
     nodeEnvironment: config.nodeEnvironment,
     publicWebOrigin: config.publicWebOrigin,
@@ -51,5 +51,17 @@ export function createApiHandler(
           postgres.operationsRepository,
         ),
       ),
-  }).compile();
+  };
+}
+
+export function createApiHandler(
+  environment: Record<string, string | undefined>,
+  config: ApiRuntimeConfig,
+  postgres: Omit<InvocationPostgresRuntime, "readiness"> & {
+    readiness(): Promise<void>;
+  },
+) {
+  return createApiApp(
+    createApiDependencies(environment, config, postgres),
+  ).compile();
 }

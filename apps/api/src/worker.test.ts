@@ -28,6 +28,100 @@ describe("Cloudflare API Worker", () => {
     expect(createClient).not.toHaveBeenCalled();
   });
 
+  it("serves requests without generating route code after startup", async () => {
+    const worker = createWorkerHandlers(vi.fn());
+    vi.stubGlobal("Function", function forbiddenDuringRequest() {
+      throw new EvalError("Code generation disallowed during requests");
+    });
+    try {
+      const response = await worker.fetch(
+        new Request("https://api.example.workers.dev/health/live"),
+        environment,
+      );
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ status: "ok" });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("keeps overlapping requests scoped to their own Worker bindings", async () => {
+    const firstOrigin = "https://first.example.workers.dev";
+    const secondOrigin = "https://second.example.workers.dev";
+    const firstConnection = "postgres://first-hyperdrive";
+    const secondConnection = "postgres://second-hyperdrive";
+    const secondKey = Buffer.alloc(32, 8).toString("base64url");
+    let markFirstQueryStarted!: () => void;
+    let releaseFirstQuery!: () => void;
+    const firstQueryStarted = new Promise<void>((resolve) => {
+      markFirstQueryStarted = resolve;
+    });
+    const firstQueryGate = new Promise<void>((resolve) => {
+      releaseFirstQuery = resolve;
+    });
+    const createClient = (connectionString: string) =>
+      ({
+        connect: async () => undefined,
+        end: async () => undefined,
+        query: async () => {
+          if (connectionString === firstConnection) {
+            markFirstQueryStarted();
+            await firstQueryGate;
+          }
+          return { rows: [{ one: 1 }], rowCount: 1 };
+        },
+      }) as unknown as Client;
+    const worker = createWorkerHandlers(createClient);
+    const firstResponse = worker.fetch(
+      new Request("https://api.example.workers.dev/health/ready", {
+        headers: {
+          origin: firstOrigin,
+          "x-lovechapter-proxy-secret": key,
+        },
+      }),
+      {
+        ...environment,
+        HYPERDRIVE: { connectionString: firstConnection },
+        PUBLIC_WEB_ORIGIN: firstOrigin,
+      },
+    );
+
+    try {
+      await Promise.race([
+        firstQueryStarted,
+        firstResponse.then(() => {
+          throw new Error("First readiness request finished before its query");
+        }),
+      ]);
+      const second = await worker.fetch(
+        new Request("https://api.example.workers.dev/health/ready", {
+          headers: {
+            origin: secondOrigin,
+            "x-lovechapter-proxy-secret": secondKey,
+          },
+        }),
+        {
+          ...environment,
+          HYPERDRIVE: { connectionString: secondConnection },
+          PUBLIC_WEB_ORIGIN: secondOrigin,
+          WEB_PROXY_SHARED_SECRET: secondKey,
+        },
+      );
+      expect(second.status).toBe(200);
+      expect(second.headers.get("access-control-allow-origin")).toBe(
+        secondOrigin,
+      );
+      await second.json();
+    } finally {
+      releaseFirstQuery();
+    }
+
+    const first = await firstResponse;
+    expect(first.status).toBe(200);
+    expect(first.headers.get("access-control-allow-origin")).toBe(firstOrigin);
+    await first.json();
+  });
+
   it("rejects direct business requests without a proxy credential", async () => {
     const createClient = vi.fn();
     const worker = createWorkerHandlers(createClient);

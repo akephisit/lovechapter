@@ -54,7 +54,10 @@ describe("authentication SQL contracts", () => {
     const sessionSql = sqlOf(buildResolveSessionQuery("a".repeat(64), now));
 
     expect(sessionSql).toMatch(
-      /update "auth_sessions"[\s\S]*where[\s\S]*"last_seen_at" <= \$\d+ - interval '24 hours'/i,
+      /"idle_expires_at" = least\(\(\$\d+::timestamptz\) \+ interval '7 days'/i,
+    );
+    expect(sessionSql).toMatch(
+      /update "auth_sessions"[\s\S]*where[\s\S]*"last_seen_at" <= \(\$\d+::timestamptz\) - interval '24 hours'/i,
     );
     expect(sessionSql).toMatch(
       /select "account_id", "email" from "refreshed_session"[\s\S]*union all[\s\S]*not exists/i,

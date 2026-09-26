@@ -11,6 +11,18 @@
   ],
   "vars": { "NODE_ENV": "production", "AUTH_MODE": "disabled" },
   "triggers": { "crons": ["* * * * *", "*/15 * * * *"] },
+  "env": {
+    "staging": {
+      "workers_dev": true,
+      // Use a separate, cache-disabled Hyperdrive configuration for staging.
+      "hyperdrive": [
+        { "binding": "HYPERDRIVE", "id": "e55ad44368d04224aa7ba4af95173e23" },
+      ],
+      "vars": { "NODE_ENV": "production", "AUTH_MODE": "local" },
+      // Send queued auth mail and clean expired records on staging.
+      "triggers": { "crons": ["* * * * *", "*/15 * * * *"] },
+    },
+  },
   // Keep dashboard-managed secrets when updating Worker code.
   "keep_vars": true,
   "observability": {

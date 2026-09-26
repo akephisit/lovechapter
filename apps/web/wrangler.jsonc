@@ -1,9 +1,13 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "lovechapter-web",
+  "main": "vinext/server/fetch-handler",
   "compatibility_date": "2026-09-21",
   // Allow the frontend proxy's global fetch to call the selected API Worker URL.
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "env": {
+    "staging": { "workers_dev": true },
+  },
   // Preserve dashboard-managed API origin and proxy secret bindings on deploy.
   "keep_vars": true,
   "observability": {

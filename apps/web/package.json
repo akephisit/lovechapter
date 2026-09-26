@@ -10,6 +10,7 @@
     "dev": "vinext dev",
     "dev:next": "next dev",
     "deploy": "vinext-cloudflare deploy",
+    "deploy:staging": "vinext-cloudflare deploy --env staging",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {

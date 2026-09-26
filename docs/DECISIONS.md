@@ -271,7 +271,9 @@ Releases use a separate migration credential, immutable release directories,
 an atomic `current` symlink, retained rollback artifacts, verified backups, and
 coordinated secret rotation. These checked-in assets are operational guidance;
 they do not claim that a VPS, domain, certificate, database, or email sender has
-been provisioned.
+been provisioned. ADR-024 governs recovery for a breaking migration: switching
+the symlink back without restoring the matching database state is not a safe
+rollback.
 
 ## ADR-020 — Guest affiliations are wedding-defined
 
@@ -344,3 +346,65 @@ costs and end-to-end email before enabling local authentication. Disable
 Hyperdrive query caching so revocations and writes are immediately visible;
 the frontend enables `global_fetch_strictly_public` to call the API Worker's
 generated HTTPS URL from its server-side proxy.
+
+## ADR-024 — Breaking releases use a coordinated schema cutover
+
+**Status:** Accepted
+
+One release has one canonical API contract and database schema. We do not keep
+legacy schema, dual reads/writes, or old/new API compatibility solely to allow
+rolling deployments. Worker and Bun/VPS parity applies to the current release,
+not to coexistence of different release versions. Nonbreaking web-only or
+backend-only changes may still deploy independently.
+
+A breaking release prebuilds and tests both frontend and backend, then blocks
+new writes and scheduled/background work, drains in-flight work, verifies a
+recoverable backup, migrates and validates retained data, deploys the selected
+backend and frontend from the same revision, smoke-tests, and reopens traffic.
+The release is blocked until an enforceable cutover gate and recovery plan
+exist. This policy does not promise zero downtime or mandate permanent
+compatibility layers. An incompatible migrated database is not rolled back by merely
+redeploying an old binary; recovery requires a reviewed forward fix or a
+verified database restore. Intentional user-data deletion requires separate
+explicit approval.
+
+## ADR-025 — First Worker staging retry acceptance uses split evidence
+
+**Status:** Accepted for the PR #2 Worker staging gate (2026-09-26)
+
+Do not disrupt the active staging Resend credential or force an account-wide
+rate limit to manufacture a retryable provider failure. For the first Worker
+staging acceptance, require both:
+
+1. The deployed Worker's real scheduled handler sends verification and reset
+   email jobs through Resend, with receipt confirmed in the test inbox.
+2. On the separate disposable PostgreSQL test branch, the real email
+   processor, action-token codec, and outbox repository handle a controlled
+   provider-HTTP 429 followed by success. Verify the persisted retry state,
+   due-time boundary, lease release, stable idempotency key, sent state, and
+   absence of a third send.
+
+This split evidence replaces the previous requirement to induce a transient
+provider failure on the deployed staging Worker. It does not claim that a
+live Resend 429 or timeout was observed. Continue to monitor backlog, retries,
+and terminal failures when operating a real installation; reconsider this
+acceptance method if the provider adapter or selected backend changes.
+
+## Staging blocker — Elysia 2 route compilation on Cloudflare Workers
+
+**Status:** Resolved for staging (2026-09-26); does not change ADR-023
+
+The first deployed staging API Worker fails before liveness with Cloudflare
+error 1101. Its exception says Elysia 2.0.0-beta.16 cannot compile route
+`OPTIONS /*` because code generation from strings is disallowed in the
+request context. The current Worker creates and compiles the Elysia app in
+`fetch`, while Cloudflare allows dynamic code generation only at startup.
+The Worker now compiles a single Elysia route table at isolate startup,
+where Cloudflare permits code generation, and obtains per-request dependencies
+through `AsyncLocalStorage`. This keeps Hyperdrive clients invocation-scoped
+and leaves the Bun/VPS handler path unchanged. The regression test simulates
+request-time code-generation prohibition, a concurrent request test checks
+binding/origin/ingress isolation, and the deployed staging Worker passed direct
+and proxied health/readiness checks. Build-time AOT remains a possible future
+optimization, not a requirement for this correction. Do not substitute
+another HTTP framework or enable local auth/cron without their separate gates.

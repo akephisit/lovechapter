@@ -326,6 +326,19 @@ Elysia routes, domain rules, authorization, schema, and durable job behavior,
 while adapting process lifecycle and database connections to the selected
 runtime. A change is not complete if it silently removes one deployment path.
 
+### Release/schema cutover — LOCKED
+
+Each release targets one current application contract and database schema.
+LoveChapter does not maintain old/new application or schema compatibility merely
+to permit a rolling deployment. Breaking changes use a coordinated cutover:
+prebuild and test the new frontend and both backend runtime paths, stop writes
+and background work for the selected installation, verify a recoverable backup,
+migrate and validate existing data, deploy the selected backend and frontend
+from the same revision, smoke-test, then reopen. If a reliable write/job gate
+and recovery plan are not available, the breaking release remains blocked.
+Never silently discard existing customer data or run mixed incompatible
+versions. Nonbreaking component-only releases may still deploy selectively.
+
 Do not default to:
 
 - Docker-based production runtime;

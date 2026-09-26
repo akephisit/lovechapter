@@ -212,10 +212,10 @@ export function buildResolveSessionQuery(tokenHash: string, now: Date): SQL {
     ), "refreshed_session" as (
       update ${authSessions}
       set ${sql.identifier(authSessions.lastSeenAt.name)} = ${now},
-          ${sql.identifier(authSessions.idleExpiresAt.name)} = least(${now} + interval '7 days', ${authSessions.absoluteExpiresAt})
+          ${sql.identifier(authSessions.idleExpiresAt.name)} = least((${now}::timestamptz) + interval '7 days', ${authSessions.absoluteExpiresAt})
       from "valid_session"
       where ${authSessions.id} = "valid_session"."session_id"
-        and ${authSessions.lastSeenAt} <= ${now} - interval '24 hours'
+        and ${authSessions.lastSeenAt} <= (${now}::timestamptz) - interval '24 hours'
       returning "valid_session"."account_id", "valid_session"."email"
     )
     select "account_id", "email" from "refreshed_session"

@@ -67,21 +67,29 @@ weaken the approved security gates to answer the remaining questions.
   VPS class (the local development-runner result is not a substitute)
 - Stable HTTPS backend hostname, DNS, certificate, and reverse-proxy ownership
 - Production monitoring and token-safe observability strategy
+- Acceptable maintenance-window duration and notice policy for a breaking
+  schema/API cutover; ownership of the enforced write/job gate and restore drill
 - Upgrade cadence for Bun 1.4.2 and Elysia 2.0.0-beta.16
 - When Elysia 2 no longer needs the localized TypeBox compatibility shim
-- If Workers are chosen: Hyperdrive configuration and Neon direct connection,
-  target Worker plan/CPU budget, scrypt performance, cron backlog handling,
-  and streaming CSV end-to-end measurements
+- If Workers are chosen: the owner reports upgrading the staging account to
+  Workers Paid. The staging API is now deployed with local auth and reports the
+  Standard usage model, but Cloudflare's Billing API returned 403 to the
+  available OAuth token, so subscription status is not independently verified.
+  The measured scrypt path uses 128–149 ms CPU per request. Production
+  plan/CPU budget, cron backlog handling, and streaming CSV end-to-end
+  measurements remain open.
 
 ## Database
 
-- Neon region
+- Production Neon region (staging uses AWS Singapore)
 - PostgreSQL Row Level Security decision
 - Production query monitoring/observability strategy
-- Representative staging query-plan results after the chosen connection path
+- Query-plan remeasurement as real tenant/CSV cardinalities grow; the initial
+  multi-tenant staging-test representative reads and 14 exact generated SQL
+  shapes are recorded in `docs/QUERY_REVIEW.md`
 - If VPS is chosen: measured API/job pool sizes within Neon connection budgets
-- Disposable Neon staging credentials for a repeat concurrency run and live
-  query-plan review
+- Retention and rotation ownership for the ignored local staging and
+  staging-test credential files used for the repeat concurrency and plan runs
 
 ## Product
 

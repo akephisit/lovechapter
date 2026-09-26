@@ -104,6 +104,58 @@ describe("PostgreSQL auth concurrency", () => {
     expect(outcomes.toSorted()).toEqual([false, true]);
   });
 
+  it("resolves and refreshes an old verified session", async () => {
+    const emailKey = "session-refresh@example.test";
+    await runtime.authRepository.registerPending(
+      registration(emailKey),
+      issue("verify_email"),
+    );
+    const verification = await currentToken("verify_email");
+    await runtime.authRepository.consumeEmailVerification({
+      tokenId: verification.id,
+      accountId: verification.account_id,
+      tokenHash: verification.token_hash,
+      now: new Date(),
+    });
+    const account =
+      await runtime.authRepository.findAccountByEmailKey(emailKey);
+    if (!account) throw new Error("Integration account missing");
+
+    const now = new Date();
+    const sessionHash = "d".repeat(64);
+    const oldLastSeen = new Date(now.getTime() - 25 * 3_600_000);
+    const created =
+      await runtime.authRepository.createSessionIfCredentialsCurrent({
+        id: crypto.randomUUID(),
+        accountId: account.id,
+        tokenHash: sessionHash,
+        expectedCredentialVersion: account.credentialVersion,
+        expectedPasswordHash: account.passwordHash,
+        idleExpiresAt: new Date(now.getTime() + 86_400_000),
+        absoluteExpiresAt: new Date(now.getTime() + 30 * 86_400_000),
+        now: oldLastSeen,
+      });
+    expect(created).toBe(true);
+
+    await expect(
+      runtime.authRepository.resolveSession(sessionHash, now),
+    ).resolves.toEqual({ accountId: account.id, email: emailKey });
+    const session = await runtime.pool.query<{
+      last_seen_at: Date;
+      idle_expires_at: Date;
+    }>(
+      "select last_seen_at, idle_expires_at from auth_sessions where token_hash = $1",
+      [sessionHash],
+    );
+    expect(session.rows[0]?.last_seen_at).toEqual(now);
+    expect(session.rows[0]?.idle_expires_at).toEqual(
+      new Date(now.getTime() + 7 * 86_400_000),
+    );
+    await expect(
+      runtime.authRepository.resolveSession(sessionHash, now),
+    ).resolves.toEqual({ accountId: account.id, email: emailKey });
+  });
+
   it("gives concurrent claimers disjoint email jobs", async () => {
     await runtime.authRepository.registerPending(
       registration("claim-one@example.test"),

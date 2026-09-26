@@ -11,7 +11,10 @@ describe("service worker isolation", () => {
   it("never intercepts API, invitation, verification, or reset traffic", async () => {
     const listeners = new Map<string, ServiceWorkerListener>();
     const cacheDeletes: string[] = [];
-    const source = await readFile(new URL("./sw.js", import.meta.url), "utf8");
+    const source = await readFile(
+      new URL("./public/sw.js", import.meta.url),
+      "utf8",
+    );
     const context = {
       caches: {
         keys: async () => ["lovechapter-old", "unrelated-cache"],

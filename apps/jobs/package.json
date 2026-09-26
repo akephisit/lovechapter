@@ -12,6 +12,7 @@
     "build": "bun build src/index.ts --target=bun --sourcemap=linked --outdir=dist",
     "start": "bun dist/index.js",
     "dev": "bun --watch src/index.ts",
+    "test:postgres": "vitest run --config vitest.postgres.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {

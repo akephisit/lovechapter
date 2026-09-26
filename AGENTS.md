@@ -140,6 +140,38 @@ choice at a time; this rule does not require running both deployments together.
   genuinely unavailable on one platform, document and reproduce the blocker
   before changing the agreed runtime support.
 
+### Release and schema evolution — MANDATORY
+
+Use one canonical application contract and one canonical database schema per
+release. Do not add legacy columns/tables, dual reads or writes, versioned API
+paths, or compatibility adapters solely to keep an older deployment working
+with a new release. Backend runtime parity means Worker and Bun/VPS implement
+the same current behavior; it does not mean old and new releases must coexist.
+
+For a breaking schema or API change, use a coordinated cutover rather than a
+rolling mixed-version deployment:
+
+1. Build and test the frontend, both backend runtime paths, and migration from
+   the same revision before touching the live installation.
+2. Have a tested way to stop new writes and scheduled/background jobs, and
+   drain in-flight work before applying an incompatible migration. If no such
+   gate exists, do not deploy the breaking change.
+3. Take and verify a recoverable database backup/PITR point. Migrate existing
+   data into the new structure, validate it, and then remove superseded schema
+   in the coordinated release; never discard user data implicitly.
+4. Deploy only the installation's selected backend and its frontend from that
+   revision, verify critical flows, then reopen traffic and jobs. Do not expose
+   an old application to the new schema or a new application to the old schema.
+5. If cutover fails, keep the installation closed while applying a reviewed
+   forward fix or restoring a verified backup. Do not assume an old binary can
+   be restarted against an incompatible migrated database.
+
+Naturally compatible changes may still deploy selectively. Do not require a
+breaking migration for every release. Zero-downtime breaking changes need a
+separately designed and approved atomic-switch mechanism; they are not a reason
+to accumulate permanent compatibility scaffolding. Record downtime, data
+transformation, validation, and recovery steps for each breaking release.
+
 Authentication:
 
 - first-party verified-email/password accounts;
@@ -298,6 +330,10 @@ Avoid:
 - Add cancellation, timeouts, and error aggregation where applicable.
 - Persist work that must survive a response before scheduling it.
 - Move CPU-heavy work away from the request loop when it cannot meet the runtime budget.
+- Before enabling local authentication on a Worker installation, compare
+  measured production-policy password-hash CPU time with the account's actual
+  per-invocation limit. Infrequent successful over-limit requests do not
+  establish sustained viability; do not weaken password hashing to fit a plan.
 
 Parallelism must not disguise N+1 access or issue unbounded remote work.
 

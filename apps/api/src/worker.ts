@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+
 import { createActionTokenCodec } from "@lovechapter/auth";
 import {
   withPostgresRuntime,
@@ -7,9 +9,39 @@ import {
 import { createResendEmailSender } from "@lovechapter/jobs/resend-email-sender";
 import { parseJobsRuntimeConfig } from "@lovechapter/jobs/runtime-config";
 
-import { createApiHandler } from "./api-handler";
+import { createApiDependencies } from "./api-handler";
+import { createApiApp, type ApiDependencies } from "./app";
 import { parseApiRuntimeConfig } from "./runtime-config";
 import { runScheduledBatch } from "./worker-jobs";
+
+const invocation = new AsyncLocalStorage<ApiDependencies>();
+
+function currentDependencies(): ApiDependencies {
+  const dependencies = invocation.getStore();
+  if (!dependencies) throw new Error("Worker request context is missing");
+  return dependencies;
+}
+
+// Compile once during isolate startup; each request still receives its own dependencies.
+const app = createApiApp({
+  get authService() {
+    return currentDependencies().authService;
+  },
+  get nodeEnvironment() {
+    return currentDependencies().nodeEnvironment;
+  },
+  get publicWebOrigin() {
+    return currentDependencies().publicWebOrigin;
+  },
+  get proxyCredential() {
+    return currentDependencies().proxyCredential;
+  },
+  get fingerprintKey() {
+    return currentDependencies().fingerprintKey;
+  },
+  readiness: () => currentDependencies().readiness(),
+  run: (request, operation) => currentDependencies().run(request, operation),
+} satisfies ApiDependencies).compile();
 
 export type WorkerEnvironment = {
   HYPERDRIVE?: { connectionString: string } | undefined;
@@ -53,7 +85,10 @@ export function createWorkerHandlers(createClient?: PostgresClientFactory) {
       return withPostgresResponse(
         connectionString,
         async (postgres) =>
-          createApiHandler(variables, config, postgres).fetch(request),
+          invocation.run(
+            createApiDependencies(variables, config, postgres),
+            () => app.fetch(request),
+          ),
         createClient,
       );
     },

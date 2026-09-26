@@ -11,8 +11,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  # A production migration must finish before another main-branch release starts.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
   verify:
@@ -93,70 +92,8 @@ jobs:
           TEST_DATABASE_CONFIRM: lovechapter_test
         run: npm run test:postgres --workspace @lovechapter/database
 
-  deploy-production:
-    name: Migrate and deploy production
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [verify, postgres-integration]
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    environment: production
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Check production configuration
+      - name: Run email retry PostgreSQL integration test
         env:
-          NEON_MIGRATION_DATABASE_URL: ${{ secrets.NEON_MIGRATION_DATABASE_URL }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          API_WORKER_ORIGIN: ${{ vars.API_WORKER_ORIGIN }}
-          WEB_WORKER_ORIGIN: ${{ vars.WEB_WORKER_ORIGIN }}
-        run: |
-          set -euo pipefail
-          for name in NEON_MIGRATION_DATABASE_URL CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN API_WORKER_ORIGIN WEB_WORKER_ORIGIN; do
-            if [[ -z "${!name:-}" ]]; then
-              printf 'Missing production setting: %s\n' "$name" >&2
-              exit 1
-            fi
-          done
-          if rg -q 'REPLACE_WITH_HYPERDRIVE_ID' apps/api/wrangler.jsonc; then
-            printf 'Set the production Hyperdrive ID before deploying.\n' >&2
-            exit 1
-          fi
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Apply pending production migrations
-        env:
-          DATABASE_URL: ${{ secrets.NEON_MIGRATION_DATABASE_URL }}
-        run: npm run db:migrate --workspace @lovechapter/database
-
-      - name: Deploy API Worker
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: npm run deploy:worker --workspace @lovechapter/api
-
-      - name: Deploy web Worker
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: npm run deploy --workspace @lovechapter/web
-
-      - name: Check deployed health
-        env:
-          API_WORKER_ORIGIN: ${{ vars.API_WORKER_ORIGIN }}
-          WEB_WORKER_ORIGIN: ${{ vars.WEB_WORKER_ORIGIN }}
-        run: |
-          curl --fail --show-error --silent --retry 4 --retry-delay 3 "$API_WORKER_ORIGIN/health/live"
-          curl --fail --show-error --silent --retry 4 --retry-delay 3 "$WEB_WORKER_ORIGIN/api/health/ready"
+          TEST_DATABASE_URL: postgres://lovechapter_test:ci_only_disposable@127.0.0.1:5432/lovechapter_test
+          TEST_DATABASE_CONFIRM: lovechapter_test
+        run: npm run test:postgres --workspace @lovechapter/jobs

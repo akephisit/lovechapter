@@ -336,8 +336,16 @@ Every migration should be reviewed for:
 - table rewrite risk;
 - index build cost;
 - null/default behavior;
-- backward compatibility during deploy;
-- safe rollback/forward-fix strategy.
+- one-time transformation and validation of retained data;
+- whether the selected installation needs a write/job cutover gate;
+- backup/PITR readiness and a tested restore or reviewed forward-fix strategy.
+
+Do not retain legacy columns/tables, dual writes, or duplicate query paths
+solely to keep old binaries compatible during deployment. A breaking migration
+may replace the old structure in one coordinated release, but must not silently
+discard existing user data. Keep old application processes and cron/job workers
+away from the migrated schema. If that isolation cannot be enforced, do not
+apply the breaking migration. Do not assume a code rollback reverses SQL.
 
 ---
 

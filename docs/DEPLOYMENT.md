@@ -6,8 +6,11 @@ Choose one backend path for each installation: **Cloudflare API Worker** or
 **Bun/VPS**. Never run both APIs or both job processors against the same
 deployment. Both paths use the same Elysia API, Neon schema and frontend
 same-origin proxy. No infrastructure is provisioned or claimed by this
-repository; credentials, Resend verification and live deployments are external
-gates. Neither a VPS nor a custom domain is required for the Worker path.
+repository itself: a separate Worker staging installation exists, with local
+Git-ignored credentials and partial live acceptance recorded in
+`docs/PROGRESS.md`. Production resources and the remaining acceptance gates
+are external. Neither a VPS nor a custom domain is required for the Worker
+path.
 
 ```text
 Browser -> Cloudflare frontend Worker -> same-origin /api proxy
@@ -49,10 +52,123 @@ set and active version.
 
 ## Cloudflare API Worker choice
 
+### First staging bootstrap (no Worker exists yet)
+
+The initial staging installation uses the Worker backend. Both Wrangler
+configs now define `env.staging`, which creates separate
+`lovechapter-web-staging` and `lovechapter-api-staging` Workers on the first
+staging deploy. Do not create placeholder Workers manually or run the default
+`deploy` commands to discover URLs. Wrangler can warn about an undefined
+environment yet continue with top-level bindings, so use the explicit staging
+commands and require the staging dry-run to show the staging Hyperdrive ID.
+
+The initial staging bootstrap uses `AUTH_MODE=disabled` and
+`triggers.crons=[]`.
+This mode rejects identity on protected routes, but the `/v1/auth/*` HTTP
+routes remain callable and may write rate-limit state or enqueue mail. It is
+not a full maintenance gate; keep the staging URL private until testing is
+ready. Even with protected-route identity disabled, HTTP requests still validate
+`PUBLIC_WEB_ORIGIN`, the proxy credential, rate-limit key, and action-token
+keys. Scheduled handlers validate the Resend settings independently. A web
+bootstrap deployment made only to learn its real URL has an unavailable
+`/api` route until the API and proxy settings are complete; do not invite
+testers during this interval.
+
+1. Provision a separate Neon staging branch/database and a disposable test
+   database. Apply migrations with a direct migration credential outside
+   Workers; the PostgreSQL integration suite truncates tables, so it must
+   never target the live staging application database.
+2. In Cloudflare, create a **staging-only**, cache-disabled Hyperdrive
+   configuration using a direct/unpooled Neon application credential. Verify
+   caching is disabled. Replace only
+   `REPLACE_WITH_STAGING_HYPERDRIVE_ID` under `env.staging` in
+   `apps/api/wrangler.jsonc` with its ID. Leave the top-level binding and
+   production choice untouched. Never put the Neon URL or password in
+   Wrangler, Git, or chat.
+3. Log in to Cloudflare on the trusted deployment machine, then inspect both
+   staging targets without deploying:
+
+   ```bash
+   npx wrangler login
+   npm run build:worker:staging --workspace @lovechapter/api
+   npm run deploy:staging --workspace @lovechapter/web -- --dry-run
+   ```
+
+   Abort if Wrangler reports that `staging` is undefined, uses the top-level
+   Hyperdrive ID, or shows a placeholder ID. The API staging deploy command
+   checks these conditions again before publishing.
+
+4. Run `npm run deploy:staging --workspace @lovechapter/web` once to create
+   the web Worker and copy its **actual** `https://...workers.dev` origin from
+   the output. Keep this bootstrap URL private until the proxy works.
+5. On that trusted machine, put the following values in
+   `apps/api/.env.staging` (Git ignores `.env.*`) and set its permissions to
+   `0600` with `chmod 600 apps/api/.env.staging`. This is a temporary local
+   Wrangler secrets file, **not** a file to commit or paste in chat:
+
+   ```dotenv
+   PUBLIC_WEB_ORIGIN=https://ACTUAL_WEB_STAGING_ORIGIN.workers.dev
+   WEB_PROXY_SHARED_SECRET=INDEPENDENT_32_BYTE_BASE64URL_VALUE
+   RATE_LIMIT_HMAC_KEY=ANOTHER_32_BYTE_BASE64URL_VALUE
+   AUTH_TOKEN_ACTIVE_KEY_VERSION=1
+   AUTH_TOKEN_HMAC_KEYS='{"1":"THIRD_32_BYTE_BASE64URL_VALUE"}'
+   RESEND_API_KEY=YOUR_STAGING_SENDING_KEY
+   RESEND_FROM_EMAIL=VERIFIED_STAGING_SENDER
+   ```
+
+   Generate the three cryptographic values independently. A test sender on
+   `resend.dev` can send only to the email address associated with that
+   Resend account; a verified owned domain is required before testing
+   delivery to other recipients. The API Worker needs this complete set on
+   first functional deployment, even while `AUTH_MODE=disabled`.
+
+6. From the repository root, deploy the API Worker **with** the secrets file:
+
+   ```bash
+   npm run deploy:worker:staging --workspace @lovechapter/api -- --secrets-file .env.staging
+   ```
+
+   This creates `lovechapter-api-staging` and uploads the secrets in the same
+   deployment. Confirm the actual API origin from Wrangler output.
+
+7. In Cloudflare Workers & Pages, open **only** `lovechapter-web-staging` →
+   Settings → Variables and Secrets. Add `API_UPSTREAM_ORIGIN` containing the
+   exact API HTTPS origin (a plaintext variable or secret) and
+   `WEB_PROXY_SHARED_SECRET` as a secret matching the API value. Deploy those
+   settings, then redeploy the web Worker with the staging command. Both may
+   also be uploaded together as secrets using `wrangler secret bulk --env
+staging`; the web config's `keep_vars` preserves them on code redeploy.
+   Confirm `/api` reaches the API Worker, never itself or the Bun/VPS backend.
+8. After Neon, proxy, Resend delivery, and Worker scrypt checks pass on a
+   plan with sufficient sustained CPU budget, deploy staging with
+   `AUTH_MODE=local` while keeping `triggers.crons=[]`. Verify registration,
+   sign-in, and the auth email outbox first. The production-policy scrypt path
+   measured more than 128 ms of CPU on the staging Worker, far beyond the
+   Workers Free 10 ms request allowance. Short successful probes are not
+   evidence that Free is viable. Do not weaken password hashing to fit that
+   allowance.
+9. After inspecting the queued auth mail and confirming the Resend sender and
+   recipient, enable the two staging cron triggers in a separate reviewed
+   change. Cron changes can take time to propagate; verify actual scheduled
+   work, email delivery, and the absence of a second job processor.
+
+The staging bootstrap is not a production release. The repository has no
+Cloudflare/Neon/Resend credentials and no automated staging deployment job.
+Do not configure production secrets, migration, or promotion based on a
+successful bootstrap alone.
+
+### Later selected-Worker installation (not the staging bootstrap)
+
+The steps below apply only after selecting the Worker backend for that
+installation. The top-level Wrangler binding and default deploy commands are
+not staging targets. Do not use them for the first staging installation or for
+production before the acceptance and cutover gates below are implemented.
+
 1. Create Neon and apply existing Drizzle migrations from a trusted machine/CI
-   using a separate direct migration credential. The GitHub Actions release
-   workflow below runs pending migrations automatically before every production
-   deploy; a manual first migration is an alternative during setup:
+   using a separate direct migration credential. On an existing installation,
+   follow the cutover gate below **before** an incompatible migration. No
+   GitHub workflow currently runs a migration or deploys production
+   automatically:
 
    ```bash
    DATABASE_URL='postgres://MIGRATION_ROLE:SECRET@HOST/DB?sslmode=require' \
@@ -105,41 +221,93 @@ a 1 MiB body cap and rejects unapproved headers; the public API Worker rejects
 business requests without the private proxy credential. Cloudflare invocation
 logs/traces remain disabled because invitation paths contain bearer tokens.
 
-### Automatic migration and deployment from GitHub
+### Release coordination and staging gate
 
-`.github/workflows/ci.yml` verifies pull requests without touching production.
-After a push to `main`, its production job waits for both verification jobs,
-applies pending Drizzle migrations once, deploys the API Worker, deploys the web
-Worker, then checks API liveness and readiness through the web proxy. A failing
-check or migration prevents later deployment steps. Main-branch runs are not
-canceled mid-migration. This job uses the `production` GitHub environment.
+CI verifies both supported backend builds but does not deploy either backend.
+An installation must explicitly select exactly one backend runtime, `worker` or
+`bun-vps`, and configure one frontend `API_UPSTREAM_ORIGIN` for it. Do not run
+the other API/job processor against that installation's database. The first
+Worker staging installation has local, Git-ignored credentials and partial live
+acceptance evidence recorded in `docs/PROGRESS.md`. ADR-025 defines the
+approved split evidence for email retry; acceptance still needs to be tied to
+a committed release revision.
+Production credentials, protected environment, and enforced acceptance gate
+are not in place, so automatic production deployment remains disabled. In
+particular, merging must not silently deploy a Worker when the installation
+might select Bun/VPS.
 
-Configure these GitHub environment values **before merging** the release
-workflow to `main`:
+For a release, classify changed paths with `scripts/release-impact.mjs` using
+full base and head commit SHAs:
 
-| Kind     | Name                          | Value                                                                                                |
-| -------- | ----------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Secret   | `NEON_MIGRATION_DATABASE_URL` | Direct/unpooled TLS Neon URL for a dedicated migration role; never the Hyperdrive runtime credential |
-| Secret   | `CLOUDFLARE_ACCOUNT_ID`       | Target Cloudflare account ID                                                                         |
-| Secret   | `CLOUDFLARE_API_TOKEN`        | Cloudflare API token scoped to deploy Workers in that account                                        |
-| Variable | `API_WORKER_ORIGIN`           | Actual API Worker HTTPS origin without a trailing slash                                              |
-| Variable | `WEB_WORKER_ORIGIN`           | Actual web Worker HTTPS origin without a trailing slash                                              |
+```bash
+node scripts/release-impact.mjs worker FULL_BASE_SHA FULL_HEAD_SHA
+```
 
-Provision Hyperdrive with caching disabled and replace its placeholder binding
-ID in `apps/api/wrangler.jsonc` before the first automated release. Configure
-the API and web runtime secrets in their respective Cloudflare Worker settings;
-GitHub build secrets are not automatically Worker runtime secrets. The web
-Worker's `API_UPSTREAM_ORIGIN` must equal `API_WORKER_ORIGIN`; the API Worker's
-`PUBLIC_WEB_ORIGIN` must equal `WEB_WORKER_ORIGIN`. Keep their
-`WEB_PROXY_SHARED_SECRET` values identical. Check the two readiness URLs on
-the generated `workers.dev` origins before relying on the automated release.
+Use `bun-vps` instead of `worker` only for a Bun/VPS installation; the planner
+rejects unset or combined selections.
 
-Do not enable independent Cloudflare Git-triggered production deployments for
-these same Workers. Otherwise they may deploy before GitHub Actions finishes the
-database migration. Review every schema change for compatibility with the
-previously deployed Worker: if migration succeeds but deployment fails, the
-database remains migrated, and recovery needs a compatible deployment or a
-reviewed forward migration rather than an assumed SQL rollback.
+Web-only changes deploy only the web Worker; API/jobs/auth/database-code-only
+changes deploy only the selected backend. Migration, shared contracts/domain,
+or unfamiliar source changes plan both components. The planner cannot prove
+whether a migration is breaking or whether a cutover gate exists; that review
+is mandatory before execution. CI should still verify both supported runtimes. If both
+components change, complete both builds and all preflight checks before making
+either new component live. A naturally compatible, component-only change may
+deploy selectively. Do not add legacy database structures or dual-version API
+behavior just to make every change compatible with a rolling release.
+
+A **breaking** schema or API change requires a coordinated cutover, not the
+ordinary sequential deploy. Before migration, an enforced maintenance/routing
+gate must stop new writes and drain in-flight requests. Pause and verify all
+scheduled/background workers for the selected backend; for Workers this
+includes Cron Triggers, not just HTTP traffic. Verify a recoverable Neon
+backup/PITR point, then transform and validate existing data, deploy the
+selected backend and web from the same tested revision, smoke-test the new
+system, and only then reopen traffic and jobs. Never run an old Worker or Bun
+process against the new incompatible schema. The current repository has no
+tested maintenance/job gate, so a breaking production migration is blocked
+until that capability and a staging cutover/recovery drill exist. This
+deliberately permits a maintenance window; it does not promise zero downtime.
+
+The first staging installation selects the Worker backend. Provision a
+disposable Neon branch, a cache-disabled Hyperdrive binding, Cloudflare API
+and web Workers with distinct generated `workers.dev` origins, matching proxy
+secrets, and a verified Resend sender. Set `AUTH_MODE=local` only after the
+secrets, email transport, scrypt budget, and ingress are verified. Never put
+secrets in a commit or chat. Staging and production require separate database,
+Hyperdrive, Worker, and secret resources. A future Bun/VPS production release
+needs its own Bun/VPS staging acceptance; a passing Worker staging run does not
+validate a different runtime.
+
+Before rerunning CI or approving the PR, record on the exact staging commit:
+
+1. Auth and email: registration, received verification mail, verification,
+   sign-in/session, reset mail and session revocation through the web proxy.
+2. Guest RSVP: new invitation link, public view, submit/update, invalid and
+   replaced token rejection, with no guest account.
+3. CSV: bounded UTF-8 upload, mapping/preview/commit, export stream and
+   content, rejection/rollback cases.
+4. Cron: real Worker scheduled verification/reset email sends and expired
+   auth/import cleanup; confirm only the selected backend processes jobs.
+   Separately run the disposable PostgreSQL integration test with a controlled
+   provider 429 followed by success, proving durable retry timing, lease
+   release, stable idempotency, and no duplicate send. ADR-025 explicitly
+   replaces a live induced provider failure with these two evidence sources;
+   never report that a live 429 was observed.
+5. SQL: repeat the disposable PostgreSQL integration/concurrency suite; run
+   safe representative `EXPLAIN (ANALYZE, BUFFERS)` for the important SELECTs
+   listed in `docs/QUERY_REVIEW.md`, capturing row counts, index choices, and
+   round trips. Do not run destructive analysis in production.
+
+After all five pass, rerun CI for the tested commit. Only then consider merge.
+Production promotion should run automatically **after** an enforced acceptance
+gate for that exact commit; it must not rely on liveness-only smoke tests. The
+gate and deployment automation cannot be enabled safely until the chosen
+production backend, environment protections, credentials, and staging evidence
+exist. Do not enable independent Cloudflare Git-triggered deployment for these
+Workers, as it could bypass migration and acceptance ordering. A failed code
+deploy does not undo an applied migration; keep the installation closed while
+performing a reviewed forward fix or database restore.
 
 ## Bun/VPS choice
 
@@ -180,14 +348,19 @@ npm run benchmark:auth --workspace @lovechapter/api
 npm run build --workspace @lovechapter/jobs
 ```
 
-Run migrations once with a separate least-privilege migration credential:
+For a breaking release, first put the frontend behind a tested maintenance
+gate, drain in-flight requests, stop both Bun services, confirm they are
+inactive, and verify a recoverable Neon backup. Do not use these commands on a
+live installation until that gate and a staging recovery drill exist.
+Nonbreaking releases may use the ordinary selective path. Run migrations once
+with a separate least-privilege migration credential:
 
 ```bash
 DATABASE_URL='postgres://MIGRATION_ROLE:SECRET@HOST/DB?sslmode=require' \
   npm run db:migrate --workspace @lovechapter/database
 ```
 
-Review migration compatibility before switching code. Then atomically replace
+Validate the transformed data before switching code. Then atomically replace
 the release symlink from `/opt/lovechapter`:
 
 ```bash
@@ -210,7 +383,8 @@ sudo systemctl restart lovechapter-jobs
 
 The units run as `lovechapter`, restart only on failure, harden filesystem and
 kernel access, and allow 35 seconds for the application's 30-second drain. The
-API must be healthy before jobs resume. Run staged cookie, proxy, email,
+API must be healthy before jobs resume; reopen the frontend only after
+critical end-to-end checks pass. Run staged cookie, proxy, email,
 graceful-restart, lease-recovery, and pool-exhaustion tests before production.
 
 ## Caddy and logging
@@ -252,12 +426,12 @@ until Resend verifies the sender/domain.
 
 - Enable and verify Neon backups/PITR according to the selected plan; perform a
   restore drill before launch and on a defined schedule.
-- Retain the prior immutable release. For an application rollback, stop jobs,
-  atomically repoint `current`, restart API, verify liveness/readiness and the
-  auth flow, then restart jobs.
-- Do not reverse a migration blindly. Each release must document whether the
-  previous application remains compatible; otherwise use a reviewed forward
-  fix or restore into an isolated database before recovery.
+- Retain the prior immutable release, but do not treat its binary as a complete
+  rollback after a breaking migration. Keep traffic and jobs stopped until the
+  prior database state is restored and validated, or a reviewed forward fix is
+  applied. Switch code and database as one recovery decision, then verify auth
+  and other critical flows before reopening.
+- Do not reverse a migration blindly or assume restoring code reverses SQL.
 - Confirm leased email jobs recover after process termination and Resend
   idempotency prevents duplicate sends.
 
@@ -271,5 +445,7 @@ until Resend verifies the sender/domain.
 5. Pass the scrypt budget on the selected VPS.
 6. Validate Worker dry-run/deploy output and prove no secrets enter client
    bundles.
-7. Exercise firewall, backup restore, rollback, graceful restart, job recovery,
-   pool exhaustion, proxy/cookie, and token-redaction procedures in staging.
+7. Exercise firewall, backup restore, coordinated cutover/recovery, graceful
+   restart, job recovery, pool exhaustion, proxy/cookie, and token-redaction
+   procedures in staging. Prove that the maintenance gate blocks writes and
+   the selected backend's jobs are paused before a breaking migration.
