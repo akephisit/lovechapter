@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { Client } from "pg";
 
 import { PostgresReleaseGateController } from "./release-gate-repository";
+import { validateReleaseEvidence } from "./release-evidence";
 import {
   loadReleaseInventory,
   validateDirectDatabaseUrl,
@@ -65,8 +66,9 @@ export async function runReleaseGateCli(
     const controller = new PostgresReleaseGateController(client);
     const write = options.write ?? console.log;
     if (command.name === "status") {
-      const { mode, targetSha, activeCount } = await controller.status();
-      write(JSON.stringify({ mode, targetSha, activeCount }));
+      const { mode, targetSha, activeCount, web, api } =
+        await controller.status();
+      write(JSON.stringify({ mode, targetSha, activeCount, web, api }));
       return;
     }
     if (command.name === "close") {
@@ -82,7 +84,6 @@ export async function runReleaseGateCli(
     const readEvidence =
       options.readEvidence ?? ((path: string) => readFile(path, "utf8"));
     const rawEvidence = await readEvidence(command.evidencePath);
-    const acceptedAt = validateEvidence(rawEvidence, command.sha);
     const status = await controller.status();
     if (
       status.mode !== "maintenance" ||
@@ -91,11 +92,23 @@ export async function runReleaseGateCli(
     ) {
       throw new Error("Release target is not drained for this SHA");
     }
-    const closedAt = Date.parse(status.changedAt);
-    if (!Number.isFinite(closedAt) || acceptedAt <= closedAt) {
-      throw new Error("Release evidence predates the current closure");
-    }
-    if (!(await controller.openFor(command.sha, status.changedAt))) {
+    const accepted = validateReleaseEvidence(rawEvidence, {
+      environment: target.environment,
+      sha: command.sha,
+      closedAt: status.changedAt,
+      previousVersions:
+        status.web && status.api ? { web: status.web, api: status.api } : null,
+      stagingSha:
+        target.environment === "production"
+          ? requiredEnvironment(environment, "RELEASE_STAGING_SHA")
+          : null,
+    });
+    if (
+      !(await controller.openFor(command.sha, status.changedAt, {
+        web: accepted.web,
+        api: accepted.api,
+      }))
+    ) {
       throw new Error("Release gate could not reopen atomically");
     }
     write(JSON.stringify({ mode: "open", targetSha: command.sha }));
@@ -196,40 +209,6 @@ async function drain(
       throw new Error("Drain timed out; gate remains closed");
     await (options.sleep ?? delay)(1_000, options.signal);
   }
-}
-
-function validateEvidence(raw: string, sha: string): number {
-  let evidence: unknown;
-  try {
-    evidence = JSON.parse(raw);
-  } catch {
-    throw new Error("Release evidence is invalid JSON");
-  }
-  if (!evidence || typeof evidence !== "object" || Array.isArray(evidence)) {
-    throw new Error("Release evidence is invalid");
-  }
-  const value = evidence as Record<string, unknown>;
-  if (
-    value.commitSha !== sha ||
-    typeof value.apiWorkerVersion !== "string" ||
-    !value.apiWorkerVersion.trim() ||
-    typeof value.webWorkerVersion !== "string" ||
-    !value.webWorkerVersion.trim() ||
-    value.migrationChecked !== true ||
-    value.privateSmokePassed !== true ||
-    typeof value.acceptedAt !== "string" ||
-    !isCanonicalTimestamp(value.acceptedAt)
-  ) {
-    throw new Error("Release evidence is incomplete or targets another SHA");
-  }
-  return Date.parse(value.acceptedAt);
-}
-
-function isCanonicalTimestamp(value: string): boolean {
-  const timestamp = Date.parse(value);
-  return (
-    Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value
-  );
 }
 
 function delay(milliseconds: number, signal?: AbortSignal): Promise<void> {

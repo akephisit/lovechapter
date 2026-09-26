@@ -1038,7 +1038,17 @@ enabled.
 
 The owner subsequently approved the written design. The task-by-task
 implementation plan is
-`docs/superpowers/plans/2026-09-26-automatic-worker-release.md` and awaits
-review before execution. The plan keeps production promotion disabled until
+`docs/superpowers/plans/2026-09-26-automatic-worker-release.md` and execution
+has begun in an isolated worktree. The first two tasks implemented conservative
+impact/migration review and a provider-verified Neon/Hyperdrive release-target
+guard. The third task adds exact-SHA selective Worker-version evidence, a
+GitHub deployment ledger adapter, and migration `0011_release_versions` so
+`ops.release_control` can attest both active Worker versions. Local format,
+lint, database typecheck/migration check, and 83 files / 548 tests passed;
+disposable PostgreSQL integration for the new migration is still pending
+because no confirmed `TEST_DATABASE_URL` is configured in this worktree.
+Nothing from this worktree has been deployed to staging or production.
+
+The plan keeps production promotion disabled until
 protected `main`, automated staging acceptance, exact-target preflight, a
 closed-gate production bootstrap, and an isolated recovery rehearsal pass.

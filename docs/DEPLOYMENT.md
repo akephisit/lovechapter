@@ -289,14 +289,24 @@ downtime.
 
 ### Staging Worker maintenance cutover (gate-aware revisions only)
 
-The `release:gate` command is enabled for `RELEASE_ENVIRONMENT=staging` only.
+The `release:gate` command understands `RELEASE_ENVIRONMENT=staging` and
+`production`, but production use remains disabled by the release workflow
+until the protected-source and first-publication bootstrap gates pass.
 Run it on a trusted operator machine with Bun 1.4.2 and a separate
 `RELEASE_DATABASE_URL` direct, non-pooled TLS credential. Load the credential
 from a restricted secret store or mode-`0600` local file; do not paste it into
 Git, chat, command arguments, or logs. The command rejects pooled-looking
 hosts and does not fall back to the application `DATABASE_URL`. Verify the
-Neon project, branch, database, and role independently before any command:
-`RELEASE_ENVIRONMENT=staging` alone cannot prove that a URL points to staging.
+Neon project, branch, database, and role independently before any command.
+The CLI requires environment-scoped `RELEASE_NEON_PROJECT_ID`,
+`RELEASE_NEON_BRANCH_ID`, `RELEASE_DATABASE_NAME`, `RELEASE_DATABASE_ROLE`,
+`RELEASE_CLOUDFLARE_ACCOUNT_ID`, `RELEASE_HYPERDRIVE_ID`,
+`RELEASE_NEON_API_KEY`, and `RELEASE_CLOUDFLARE_API_TOKEN`; production reopen
+also requires the exact accepted `RELEASE_STAGING_SHA`. It fetches Neon
+branch-endpoint and Hyperdrive configuration metadata and rejects any mismatch,
+including enabled Hyperdrive query caching, before connecting to PostgreSQL.
+The read tokens and direct URL belong in restricted environment secrets, never
+in arguments or output. `RELEASE_ENVIRONMENT` alone does not prove identity.
 The CLI accepts only one `sslmode=require` or `sslmode=verify-full` query
 parameter plus an optional single literal `channel_binding=require` from a
 Neon URL; node-postgres 8.23 does not itself enforce that latter URL option.
@@ -304,7 +314,12 @@ It rejects
 duplicate or other PostgreSQL URL query options because the driver can use
 them to override the authority host, role, database, or TLS behavior after a
 superficial URL check.
-There is no production CLI command or automatic production release yet.
+Reopen evidence must record each Worker's actual version ID, source SHA, and
+changed/unchanged status, migration outcome, post-closure private smoke,
+accepted staging SHA for production, and the explicit inbox-delivery waiver.
+The gate stores both Worker versions atomically with reopen. Migration
+`0011_release_versions` and this new evidence contract are not yet applied on
+live staging or production. There is no automatic production release yet.
 
 The API Worker/Hyperdrive application role needs `USAGE` on `ops`, `SELECT`
 on `ops.release_control`, `EXECUTE` on `ops.admit_release_lease(text)`, and

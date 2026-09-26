@@ -29,10 +29,19 @@ type GateController = {
     mode: "open" | "maintenance";
     targetSha: string | null;
     changedAt: string;
+    web: { versionId: string; sourceSha: string } | null;
+    api: { versionId: string; sourceSha: string } | null;
     activeCount: number;
     oldestLeases: { id: string; kind: string; startedAt: string }[];
   }>;
-  openFor(sha: string, changedAt: string): Promise<boolean>;
+  openFor(
+    sha: string,
+    changedAt: string,
+    versions: {
+      web: { versionId: string; sourceSha: string };
+      api: { versionId: string; sourceSha: string };
+    },
+  ): Promise<boolean>;
 };
 
 let runtime: PostgresRuntime;
@@ -84,7 +93,10 @@ beforeAll(async () => {
 afterEach(async () => {
   await runtime.pool.query("delete from ops.release_leases");
   await runtime.pool.query(
-    "insert into ops.release_control (id, mode, target_sha) values (1, 'open', null) on conflict (id) do update set mode = 'open', target_sha = null",
+    `insert into ops.release_control (id, mode, target_sha) values (1, 'open', null)
+     on conflict (id) do update set mode = 'open', target_sha = null,
+       web_version_id = null, web_source_sha = null,
+       api_version_id = null, api_source_sha = null`,
   );
 });
 
@@ -94,6 +106,13 @@ afterAll(async () => {
 
 function store(): GateStore | undefined {
   return Reflect.get(runtime, "releaseGateStore") as GateStore | undefined;
+}
+
+function versionsFor(sha: string) {
+  return {
+    web: { versionId: "web-integration-version", sourceSha: sha },
+    api: { versionId: "api-integration-version", sourceSha: sha },
+  };
 }
 
 async function controller(): Promise<{
@@ -196,6 +215,14 @@ describe("PostgreSQL release gate", () => {
     await expect(gate.admit("http")).rejects.toThrow();
   });
 
+  it("rejects a partial Worker-version baseline at the database constraint", async () => {
+    await expect(
+      runtime.pool.query(
+        "update ops.release_control set web_version_id = 'partial' where id = 1",
+      ),
+    ).rejects.toThrow();
+  });
+
   it("refuses unsafe reopen", async () => {
     const instance = await controller();
     try {
@@ -204,14 +231,23 @@ describe("PostgreSQL release gate", () => {
       const sha = "a".repeat(40);
       await instance.value.closeFor(sha);
       const closedAt = (await instance.value.status()).changedAt;
-      expect(await instance.value.openFor("b".repeat(40), closedAt)).toBe(
-        false,
-      );
+      expect(
+        await instance.value.openFor(
+          "b".repeat(40),
+          closedAt,
+          versionsFor(sha),
+        ),
+      ).toBe(false);
       const gate = store();
       expect(gate).toBeDefined();
       if (!gate) return;
       expect(await gate.admit("http")).toBeNull();
-      expect(await instance.value.openFor(sha, closedAt)).toBe(true);
+      expect(
+        await instance.value.openFor(sha, closedAt, versionsFor(sha)),
+      ).toBe(true);
+      const status = await instance.value.status();
+      expect(status.web).toEqual(versionsFor(sha).web);
+      expect(status.api).toEqual(versionsFor(sha).api);
     } finally {
       await instance.close();
     }
@@ -228,12 +264,22 @@ describe("PostgreSQL release gate", () => {
       expect(lease).not.toBeNull();
       await instance.value.closeFor("e".repeat(40));
       const closedAt = (await instance.value.status()).changedAt;
-      expect(await instance.value.openFor("e".repeat(40), closedAt)).toBe(
-        false,
-      );
+      expect(
+        await instance.value.openFor(
+          "e".repeat(40),
+          closedAt,
+          versionsFor("e".repeat(40)),
+        ),
+      ).toBe(false);
       expect(await instance.value.activeCount()).toBe(1);
       if (lease) await gate.release(lease);
-      expect(await instance.value.openFor("e".repeat(40), closedAt)).toBe(true);
+      expect(
+        await instance.value.openFor(
+          "e".repeat(40),
+          closedAt,
+          versionsFor("e".repeat(40)),
+        ),
+      ).toBe(true);
     } finally {
       await instance.close();
     }
@@ -251,8 +297,12 @@ describe("PostgreSQL release gate", () => {
       await instance.value.closeFor(sha);
       const current = (await instance.value.status()).changedAt;
       expect(current).not.toBe(stale);
-      expect(await instance.value.openFor(sha, stale)).toBe(false);
-      expect(await instance.value.openFor(sha, current)).toBe(true);
+      expect(await instance.value.openFor(sha, stale, versionsFor(sha))).toBe(
+        false,
+      );
+      expect(await instance.value.openFor(sha, current, versionsFor(sha))).toBe(
+        true,
+      );
     } finally {
       await instance.close();
     }

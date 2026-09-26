@@ -26,6 +26,10 @@ export const releaseControl = ops.table(
     id: integer("id").primaryKey(),
     mode: varchar("mode", { length: 16 }).notNull(),
     targetSha: varchar("target_sha", { length: 40 }),
+    webVersionId: varchar("web_version_id", { length: 128 }),
+    webSourceSha: varchar("web_source_sha", { length: 40 }),
+    apiVersionId: varchar("api_version_id", { length: 128 }),
+    apiSourceSha: varchar("api_source_sha", { length: 40 }),
     changedAt: timestamp("changed_at", { withTimezone: true, mode: "string" })
       .notNull()
       .defaultNow(),
@@ -39,6 +43,19 @@ export const releaseControl = ops.table(
     check(
       "release_control_target_sha_chk",
       sql`${table.targetSha} is null or ${table.targetSha} ~ '^[0-9a-f]{40}$'`,
+    ),
+    check(
+      "release_control_versions_chk",
+      sql`(
+        ${table.webVersionId} is null and ${table.webSourceSha} is null and
+        ${table.apiVersionId} is null and ${table.apiSourceSha} is null
+      ) or (
+        ${table.targetSha} is not null and
+        ${table.webVersionId} is not null and length(${table.webVersionId}) > 0 and
+        ${table.webSourceSha} is not null and ${table.webSourceSha} ~ '^[0-9a-f]{40}$' and
+        ${table.apiVersionId} is not null and length(${table.apiVersionId}) > 0 and
+        ${table.apiSourceSha} is not null and ${table.apiSourceSha} ~ '^[0-9a-f]{40}$'
+      )`,
     ),
   ],
 );

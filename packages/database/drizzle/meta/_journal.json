@@ -78,6 +78,13 @@
       "when": 1790412489682,
       "tag": "0010_release_gate_admission",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790425338872,
+      "tag": "0011_release_versions",
+      "breakpoints": true
     }
   ]
 }

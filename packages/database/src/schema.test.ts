@@ -343,7 +343,7 @@ describe("MVP PostgreSQL schema", () => {
 });
 
 describe("release gate schema", () => {
-  it("defines only operational state and lease metadata", () => {
+  it("defines operational state, deployed versions, and lease metadata", () => {
     const control = Reflect.get(operationalSchema, "releaseControl") as
       Parameters<typeof getTableConfig>[0] | undefined;
     const leases = Reflect.get(operationalSchema, "releaseLeases") as
@@ -359,6 +359,10 @@ describe("release gate schema", () => {
       "id",
       "mode",
       "target_sha",
+      "web_version_id",
+      "web_source_sha",
+      "api_version_id",
+      "api_source_sha",
       "changed_at",
     ]);
     expect(getTableConfig(leases).schema).toBe("ops");
@@ -380,6 +384,7 @@ describe("release gate schema", () => {
         "release_control_singleton_chk",
         "release_control_mode_chk",
         "release_control_target_sha_chk",
+        "release_control_versions_chk",
       ]),
     );
     expect(getTableConfig(leases).primaryKeys).toHaveLength(0);
