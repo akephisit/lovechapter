@@ -1129,3 +1129,13 @@ and Worker dry-runs). After the post-open checker was added, the same local CI
 passed 95 files / 612 tests and the same build/dry-run checks. The CLI still
 has no live release driver; both release flags remain disabled. No
 staging/production deploy or database mutation occurred in these local slices.
+
+The next Task 7 slice adds an authenticated GitHub deployment-ledger client.
+It reads the fixed repository's production release records and statuses,
+projects only SHA and Worker version fields, and accepts a production baseline
+only when the latest record and PostgreSQL gate agree. Its requests never
+follow provider-supplied pagination URLs, and malformed/error responses are
+reported without provider bodies or credentials. Local CI passed 96 files /
+617 tests plus format, lint, typechecks, builds, migration check, and Worker
+dry-runs. This adapter is not yet connected to the live release CLI; no GitHub
+record was created in this run.
