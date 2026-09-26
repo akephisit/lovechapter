@@ -32,6 +32,27 @@ describe("classifyReleaseImpact", () => {
     });
   });
 
+  it("blocks a schema source change without a SQL migration", () => {
+    expect(() =>
+      classifyReleaseImpact(["packages/database/src/schema.ts"]),
+    ).toThrow("Schema source changed without a SQL migration");
+    expect(() =>
+      classifyReleaseImpact([
+        "packages/database/src/schema.ts",
+        "packages/database/drizzle/meta/_journal.json",
+      ]),
+    ).toThrow("Schema source changed without a SQL migration");
+  });
+
+  it("plans both components and migration review when schema and SQL change together", () => {
+    expect(
+      classifyReleaseImpact([
+        "packages/database/src/schema.ts",
+        "packages/database/drizzle/0009_example.sql",
+      ]),
+    ).toEqual({ web: true, backend: true, migrate: true });
+  });
+
   it("builds and deploys both consumers after shared contract changes", () => {
     expect(classifyReleaseImpact(["packages/contracts/src/index.ts"])).toEqual({
       web: true,

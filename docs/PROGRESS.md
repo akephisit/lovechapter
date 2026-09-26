@@ -647,3 +647,48 @@ success). The active staging Resend key is not deliberately invalidated or
 rate-limited, and no live transient-provider failure is claimed. This removes
 that specific live-failure blocker, but does not waive the exact-commit
 staging acceptance, CI rerun, or production release/cutover gates.
+
+## Committed Worker staging rehearsal and review (2026-09-26)
+
+Commit `8e6808e18c04a0ee67afbf11712c9b88dbea90c0` was built and deployed
+to the API and web staging Workers only. The API deployment selected the
+separate staging Hyperdrive binding, local auth, and both scheduled triggers;
+the web deployment retained its staging API origin and proxy credential. The
+web homepage, auth pages, proxied liveness/readiness, and direct API liveness
+returned 200. Direct API readiness/business calls without the proxy secret
+returned 403 as intended. No production Worker or database was changed.
+
+The committed staging code completed a fresh web-proxied reset flow: the real
+scheduled Worker sent one new reset email job, its stored token hash matched
+reconstructed metadata, reset/sign-in/session succeeded, and sign-out revoked
+the session. A fresh wedding and guest completed public invitation view,
+declined-to-attending RSVP update, invitation replacement, old-link rejection,
+and new-link acceptance without a guest account. A separate UTF-8 CSV with
+Unicode content produced one valid and one invalid preview row; mapping
+excluded the invalid row, stale mapping was rejected, one guest was committed,
+the same idempotency key replayed the result, and export contained the Unicode
+guest with `no-store`. Unauthenticated session/export and a random invitation
+were rejected. These were disposable staging test records; the test account's
+password was reset to an ephemeral value and the owner can set a new one via
+Forgot password. The temporary local acceptance script was removed afterward.
+
+The `*/15` deployed Worker cron removed a uniquely scoped expired auth-rate-
+limit probe. On the separate disposable staging-test branch, the 30-test
+database integration suite and one-test durable email retry suite passed in
+CI order. A transactionally rolled-back synthetic query-plan probe reviewed
+seven important SELECTs with representative rows, including the invitation,
+session, due-email, and cleanup indexes. The local repository CI command
+passed using temporary Bun 1.4.2: 73 files / 466 tests at that revision,
+format, lint, typechecks, both Bun builds, Bun smoke, database snapshot check,
+native Next and vinext builds/check, and Worker dry-runs. A first invocation
+without Bun on this shell's PATH stopped at the build; it was rerun with the
+pinned version and passed.
+
+The owner has not yet confirmed receipt of the latest reset email or the
+earlier verification email in the test inbox. Remote PR CI has not run for
+this revision. Read-only code review also found that the release planner
+classified a lone `schema.ts` change as backend-only. A failing regression
+test reproduced the issue; the planner now rejects schema-source changes
+without a changed SQL migration, and 73 files / 468 tests passed locally
+after that fix. The planner/doc correction does not alter Worker runtime
+code. Inbox confirmation, remote PR CI, and merge are still pending.

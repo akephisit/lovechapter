@@ -4,6 +4,18 @@ import { pathToFileURL } from "node:url";
 
 /** Fail closed: an unfamiliar executable/configuration path deploys both sides. */
 export function classifyReleaseImpact(paths) {
+  if (
+    paths.includes("packages/database/src/schema.ts") &&
+    !paths.some(
+      (path) =>
+        path.startsWith("packages/database/drizzle/") && path.endsWith(".sql"),
+    )
+  ) {
+    throw new Error(
+      "Schema source changed without a SQL migration; review the schema and generate a migration before release",
+    );
+  }
+
   const impact = { web: false, backend: false, migrate: false };
 
   for (const path of paths) {

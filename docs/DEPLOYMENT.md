@@ -255,6 +255,9 @@ components change, complete both builds and all preflight checks before making
 either new component live. A naturally compatible, component-only change may
 deploy selectively. Do not add legacy database structures or dual-version API
 behavior just to make every change compatible with a rolling release.
+The planner fails closed if `packages/database/src/schema.ts` changes without
+a changed SQL migration under `packages/database/drizzle/`; a changed SQL file
+still requires human review of the generated migration and cutover plan.
 
 A **breaking** schema or API change requires a coordinated cutover, not the
 ordinary sequential deploy. Before migration, an enforced maintenance/routing
