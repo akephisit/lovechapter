@@ -3,6 +3,12 @@ import { readFile } from "node:fs/promises";
 import { Client } from "pg";
 
 import { PostgresReleaseGateController } from "./release-gate-repository";
+import {
+  loadReleaseInventory,
+  validateDirectDatabaseUrl,
+  verifyReleaseTarget,
+  type ReleaseTargetInput,
+} from "./release-target";
 
 type Environment = Record<string, string | undefined>;
 type Command =
@@ -19,6 +25,7 @@ type CliOptions = {
   signal?: AbortSignal;
   now?: () => number;
   drainTimeoutMs?: number;
+  fetcher?: typeof fetch;
 };
 
 const shaPattern = /^[0-9a-f]{40}$/;
@@ -29,10 +36,21 @@ export async function runReleaseGateCli(
   options: CliOptions = {},
 ): Promise<void> {
   const command = parseCommand(args);
-  if (environment.RELEASE_ENVIRONMENT !== "staging") {
-    throw new Error("Only the staging release environment is enabled");
-  }
-  const connectionString = directDatabaseUrl(environment.RELEASE_DATABASE_URL);
+  const target = releaseTargetFromEnvironment(environment);
+  validateDirectDatabaseUrl(target.directUrl);
+  const inventory = await loadReleaseInventory(
+    target,
+    {
+      neonApiKey: requiredEnvironment(environment, "RELEASE_NEON_API_KEY"),
+      cloudflareApiToken: requiredEnvironment(
+        environment,
+        "RELEASE_CLOUDFLARE_API_TOKEN",
+      ),
+    },
+    options.fetcher,
+  );
+  verifyReleaseTarget(target, inventory);
+  const connectionString = target.directUrl;
   const createClient =
     options.createClient ??
     ((url: string) =>
@@ -126,34 +144,34 @@ function parseCommand(args: string[]): Command {
   return name === "close" ? { name, sha } : { name: "drain", sha };
 }
 
-function directDatabaseUrl(value: string | undefined): string {
-  if (!value) throw new Error("RELEASE_DATABASE_URL is required");
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new Error("RELEASE_DATABASE_URL is invalid");
-  }
-  const channelBindings = url.searchParams.getAll("channel_binding");
-  if (
-    !["postgres:", "postgresql:"].includes(url.protocol) ||
-    !url.hostname ||
-    !url.username ||
-    !url.password ||
-    /(?:^|[-.])(?:pooler|pgbouncer)(?:[.-]|$)/iu.test(url.hostname) ||
-    [...url.searchParams.keys()].some(
-      (name) => name !== "sslmode" && name !== "channel_binding",
-    ) ||
-    url.searchParams.getAll("sslmode").length !== 1 ||
-    !["require", "verify-full"].includes(
-      url.searchParams.get("sslmode") ?? "",
-    ) ||
-    channelBindings.length > 1 ||
-    (channelBindings.length === 1 && channelBindings[0] !== "require")
-  ) {
-    throw new Error("RELEASE_DATABASE_URL must be a direct TLS PostgreSQL URL");
+function requiredEnvironment(environment: Environment, name: string): string {
+  const value = environment[name];
+  if (!value || !value.trim() || /^REPLACE_WITH_/iu.test(value)) {
+    throw new Error(`${name} is required`);
   }
   return value;
+}
+
+function releaseTargetFromEnvironment(
+  environment: Environment,
+): ReleaseTargetInput {
+  const name = environment.RELEASE_ENVIRONMENT;
+  if (name !== "staging" && name !== "production") {
+    throw new Error("Release environment must be staging or production");
+  }
+  return {
+    environment: name,
+    neonProjectId: requiredEnvironment(environment, "RELEASE_NEON_PROJECT_ID"),
+    neonBranchId: requiredEnvironment(environment, "RELEASE_NEON_BRANCH_ID"),
+    database: requiredEnvironment(environment, "RELEASE_DATABASE_NAME"),
+    role: requiredEnvironment(environment, "RELEASE_DATABASE_ROLE"),
+    directUrl: requiredEnvironment(environment, "RELEASE_DATABASE_URL"),
+    cloudflareAccountId: requiredEnvironment(
+      environment,
+      "RELEASE_CLOUDFLARE_ACCOUNT_ID",
+    ),
+    hyperdriveId: requiredEnvironment(environment, "RELEASE_HYPERDRIVE_ID"),
+  };
 }
 
 async function drain(

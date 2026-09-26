@@ -63,7 +63,46 @@ function fixture(
   const environment = {
     RELEASE_ENVIRONMENT: "staging",
     RELEASE_DATABASE_URL: databaseUrl,
+    RELEASE_NEON_PROJECT_ID: "icy-hat-79862899",
+    RELEASE_NEON_BRANCH_ID: "br-staging-123",
+    RELEASE_DATABASE_NAME: "lovechapter",
+    RELEASE_DATABASE_ROLE: "release",
+    RELEASE_CLOUDFLARE_ACCOUNT_ID: "cf-account-123",
+    RELEASE_HYPERDRIVE_ID: "staging-hyperdrive-123",
+    RELEASE_NEON_API_KEY: "neon-test-secret",
+    RELEASE_CLOUDFLARE_API_TOKEN: "cf-test-secret",
   };
+  const fetcher = vi.fn(async (input: string | URL | Request) => {
+    if (String(input).startsWith("https://console.neon.tech/")) {
+      return new Response(
+        JSON.stringify({
+          endpoints: [
+            {
+              branch_id: environment.RELEASE_NEON_BRANCH_ID,
+              host: "ep-example.ap-southeast-1.aws.neon.tech",
+              type: "read_write",
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    }
+    return new Response(
+      JSON.stringify({
+        success: true,
+        result: {
+          id: environment.RELEASE_HYPERDRIVE_ID,
+          origin: {
+            host: "ep-example.ap-southeast-1.aws.neon.tech",
+            database: "lovechapter",
+            user: "release",
+          },
+          caching: { disabled: true },
+        },
+      }),
+      { status: 200 },
+    );
+  });
   return {
     createClient,
     connect,
@@ -71,6 +110,7 @@ function fixture(
     query,
     output,
     environment,
+    fetcher,
     write: (line: string) => output.push(line),
     state: () => ({ mode, targetSha, leases }),
     setLeases: (count: number) => {
@@ -92,11 +132,128 @@ function evidence(overrides: Record<string, unknown> = {}): string {
 }
 
 describe("release gate CLI", () => {
+  it("verifies production inventory before opening a database connection", async () => {
+    const context = fixture();
+    const productionHost = "ep-production.ap-southeast-1.aws.neon.tech";
+    const environment = {
+      RELEASE_ENVIRONMENT: "production",
+      RELEASE_DATABASE_URL: databaseUrl.replace("ep-example", "ep-production"),
+      RELEASE_NEON_PROJECT_ID: "icy-hat-79862899",
+      RELEASE_NEON_BRANCH_ID: "br-production-456",
+      RELEASE_DATABASE_NAME: "lovechapter",
+      RELEASE_DATABASE_ROLE: "release",
+      RELEASE_CLOUDFLARE_ACCOUNT_ID: "cf-account-123",
+      RELEASE_HYPERDRIVE_ID: "production-hyperdrive-456",
+      RELEASE_NEON_API_KEY: "neon-test-secret",
+      RELEASE_CLOUDFLARE_API_TOKEN: "cf-test-secret",
+    };
+    const fetcher = vi.fn(async (input: string | URL | Request) => {
+      if (String(input).startsWith("https://console.neon.tech/")) {
+        return new Response(
+          JSON.stringify({
+            endpoints: [
+              {
+                branch_id: environment.RELEASE_NEON_BRANCH_ID,
+                host: productionHost,
+                type: "read_write",
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          success: true,
+          result: {
+            id: environment.RELEASE_HYPERDRIVE_ID,
+            origin: {
+              host: productionHost,
+              database: "lovechapter",
+              user: "release",
+            },
+            caching: { disabled: true },
+          },
+        }),
+        { status: 200 },
+      );
+    });
+
+    await runReleaseGateCli(["status"], environment, {
+      createClient: context.createClient,
+      write: context.write,
+      fetcher,
+    });
+    expect(context.createClient).toHaveBeenCalledWith(
+      environment.RELEASE_DATABASE_URL,
+    );
+    expect(fetcher).toHaveBeenCalledTimes(2);
+
+    const wrongUrl = {
+      ...environment,
+      RELEASE_DATABASE_URL: databaseUrl,
+    };
+    context.createClient.mockClear();
+    await expect(
+      runReleaseGateCli(["status"], wrongUrl, {
+        createClient: context.createClient,
+        fetcher,
+      }),
+    ).rejects.toThrow();
+    expect(context.createClient).not.toHaveBeenCalled();
+  });
+
+  it("blocks swapped Hyperdrive, enabled cache, and provider errors before connecting", async () => {
+    const context = fixture();
+    const good = await context.fetcher(
+      "https://api.cloudflare.com/client/v4/accounts/cf-account-123/hyperdrive/configs/staging-hyperdrive-123",
+    );
+    const envelope = (await good.json()) as {
+      success: boolean;
+      result: {
+        id: string;
+        caching: { disabled: boolean };
+      };
+    };
+    for (const replacement of [
+      { ...envelope, result: { ...envelope.result, id: "other-hyperdrive" } },
+      {
+        ...envelope,
+        result: { ...envelope.result, caching: { disabled: false } },
+      },
+    ]) {
+      const fetcher = vi.fn(async (input: string | URL | Request) =>
+        String(input).startsWith("https://console.neon.tech/")
+          ? context.fetcher(input)
+          : new Response(JSON.stringify(replacement), { status: 200 }),
+      );
+      await expect(
+        runReleaseGateCli(["status"], context.environment, {
+          createClient: context.createClient,
+          fetcher,
+        }),
+      ).rejects.toThrow();
+      expect(context.createClient).not.toHaveBeenCalled();
+    }
+    const providerFailure = vi.fn(
+      async () =>
+        new Response("cf-test-secret private-credential", { status: 503 }),
+    );
+    await expect(
+      runReleaseGateCli(["status"], context.environment, {
+        createClient: context.createClient,
+        fetcher: providerFailure,
+      }),
+    ).rejects.toThrow("Neon inventory unavailable");
+    expect(context.createClient).not.toHaveBeenCalled();
+  });
+
   it("redacts status", async () => {
     const context = fixture({ mode: "maintenance", targetSha: sha, leases: 2 });
     await runReleaseGateCli(["status"], context.environment, {
       createClient: context.createClient,
       write: context.write,
+      fetcher: context.fetcher,
     });
     expect(context.output).toEqual([
       JSON.stringify({ mode: "maintenance", targetSha: sha, activeCount: 2 }),
@@ -123,6 +280,7 @@ describe("release gate CLI", () => {
           {
             createClient: context.createClient,
             write: context.write,
+            fetcher: context.fetcher,
             readEvidence: async () => evidence(invalid),
           },
         ),
@@ -136,7 +294,11 @@ describe("release gate CLI", () => {
     const context = fixture();
     for (const environment of [
       { ...context.environment, RELEASE_DATABASE_URL: "" },
-      { ...context.environment, RELEASE_ENVIRONMENT: "production" },
+      {
+        ...context.environment,
+        RELEASE_ENVIRONMENT: "production",
+        RELEASE_NEON_BRANCH_ID: "br-production-456",
+      },
       {
         ...context.environment,
         RELEASE_DATABASE_URL: databaseUrl.replace(
@@ -153,6 +315,7 @@ describe("release gate CLI", () => {
         runReleaseGateCli(["close", "--sha", sha], environment, {
           createClient: context.createClient,
           write: context.write,
+          fetcher: context.fetcher,
         }),
       ).rejects.toThrow();
     }
@@ -177,7 +340,7 @@ describe("release gate CLI", () => {
             ...context.environment,
             RELEASE_DATABASE_URL: `${databaseUrl}&${option}`,
           },
-          { createClient: context.createClient },
+          { createClient: context.createClient, fetcher: context.fetcher },
         ),
       ).rejects.toThrow();
     }
@@ -191,6 +354,7 @@ describe("release gate CLI", () => {
       runReleaseGateCli(["drain", "--sha", sha], context.environment, {
         createClient: context.createClient,
         write: context.write,
+        fetcher: context.fetcher,
         signal: controller.signal,
         sleep: async () => controller.abort(),
       }),
@@ -210,6 +374,7 @@ describe("release gate CLI", () => {
       runReleaseGateCli(["drain", "--sha", sha], context.environment, {
         createClient: context.createClient,
         write: context.write,
+        fetcher: context.fetcher,
         now: () => clock,
         drainTimeoutMs: 1_000,
         sleep: async () => {
@@ -226,6 +391,7 @@ describe("release gate CLI", () => {
     const options = {
       createClient: context.createClient,
       write: context.write,
+      fetcher: context.fetcher,
       readEvidence: async () => evidence(),
     };
     await expect(
@@ -264,6 +430,7 @@ describe("release gate CLI", () => {
         context.environment,
         {
           createClient: context.createClient,
+          fetcher: context.fetcher,
           readEvidence: async () => evidence(),
         },
       ),
@@ -285,6 +452,7 @@ describe("release gate CLI", () => {
         runReleaseGateCli(args, context.environment, {
           createClient: context.createClient,
           write: context.write,
+          fetcher: context.fetcher,
         }),
       ).rejects.toThrow();
     }
