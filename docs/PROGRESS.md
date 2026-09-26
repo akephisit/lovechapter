@@ -1262,3 +1262,9 @@ cover a current, stale, and missing test schema. This fails closed for a
 schema-changing release until the separate branch has the reviewed schema;
 it does not yet automate that branch's lifecycle or constitute a live
 staging rehearsal.
+
+A read-only Neon query on both `staging` and `staging-test` confirmed their
+latest applied migration hash is `0010_release_gate_admission`, while this
+worktree requires `0011_release_versions`. Thus the new preflight would
+currently reject the test branch before maintenance. No migration, reset,
+branch deletion, or deployment was performed during this check.
