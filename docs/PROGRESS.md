@@ -1016,3 +1016,22 @@ Remote PR CI and the merge decision remain
 pending. Neither production resources nor automatic
 promotion were created; staging acceptance does not authorize a production
 release.
+
+## Automatic Worker release design review (2026-09-26)
+
+PR #3 was subsequently merged into `main` as `8dd1c2a`; its post-merge CI
+passed. The owner approved the proposed release flow in conversation: every
+application deployment enters whole-site maintenance, but a web-only or
+API-only change still deploys only its affected Worker; shared or migration
+changes deploy both. Exact-`main`-SHA automated staging acceptance precedes
+automatic production promotion. The owner temporarily waived real-inbox email
+receipt as a production gate while keeping other auth/outbox checks; this is a
+known public sign-up/reset limitation, not a passing email test.
+
+The written proposal is
+`docs/superpowers/specs/2026-09-26-automatic-worker-release-design.md` and
+awaits the owner's review before an implementation plan. No production
+resource or deployment workflow has been created. Read-only GitHub checks
+found no branch ruleset or legacy protection on `main` and no GitHub
+environments; those are prerequisites before automatic promotion can be
+enabled.
