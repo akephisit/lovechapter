@@ -934,3 +934,85 @@ rate-limit marker was present before the next deployed quarter-hour cleanup
 tick and absent afterward; the gate remained open with zero leases and the
 two pre-existing weddings. Remote PR CI and any merge decision remain
 pending. Production deployment and automatic promotion remain disabled.
+
+## Exact-SHA release-gate correction and Worker staging acceptance (2026-09-26)
+
+A read-only review identified four Important defects after the earlier
+`e463dc8` staging drill: duplicate `sslmode` parameters could bypass the
+CLI's TLS check; evidence from an earlier closure of the same SHA could
+reopen a later closure; an unresponsive web release-state fetch could hang;
+and readiness did not compare the deployed API with the latest migration.
+Commit `5718cdc1f70c6b7563ebe8bdb78f8eedd7ca0f28` corrects all four
+with focused red/green regressions. The CLI rejects duplicate `sslmode`,
+requires evidence newer than the current closure, and compares that closure
+timestamp atomically during reopen. The web state fetch/body has a
+three-second deadline. Protected readiness compares the newest Drizzle
+migration hash with the compiled revision. Active staging's restricted app
+role received only `USAGE` on `drizzle` and `SELECT (id, hash)` on the
+migration ledger; disposable-branch restricted-role and live readiness
+checks passed. This correction changed no business table or migration.
+
+The exact `5718cdc` API/web staging Worker versions are
+`03e59c3b-1850-4850-969f-0a11635334d0` and
+`50640419-55bf-4067-8da5-f606717367dc`. A fresh active-staging closure
+blocked public pages and API with no-store 503 while protected readiness and
+the private GET probe returned 200. A queued reset-email job remained
+pending with zero attempts during a real minute-cron tick, then was sent
+once after reopen (`attempt_count=1`, no error); the owner confirmed inbox
+receipt. A deliberate lock of the control row stalled the web release-state
+request; public access failed closed to no-store 503 in about 3.1 seconds.
+The CLI refused to reopen with an active synthetic lease, accepted a drained
+state with new evidence, and later rejected that evidence after a second
+closure of the same SHA.
+
+The second closure held a **real API Worker HTTP request** in flight by
+temporarily locking only `auth_rate_limits` on staging. One HTTP lease was
+visible after closure; a new public sign-in page returned no-store 503. The
+already-admitted request completed with its expected 401 after the lock was
+released, and the lease count returned to zero. Protected readiness and
+private sign-in presentation still returned 200 while closed. New exact-SHA
+evidence recorded the API/web version IDs and post-closure private smoke;
+the CLI reopened staging. Readback showed mode `open`, zero leases, two
+pre-existing weddings, one test account, public sign-in 200, and
+unauthenticated session 401. The temporary table lock was rolled back and
+scratch test scripts were removed. The active staging checkpoint is Neon
+branch `br-royal-term-azoxtj68` at parent LSN `0/1D60CD8`; the earlier
+disposable PITR restore rehearsal used branch `br-soft-recipe-azs60m8r` and
+left active staging and production untouched.
+
+On this same `5718cdc` Worker pair, the reset token metadata matched its
+stored hash; reset/sign-in/session/sign-out/revoked-session returned
+200/200/200/204/401. A disposable wedding and Unicode guest completed
+invitation view, account-free RSVP, over-limit rejection, and readback.
+CSV upload, invalid-row preview/exclusion, stale mapping rejection,
+idempotent commit replay, and no-store Unicode export passed. The
+test-created wedding was removed. The test account's password is now an
+ephemeral value unknown to the owner; use Forgot password to set a new one.
+The earlier received verification email still covers the already-verified
+test account; no second verification message was generated. Real staging
+cron sent queued reset mail and performed the prior cleanup exercise; the
+controlled 429→success retry remains disposable-PostgreSQL evidence, not a
+claimed live Resend failure. Seven representative SELECT plans were rerun on
+`staging-test` and rolled back. The new readiness query selected the Drizzle
+migration primary key on its ten-row ledger; details and measurement limits
+are in `docs/QUERY_REVIEW.md`.
+
+Local CI on `5718cdc` passed 79 files / 519 tests plus format, lint,
+typechecks, migration check, Bun builds/smoke, Next/vinext builds/check, and
+both Worker dry-runs. Two initial full-suite attempts exposed an existing
+201-row guest UI test's five-second timeout under full-suite contention;
+the focused test passed and its test-specific timeout was raised to ten
+seconds before the passing full run. A subsequent read-only review found
+that PostgreSQL query-string `host=` can override the URL authority host
+after the CLI's pooled-host check. A new regression failed before a fix and
+passed after URL options were restricted to TLS mode and optional required
+channel binding. That CLI-only follow-up has not been redeployed as a new
+Worker SHA. After that correction and the documentation update, local CI
+passed 79 files / 520 tests, format, lint, every workspace typecheck, the
+migration check, Bun builds/smoke, Next/vinext builds/check, and Worker
+dry-runs. The disposable `staging-test` PostgreSQL suite passed 7 files /
+39 tests with one test skipped, and its controlled jobs retry test passed 1/1.
+Remote PR CI and the merge decision remain
+pending. Neither production resources nor automatic
+promotion were created; staging acceptance does not authorize a production
+release.

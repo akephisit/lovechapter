@@ -159,6 +159,31 @@ describe("release gate CLI", () => {
     expect(context.createClient).not.toHaveBeenCalled();
   });
 
+  it("rejects PostgreSQL URL options that override the direct TLS connection", async () => {
+    const context = fixture();
+    for (const option of [
+      "host=ep-example-pooler.ap-southeast-1.aws.neon.tech",
+      "port=6432",
+      "user=other_role",
+      "database=other_database",
+      "ssl=false",
+      "channel_binding=disable",
+      "channel_binding=require&channel_binding=disable",
+    ]) {
+      await expect(
+        runReleaseGateCli(
+          ["close", "--sha", sha],
+          {
+            ...context.environment,
+            RELEASE_DATABASE_URL: `${databaseUrl}&${option}`,
+          },
+          { createClient: context.createClient },
+        ),
+      ).rejects.toThrow();
+    }
+    expect(context.createClient).not.toHaveBeenCalled();
+  });
+
   it("leaves maintenance on interrupted drain", async () => {
     const context = fixture({ mode: "maintenance", targetSha: sha, leases: 1 });
     const controller = new AbortController();

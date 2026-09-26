@@ -145,3 +145,26 @@ production-load benchmark. Admission adds one Worker→PostgreSQL round trip
 and release adds one; the function internally locks the singleton and
 inserts one lease. A comparable pre-gate p95 baseline for this SHA does not
 exist, so no production performance acceptance is inferred from this probe.
+
+## Exact-SHA schema readiness and Worker probe (2026-09-26)
+
+Commit `5718cdc1f70c6b7563ebe8bdb78f8eedd7ca0f28` adds one protected
+readiness query against `drizzle.__drizzle_migrations`. It selects only the
+latest `id` and matches the compiled latest SQL hash; the staging app role
+has column-scoped read privileges on `id` and `hash` only. On the disposable
+`staging-test` branch, a safe `EXPLAIN (FORMAT JSON)` of that parameterized
+SELECT found ten migration rows and used the
+`__drizzle_migrations_pkey`: a backward index-only scan obtains `max(id)`,
+then a keyed index scan filters the hash. This is a readiness-path query,
+not a per-business-request query or a latency benchmark. A live protected
+staging readiness request returned 200 after granting only those columns.
+
+On the exact deployed Worker pair, an alternating warm 20-request-per-route
+direct API probe measured p95 92.0 ms for protected release-state and
+89.1 ms for unauthenticated wedding listing. The routes do different work;
+these values **do not** isolate release-gate overhead or establish a
+production-load baseline. The gate still contributes one database admission
+round trip and one lease-release round trip per business request. The
+earlier seven representative SELECT plans were rerun on `staging-test` with
+synthetic data rolled back; no new business-query shape was introduced by
+`5718cdc`.

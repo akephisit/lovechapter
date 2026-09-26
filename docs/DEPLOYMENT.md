@@ -10,7 +10,9 @@ backend (ADR-026); the Bun/VPS option remains available for a different
 installation. No infrastructure is provisioned or claimed by this repository
 itself: a separate Worker staging installation exists, with local Git-ignored
 credentials and PR #2 acceptance recorded in `docs/PROGRESS.md`. Production
-resources, the maintenance gate, and production promotion are not in place.
+resources, a production maintenance gate, and production promotion are not
+in place. The staging maintenance gate passed its Worker drill; see
+`docs/PROGRESS.md`. This does not enable a production cutover.
 Neither a VPS nor a custom domain is required for the Worker path.
 
 ```text
@@ -277,8 +279,10 @@ backup/PITR point, then transform and validate existing data, deploy the
 selected backend and web from the same tested revision, smoke-test the new
 system, and only then reopen traffic and jobs. Never run an old Worker or Bun
 process against the new incompatible schema. The gate-aware code and staging
-operator command have not yet passed the active staging cutover/recovery drill,
-so a breaking production migration remains blocked. The Worker design is in
+operator command passed an active staging closure/drain/reopen drill on
+`5718cdc`, including a disposable-branch PITR rehearsal. A breaking
+**production** migration remains blocked because the production gate,
+resources, permissions, and promotion workflow do not exist. The Worker design is in
 `docs/superpowers/specs/2026-09-26-worker-maintenance-cutover-design.md`.
 This deliberately permits a maintenance window; it does not promise zero
 downtime.
@@ -293,8 +297,13 @@ Git, chat, command arguments, or logs. The command rejects pooled-looking
 hosts and does not fall back to the application `DATABASE_URL`. Verify the
 Neon project, branch, database, and role independently before any command:
 `RELEASE_ENVIRONMENT=staging` alone cannot prove that a URL points to staging.
-The CLI rejects duplicate `sslmode` parameters rather than trusting a value
-different from the one the PostgreSQL driver would use.
+The CLI accepts only one `sslmode=require` or `sslmode=verify-full` query
+parameter plus an optional single literal `channel_binding=require` from a
+Neon URL; node-postgres 8.23 does not itself enforce that latter URL option.
+It rejects
+duplicate or other PostgreSQL URL query options because the driver can use
+them to override the authority host, role, database, or TLS behavior after a
+superficial URL check.
 There is no production CLI command or automatic production release yet.
 
 The API Worker/Hyperdrive application role needs `USAGE` on `ops`, `SELECT`

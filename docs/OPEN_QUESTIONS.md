@@ -65,7 +65,9 @@ questions below apply only if a different installation chooses that option.
 
 - For a future VPS installation: provider, region, sizing, backup, and recovery
   ownership; scrypt benchmark on that VPS class; stable HTTPS backend hostname,
-  DNS, certificate, and reverse-proxy ownership
+  DNS, certificate, and reverse-proxy ownership; a separate Bun/VPS staging
+  cutover drill and schema-hash readiness parity (the current Bun readiness
+  checks database connectivity while Worker readiness checks the migration)
 - Production monitoring and token-safe observability strategy
 - Acceptable maintenance-window duration and notice policy for a breaking
   schema/API cutover; production release operator and restore-drill ownership

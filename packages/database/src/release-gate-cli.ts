@@ -134,14 +134,22 @@ function directDatabaseUrl(value: string | undefined): string {
   } catch {
     throw new Error("RELEASE_DATABASE_URL is invalid");
   }
+  const channelBindings = url.searchParams.getAll("channel_binding");
   if (
     !["postgres:", "postgresql:"].includes(url.protocol) ||
     !url.hostname ||
     !url.username ||
     !url.password ||
     /(?:^|[-.])(?:pooler|pgbouncer)(?:[.-]|$)/iu.test(url.hostname) ||
+    [...url.searchParams.keys()].some(
+      (name) => name !== "sslmode" && name !== "channel_binding",
+    ) ||
     url.searchParams.getAll("sslmode").length !== 1 ||
-    !["require", "verify-full"].includes(url.searchParams.get("sslmode") ?? "")
+    !["require", "verify-full"].includes(
+      url.searchParams.get("sslmode") ?? "",
+    ) ||
+    channelBindings.length > 1 ||
+    (channelBindings.length === 1 && channelBindings[0] !== "require")
   ) {
     throw new Error("RELEASE_DATABASE_URL must be a direct TLS PostgreSQL URL");
   }
