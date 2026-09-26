@@ -384,9 +384,12 @@ needs its ingress, auth-token, rate-limit, public-web-origin, and Resend
 settings. Verify secret **names** per Worker without exposing values.
 
 The staging test URL must target a separate Neon branch with the current
-schema; the CLI verifies its branch endpoint before creating HTTP fixtures,
-and the query-plan transaction rolls its synthetic rows back. A missing or
-stale test branch fails acceptance rather than becoming a skipped check.
+schema; the CLI verifies its branch endpoint and reads the latest Drizzle
+migration hash before build or maintenance. The query-plan transaction later
+rolls its synthetic rows back. A missing or stale test branch stops the
+release before closure rather than becoming a skipped check. Schema-changing
+releases still require the isolated branch to be brought to the reviewed
+schema; its automatic lifecycle remains unresolved.
 
 The API Worker/Hyperdrive application role needs `USAGE` on `ops`, `SELECT`
 on `ops.release_control`, `EXECUTE` on `ops.admit_release_lease(text)`, and

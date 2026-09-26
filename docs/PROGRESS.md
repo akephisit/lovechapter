@@ -1254,3 +1254,11 @@ also corrected the preflight contract: `RELEASE_PROBE_SECRET` belongs to the
 web Worker, not the API Worker; the API requires its own auth, ingress, and
 Resend secret names. No secret value was read or changed. Existing rehearsal
 branches were left untouched.
+
+The staging release preflight now verifies the isolated query-plan branch's
+latest Drizzle migration hash against the checked-in schema before any
+staging connection, Worker build, or maintenance transition. Focused tests
+cover a current, stale, and missing test schema. This fails closed for a
+schema-changing release until the separate branch has the reviewed schema;
+it does not yet automate that branch's lifecycle or constitute a live
+staging rehearsal.

@@ -10,6 +10,7 @@ import {
   validateDirectDatabaseUrl,
   verifyReleaseTarget,
 } from "../packages/database/src/release-target.ts";
+import { expectedSchemaMigrationHash } from "../packages/database/src/schema-revision.ts";
 import {
   createPostgresFixtureStore,
   runStagingHttpAcceptance,
@@ -59,6 +60,24 @@ async function testBranchInventory(branchId, projectId, apiKey, fetcher) {
   }
 }
 
+async function assertCurrentTestSchema(databaseUrl, createClient) {
+  const client = createClient(databaseUrl);
+  try {
+    await client.connect();
+    const result = await client.query(
+      "select hash from drizzle.__drizzle_migrations order by id desc limit 1",
+    );
+    if (
+      result.rows.length !== 1 ||
+      result.rows[0]?.hash !== expectedSchemaMigrationHash
+    ) {
+      throw new Error("Isolated query-plan schema is stale");
+    }
+  } finally {
+    await client.end();
+  }
+}
+
 /** Test the opened staging SHA through real HTTP, scheduled jobs, and isolated SQL. */
 export async function runStagingAcceptanceCli(
   sha,
@@ -66,7 +85,11 @@ export async function runStagingAcceptanceCli(
   {
     fetcher = globalThis.fetch,
     createClient = (connectionString) =>
-      new pg.Client({ connectionString, connectionTimeoutMillis: 5_000 }),
+      new pg.Client({
+        connectionString,
+        connectionTimeoutMillis: 5_000,
+        query_timeout: 10_000,
+      }),
     readGateStatus = (client) =>
       new PostgresReleaseGateController(client).status(),
     http = runStagingHttpAcceptance,
@@ -131,6 +154,7 @@ export async function runStagingAcceptanceCli(
     ) {
       throw new Error("Query-plan URL is not the isolated Neon branch");
     }
+    await assertCurrentTestSchema(testDatabaseUrl, createClient);
     if (preflightOnly === true) {
       const report = { targetVerified: true };
       write(JSON.stringify(report));

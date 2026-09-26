@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { expectedSchemaMigrationHash } from "../packages/database/src/schema-revision.ts";
 import { runStagingAcceptanceCli } from "./staging-acceptance-cli.mjs";
 
 const sha = "a".repeat(40);
@@ -73,7 +74,15 @@ function fixture() {
   const connect = vi.fn(async () => undefined);
   const end = vi.fn(async () => undefined);
   const client = { connect, end, query: vi.fn() };
-  const createClient = vi.fn(() => client);
+  const testConnect = vi.fn(async () => undefined);
+  const testEnd = vi.fn(async () => undefined);
+  const testQuery = vi.fn(async () => ({
+    rows: [{ hash: expectedSchemaMigrationHash }],
+  }));
+  const testClient = { connect: testConnect, end: testEnd, query: testQuery };
+  const createClient = vi.fn((url) =>
+    url === env.RELEASE_TEST_DATABASE_URL ? testClient : client,
+  );
   const gate = {
     mode: "open",
     targetSha: sha,
@@ -112,6 +121,9 @@ function fixture() {
     createClient,
     connect,
     end,
+    testConnect,
+    testEnd,
+    testQuery,
     readGateStatus,
     http,
     jobs,
@@ -122,7 +134,7 @@ function fixture() {
 }
 
 describe("live staging acceptance CLI boundary", () => {
-  it("preflights staging and test-branch identity without opening a database connection", async () => {
+  it("preflights branch identity and current schema before connecting to staging", async () => {
     const context = fixture();
     await expect(
       runStagingAcceptanceCli(sha, context.env, {
@@ -131,7 +143,14 @@ describe("live staging acceptance CLI boundary", () => {
       }),
     ).resolves.toEqual({ targetVerified: true });
     expect(context.fetcher).toHaveBeenCalledTimes(3);
-    expect(context.createClient).not.toHaveBeenCalled();
+    expect(context.createClient).toHaveBeenCalledExactlyOnceWith(
+      context.env.RELEASE_TEST_DATABASE_URL,
+    );
+    expect(context.testQuery).toHaveBeenCalledWith(
+      expect.stringContaining("drizzle.__drizzle_migrations"),
+    );
+    expect(context.testEnd).toHaveBeenCalledOnce();
+    expect(context.connect).not.toHaveBeenCalled();
     expect(context.http).not.toHaveBeenCalled();
     expect(context.output).toEqual([JSON.stringify({ targetVerified: true })]);
   });
@@ -147,11 +166,28 @@ describe("live staging acceptance CLI boundary", () => {
     expect(context.plans).toHaveBeenCalledOnce();
     expect(context.readGateStatus).toHaveBeenCalledTimes(2);
     expect(context.end).toHaveBeenCalledOnce();
+    expect(context.testEnd).toHaveBeenCalledOnce();
     expect(result.commitSha).toBe(sha);
     expect(context.output).toEqual([JSON.stringify(result)]);
     expect(context.output.join(" ")).not.toMatch(
       /private-password|test-password|neon-test-secret/u,
     );
+  });
+
+  it("rejects a stale or missing test schema before staging acceptance", async () => {
+    for (const rows of [[], [{ hash: "stale-schema" }]]) {
+      const context = fixture();
+      context.testQuery.mockResolvedValueOnce({ rows });
+      await expect(
+        runStagingAcceptanceCli(sha, context.env, {
+          ...context,
+          preflightOnly: true,
+        }),
+      ).rejects.toThrow();
+      expect(context.connect).not.toHaveBeenCalled();
+      expect(context.testEnd).toHaveBeenCalledOnce();
+      expect(context.output).toEqual([]);
+    }
   });
 
   it("rejects invalid CI evidence or wrong provider target before connecting", async () => {
