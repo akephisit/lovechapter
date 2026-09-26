@@ -745,3 +745,13 @@ The Worker maintenance-gate/cutover design is in
 owner review. It has not been implemented. The existing linked worktree for
 the new design branch passed the local baseline unit suite (73 files, 472
 tests) before documentation edits; that is not a new staging acceptance run.
+
+## Worker maintenance-gate implementation plan (2026-09-26)
+
+The owner approved the Worker maintenance/cutover design. The follow-on
+implementation plan is in
+`docs/superpowers/plans/2026-09-26-worker-maintenance-gate.md`. It separates
+database admission, API/streaming, cron/Bun job parity, web maintenance,
+direct operator control, and exact-SHA staging acceptance into testable
+slices. No gate implementation, staging migration/deploy, production resource,
+or promotion automation has been performed in this planning step.
