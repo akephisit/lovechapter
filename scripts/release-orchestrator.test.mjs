@@ -112,6 +112,12 @@ describe("serial Worker cutover", () => {
       "record",
     ]);
     expect(events.every(([, candidate]) => candidate === sha)).toBe(true);
+    expect(driver.publicCheck.mock.calls[0][1].opened).toMatchObject({
+      mode: "open",
+      targetSha: sha,
+      web: { versionId: "web-version", sourceSha: sha },
+      api: { versionId: "api-version", sourceSha: sha },
+    });
   });
 
   it("skips a docs-only commit without touching either Worker or the gate", async () => {

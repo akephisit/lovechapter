@@ -160,6 +160,7 @@ export async function runCutover(input, driver) {
     const publicResult = await driver.publicCheck(sha, {
       closure,
       deployed,
+      opened,
       migrationOutcome,
       smoke,
     });

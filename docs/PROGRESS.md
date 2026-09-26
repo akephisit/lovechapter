@@ -1139,3 +1139,14 @@ reported without provider bodies or credentials. Local CI passed 96 files /
 617 tests plus format, lint, typechecks, builds, migration check, and Worker
 dry-runs. This adapter is not yet connected to the live release CLI; no GitHub
 record was created in this run.
+
+The concrete release-driver composition now connects selective Worker
+preparation/deployment, target-verified gate commands, exact reopen evidence,
+closed-gate/private and post-open/public HTTP checks, staging acceptance, and
+production deployment recording. It refuses a closed or mismatched gate
+baseline before building, rechecks it before closure, and validates the
+environment-specific workers.dev origins and distinct probe/proxy secrets.
+Local CI passed 97 files / 622 tests plus format, lint, typechecks, builds,
+migration check, and Worker dry-runs. Migration execution, live staging
+acceptance inputs, protected GitHub setup, and the real CLI entrypoint remain
+unwired; both release flags stay disabled. No live release was attempted.

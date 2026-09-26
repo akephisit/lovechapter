@@ -4,13 +4,13 @@ import { URL } from "node:url";
 const shaPattern = /^[0-9a-f]{40}$/u;
 const secretPattern = /^[A-Za-z0-9_-]{43}$/u;
 
-function canonicalSecret(value) {
+export function canonicalSecret(value) {
   if (typeof value !== "string" || !secretPattern.test(value)) return false;
   const bytes = Buffer.from(value, "base64url");
   return bytes.length === 32 && bytes.toString("base64url") === value;
 }
 
-function workerOrigin(value) {
+export function workerOrigin(value) {
   try {
     const url = new URL(value);
     if (
