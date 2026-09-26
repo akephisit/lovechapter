@@ -1071,3 +1071,11 @@ machine-local `.env.staging-*` query-plan inputs were removed in favor of
 environment-scoped values. The new disposable-Neon probe has not been run
 live, and the disposable PostgreSQL retry integration was not rerun in this
 worktree; production remains disabled.
+
+During a Neon CLI diagnostic for Task 6, an owner-role connection string was
+accidentally emitted in tool output. Its password matched the `neondb_owner`
+role on several LoveChapter branches, so it must be rotated before live
+database testing resumes. The temporary branch created solely for the
+integration attempt was deleted without running tests. Staging Hyperdrive
+uses the separate `lovechapter_staging_app` role. Owner-role rotation and any
+stored direct migration URL updates are pending the owner's direction.
