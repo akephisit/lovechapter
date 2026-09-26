@@ -41,7 +41,12 @@ export function classifyReleaseImpact(changes) {
   const impact = { web: false, backend: false, migrate: false };
 
   for (const { path } of changes) {
-    if (path.startsWith("apps/web/")) {
+    if (
+      path.startsWith("packages/database/drizzle/reviews/") &&
+      path.endsWith(".md")
+    ) {
+      continue;
+    } else if (path.startsWith("apps/web/")) {
       impact.web = true;
     } else if (
       path.startsWith("apps/api/") ||

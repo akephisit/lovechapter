@@ -121,6 +121,17 @@ describe("classifyReleaseImpact", () => {
     });
   });
 
+  it("does not deploy for a migration review document alone", () => {
+    expect(
+      classifyReleaseImpact([
+        {
+          status: "A",
+          path: "packages/database/drizzle/reviews/0011_example.md",
+        },
+      ]),
+    ).toEqual({ web: false, backend: false, migrate: false });
+  });
+
   it("treats unfamiliar source paths as affecting both deployments", () => {
     expect(classifyReleaseImpact(modified("new-app/src/index.ts"))).toEqual({
       web: true,
