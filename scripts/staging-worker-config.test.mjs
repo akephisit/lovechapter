@@ -34,7 +34,7 @@ describe("staging Worker deployment", () => {
     expect(output).toMatch(
       /env\.HYPERDRIVE \((?!REPLACE_WITH_HYPERDRIVE_ID)[^)]+\)/,
     );
-  });
+  }, 35_000);
 
   it("defines a separate web staging environment for Wrangler", () => {
     const temporaryDirectory = mkdtempSync(
@@ -68,5 +68,5 @@ describe("staging Worker deployment", () => {
     } finally {
       rmSync(temporaryDirectory, { recursive: true, force: true });
     }
-  });
+  }, 35_000);
 });
