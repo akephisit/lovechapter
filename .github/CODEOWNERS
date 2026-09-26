@@ -1,0 +1,8 @@
+/.github/workflows/release.yml @akephisit
+/scripts/release-*.mjs @akephisit
+/scripts/deployment-ledger.mjs @akephisit
+/scripts/worker-versions.mjs @akephisit
+/packages/database/drizzle/*.sql @akephisit
+/packages/database/drizzle/reviews/ @akephisit
+/packages/database/src/release-* @akephisit
+/packages/auth/ @akephisit

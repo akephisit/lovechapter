@@ -249,6 +249,19 @@ passed; it was merged to `main` as `6305488`. The next gate is implementation
 and staging acceptance of the maintenance/cutover subsystem, not a rerun of
 the merged PR's CI.
 
+`.github/workflows/release.yml` is a serial, non-canceling push-to-`main`
+coordinator. It repeats CI and disposable PostgreSQL integration on the exact
+merged SHA. Its staging and production jobs are both **disabled by default**:
+`STAGING_RELEASE_ENABLED` and `PRODUCTION_RELEASE_ENABLED` must each be set to
+`true` only after their independent bootstrap/acceptance checklists pass.
+The release CLI currently rejects even an enabled job until the live adapter
+and evidence handoff are installed and validated. Never enable either flag
+merely because the workflow file exists. The existing PR CI remains separate
+and receives no release secrets. GitHub staging and production environments
+must restrict deployment to protected `main`; the CLI also requires a
+protected push-to-`main` context and exact commit SHA. No Cloudflare Git
+autodeploy may bypass the coordinator.
+
 Production credentials, protected environment, and enforced acceptance gate
 are not in place, so automatic production deployment remains disabled. In
 particular, merging must not silently deploy production before the approved
@@ -266,13 +279,15 @@ rejects unset or combined selections.
 
 Web-only changes deploy only the web Worker; API/jobs/auth/database-code-only
 changes deploy only the selected backend. Migration, shared contracts/domain,
-or unfamiliar source changes plan both components. The planner cannot prove
-whether a migration is breaking or whether a cutover gate exists; that review
-is mandatory before execution. CI should still verify both supported runtimes. If both
-components change, complete both builds and all preflight checks before making
-either new component live. A naturally compatible, component-only change may
-deploy selectively. Do not add legacy database structures or dual-version API
-behavior just to make every change compatible with a rolling release.
+or unfamiliar source changes plan both components. **Every application
+deployment**, including a web-only or API-only one, closes and drains the
+whole-site maintenance gate. Builds and preflight checks finish before
+closure; selective deployment happens while closed. Docs-only changes skip
+maintenance and deployment. The planner cannot prove whether a migration is
+breaking or whether a cutover gate exists; that review is mandatory before
+execution. CI should still verify both supported runtimes. Do not add legacy
+database structures or dual-version API behavior just to make every change
+compatible with a rolling release.
 The planner fails closed if `packages/database/src/schema.ts` changes without
 an added or modified SQL migration under `packages/database/drizzle/`. A
 deleted SQL migration does not satisfy this guard. Even a valid changed SQL
@@ -405,14 +420,31 @@ immutable 40-character commit SHA throughout:
 
 ```json
 {
+  "environment": "staging",
   "commitSha": "FULL_40_CHARACTER_LOWERCASE_SHA",
-  "apiWorkerVersion": "RECORDED_API_VERSION_ID",
-  "webWorkerVersion": "RECORDED_WEB_VERSION_ID",
-  "migrationChecked": true,
+  "stagingSha": null,
+  "web": {
+    "versionId": "RECORDED_WEB_VERSION_ID",
+    "sourceSha": "FULL_40_CHARACTER_LOWERCASE_SHA",
+    "changed": true
+  },
+  "api": {
+    "versionId": "RECORDED_API_VERSION_ID",
+    "sourceSha": "FULL_40_CHARACTER_LOWERCASE_SHA",
+    "changed": true
+  },
+  "migration": "not_required",
   "privateSmokePassed": true,
-  "acceptedAt": "ACTUAL_ISO_8601_ACCEPTANCE_TIMESTAMP"
+  "inboxDelivery": "waived",
+  "acceptedAt": "2026-09-26T00:00:00.000Z"
 }
 ```
+
+The timestamp above is an example only: the real `acceptedAt` must be the
+actual post-closure time. For a selective release, retain the unchanged
+Worker's previously recorded version and source SHA and set its `changed` to
+`false`. For production, `environment` is `production` and `stagingSha` must
+equal the exact accepted commit SHA.
 
 After loading the trusted staging environment securely, run the commands
 from the repository root; substitute one real full SHA and evidence path:
@@ -424,7 +456,8 @@ npm run release:gate --workspace @lovechapter/database -- drain --sha FULL_TARGE
 npm run release:gate --workspace @lovechapter/database -- open --sha FULL_TARGET_SHA --evidence /restricted/path/acceptance.json
 ```
 
-`status` prints only mode, target SHA, and active lease count. `close`,
+`status` prints mode, target SHA, active lease count, and recorded Worker
+versions. `close`,
 `drain`, and `open` never output a database URL, token, or invitation. A failed
 post-migration smoke stays closed. An old Worker binary alone is not a
 rollback for a changed schema: choose a reviewed forward fix or a verified

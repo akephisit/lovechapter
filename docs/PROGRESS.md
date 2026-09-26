@@ -23,6 +23,16 @@ pending. There is no VPS or custom domain. A Neon branch named `production`
 exists, but it has not passed the production bootstrap or been connected to
 production Workers.
 
+The automatic Worker release work is on an isolated implementation branch.
+The serial push-to-`main` workflow now repeats CI and PostgreSQL integration
+for the exact SHA and defines protected staging-to-production jobs, but both
+release jobs are disabled by default. The CLI also fails closed until a live
+release adapter, staging evidence handoff, protected GitHub environments, and
+production bootstrap are implemented and verified. The cutover state machine
+has tests for preparation-before-maintenance, same-SHA closure, drain, selective
+deployment, post-open reclosure, and exact-SHA production preflight. None of
+this is a live staging or production release.
+
 ## Implemented
 
 - Main-branch verification and PostgreSQL integration gates, with no automatic
