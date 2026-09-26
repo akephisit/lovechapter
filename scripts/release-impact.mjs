@@ -2,13 +2,35 @@ import { execFileSync } from "node:child_process";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
+/** Parse status/path pairs from `git diff --name-status -z --no-renames`. */
+export function parseGitChanges(output) {
+  const fields = output.split("\0");
+  if (fields.at(-1) === "") fields.pop();
+  if (fields.length % 2 !== 0) {
+    throw new Error("Expected Git change status/path pairs");
+  }
+
+  const changes = [];
+  for (let index = 0; index < fields.length; index += 2) {
+    const status = fields[index];
+    const path = fields[index + 1];
+    if (!/^[A-Z]$/.test(status) || !path) {
+      throw new Error("Invalid Git change status/path pair");
+    }
+    changes.push({ status, path });
+  }
+  return changes;
+}
+
 /** Fail closed: an unfamiliar executable/configuration path deploys both sides. */
-export function classifyReleaseImpact(paths) {
+export function classifyReleaseImpact(changes) {
   if (
-    paths.includes("packages/database/src/schema.ts") &&
-    !paths.some(
-      (path) =>
-        path.startsWith("packages/database/drizzle/") && path.endsWith(".sql"),
+    changes.some(({ path }) => path === "packages/database/src/schema.ts") &&
+    !changes.some(
+      ({ path, status }) =>
+        (status === "A" || status === "M") &&
+        path.startsWith("packages/database/drizzle/") &&
+        path.endsWith(".sql"),
     )
   ) {
     throw new Error(
@@ -18,7 +40,7 @@ export function classifyReleaseImpact(paths) {
 
   const impact = { web: false, backend: false, migrate: false };
 
-  for (const path of paths) {
+  for (const { path } of changes) {
     if (path.startsWith("apps/web/")) {
       impact.web = true;
     } else if (
@@ -53,12 +75,12 @@ export function classifyReleaseImpact(paths) {
   return impact;
 }
 
-export function createReleasePlan(paths, backendRuntime) {
+export function createReleasePlan(changes, backendRuntime) {
   if (backendRuntime !== "worker" && backendRuntime !== "bun-vps") {
     throw new Error("Select exactly one backend runtime: worker or bun-vps");
   }
 
-  return { ...classifyReleaseImpact(paths), backendRuntime };
+  return { ...classifyReleaseImpact(changes), backendRuntime };
 }
 
 if (
@@ -78,14 +100,12 @@ if (
   // Treat a cross-component rename as a deletion plus an addition.
   const changed = execFileSync(
     "git",
-    ["diff", "--no-renames", "--name-only", "-z", base, head],
+    ["diff", "--no-renames", "--name-status", "-z", base, head],
     {
       encoding: "utf8",
     },
-  )
-    .split("\0")
-    .filter(Boolean);
-  const plan = createReleasePlan(changed, backendRuntime);
+  );
+  const plan = createReleasePlan(parseGitChanges(changed), backendRuntime);
   for (const [name, value] of Object.entries(plan)) {
     process.stdout.write(`${name}=${value}\n`);
   }

@@ -1,11 +1,36 @@
 import { describe, expect, it } from "vitest";
 
-import { classifyReleaseImpact, createReleasePlan } from "./release-impact.mjs";
+import {
+  classifyReleaseImpact,
+  createReleasePlan,
+  parseGitChanges,
+} from "./release-impact.mjs";
+
+const modified = (...paths) => paths.map((path) => ({ status: "M", path }));
+
+describe("parseGitChanges", () => {
+  it("preserves statuses for NUL-delimited Git changes", () => {
+    expect(
+      parseGitChanges("M\0packages/database/src/schema.ts\0D\0old.sql\0"),
+    ).toEqual([
+      { status: "M", path: "packages/database/src/schema.ts" },
+      { status: "D", path: "old.sql" },
+    ]);
+  });
+
+  it("rejects incomplete status/path pairs", () => {
+    expect(() => parseGitChanges("M\0schema.ts\0D\0")).toThrow(
+      "Expected Git change status/path pairs",
+    );
+  });
+});
 
 describe("classifyReleaseImpact", () => {
   it("deploys only the web for a frontend-only change", () => {
     expect(
-      classifyReleaseImpact(["apps/web/components/couple-workspace.tsx"]),
+      classifyReleaseImpact(
+        modified("apps/web/components/couple-workspace.tsx"),
+      ),
     ).toEqual({
       web: true,
       backend: false,
@@ -15,16 +40,17 @@ describe("classifyReleaseImpact", () => {
 
   it("deploys only the selected backend for API and job changes", () => {
     expect(
-      classifyReleaseImpact([
-        "apps/api/src/app.ts",
-        "apps/jobs/src/processor.ts",
-      ]),
+      classifyReleaseImpact(
+        modified("apps/api/src/app.ts", "apps/jobs/src/processor.ts"),
+      ),
     ).toEqual({ web: false, backend: true, migrate: false });
   });
 
   it("plans both components for a migration that could break their shared contract", () => {
     expect(
-      classifyReleaseImpact(["packages/database/drizzle/0009_example.sql"]),
+      classifyReleaseImpact(
+        modified("packages/database/drizzle/0009_example.sql"),
+      ),
     ).toEqual({
       web: true,
       backend: true,
@@ -34,27 +60,51 @@ describe("classifyReleaseImpact", () => {
 
   it("blocks a schema source change without a SQL migration", () => {
     expect(() =>
-      classifyReleaseImpact(["packages/database/src/schema.ts"]),
+      classifyReleaseImpact(modified("packages/database/src/schema.ts")),
     ).toThrow("Schema source changed without a SQL migration");
     expect(() =>
+      classifyReleaseImpact(
+        modified(
+          "packages/database/src/schema.ts",
+          "packages/database/drizzle/meta/_journal.json",
+        ),
+      ),
+    ).toThrow("Schema source changed without a SQL migration");
+  });
+
+  it("does not count a deleted SQL migration for a schema source change", () => {
+    expect(() =>
       classifyReleaseImpact([
-        "packages/database/src/schema.ts",
-        "packages/database/drizzle/meta/_journal.json",
+        { status: "M", path: "packages/database/src/schema.ts" },
+        { status: "D", path: "packages/database/drizzle/0009_example.sql" },
       ]),
     ).toThrow("Schema source changed without a SQL migration");
   });
 
   it("plans both components and migration review when schema and SQL change together", () => {
     expect(
+      classifyReleaseImpact(
+        modified(
+          "packages/database/src/schema.ts",
+          "packages/database/drizzle/0009_example.sql",
+        ),
+      ),
+    ).toEqual({ web: true, backend: true, migrate: true });
+  });
+
+  it("accepts an added SQL migration for a schema source change", () => {
+    expect(
       classifyReleaseImpact([
-        "packages/database/src/schema.ts",
-        "packages/database/drizzle/0009_example.sql",
+        { status: "M", path: "packages/database/src/schema.ts" },
+        { status: "A", path: "packages/database/drizzle/0010_example.sql" },
       ]),
     ).toEqual({ web: true, backend: true, migrate: true });
   });
 
   it("builds and deploys both consumers after shared contract changes", () => {
-    expect(classifyReleaseImpact(["packages/contracts/src/index.ts"])).toEqual({
+    expect(
+      classifyReleaseImpact(modified("packages/contracts/src/index.ts")),
+    ).toEqual({
       web: true,
       backend: true,
       migrate: false,
@@ -62,7 +112,9 @@ describe("classifyReleaseImpact", () => {
   });
 
   it("skips deployments for documentation-only changes", () => {
-    expect(classifyReleaseImpact(["docs/PROGRESS.md", "README.md"])).toEqual({
+    expect(
+      classifyReleaseImpact(modified("docs/PROGRESS.md", "README.md")),
+    ).toEqual({
       web: false,
       backend: false,
       migrate: false,
@@ -70,7 +122,7 @@ describe("classifyReleaseImpact", () => {
   });
 
   it("treats unfamiliar source paths as affecting both deployments", () => {
-    expect(classifyReleaseImpact(["new-app/src/index.ts"])).toEqual({
+    expect(classifyReleaseImpact(modified("new-app/src/index.ts"))).toEqual({
       web: true,
       backend: true,
       migrate: false,
@@ -82,7 +134,9 @@ describe("createReleasePlan", () => {
   it.each(["worker", "bun-vps"])(
     "selects exactly one %s backend",
     (runtime) => {
-      expect(createReleasePlan(["apps/api/src/app.ts"], runtime)).toEqual({
+      expect(
+        createReleasePlan(modified("apps/api/src/app.ts"), runtime),
+      ).toEqual({
         web: false,
         backend: true,
         migrate: false,
@@ -94,9 +148,9 @@ describe("createReleasePlan", () => {
   it.each([undefined, "worker,bun-vps", "both", ""])(
     "rejects ambiguous runtime %s",
     (runtime) => {
-      expect(() => createReleasePlan(["apps/api/src/app.ts"], runtime)).toThrow(
-        "Select exactly one backend runtime",
-      );
+      expect(() =>
+        createReleasePlan(modified("apps/api/src/app.ts"), runtime),
+      ).toThrow("Select exactly one backend runtime");
     },
   );
 });

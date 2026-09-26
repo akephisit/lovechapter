@@ -690,8 +690,9 @@ Read-only code review found that the release planner
 classified a lone `schema.ts` change as backend-only. A failing regression
 test reproduced the issue; the planner now rejects schema-source changes
 without a changed SQL migration, and 73 files / 468 tests passed locally
-after that fix. The planner/doc correction does not alter Worker runtime
-code. Remote PR CI and merge are still pending.
+after that fix. The planner/doc correction does not alter Worker runtime code.
+Remote PR CI subsequently passed on
+`f795fad650e03fcf561b3822b4787ce86e6aef7a`; merge is still pending.
 
 ## Inbox confirmation and final staging gate (2026-09-26)
 
@@ -711,7 +712,20 @@ cleanup cron plus the controlled disposable-database retry, and PostgreSQL
 integration/query plans. Neither the active Resend credential nor production
 resources were disrupted; a live provider 429 was not claimed. The current
 release-planner/documentation follow-up changes no deployable application or
-package source from the live-tested revision. The next gate is remote CI on
-the PR head, followed by a separate merge decision; production release
-automation remains disabled pending real production provisioning and its
-enforced acceptance gate.
+package source from the live-tested revision. Production release automation
+remains disabled pending real production provisioning and its enforced
+acceptance gate.
+
+## Deleted-migration planner regression (2026-09-26)
+
+A follow-up read-only review found that the schema-source guard used Git path
+names without change statuses. A deleted historical `.sql` file could therefore
+satisfy the apparent migration requirement. A new failing regression test
+reproduced this case. The planner now reads NUL-delimited Git status/path
+pairs and requires an added or modified SQL migration when schema source
+changes; a deletion does not count. The targeted planner suite passes after
+the fix. No deployable application or package source changed. Local full CI
+passed with 73 files / 472 tests, format, lint, workspace typechecks, Bun
+builds and smoke, migration snapshot check, Next/vinext builds and check,
+and Worker dry-runs. The final staging revision check and remote PR CI on
+this correction remain before a separate merge decision.

@@ -230,8 +230,9 @@ the other API/job processor against that installation's database. The first
 Worker staging installation has local, Git-ignored credentials and live
 acceptance evidence recorded in `docs/PROGRESS.md`. ADR-025 defines the
 approved split evidence for email retry. The deployable application source
-is unchanged by the subsequent planner/documentation correction; remote PR
-CI is the next gate.
+is unchanged by the subsequent planner/documentation corrections. PR CI passed
+on the earlier `f795fad` revision; CI on the final planner correction is the
+next gate.
 Production credentials, protected environment, and enforced acceptance gate
 are not in place, so automatic production deployment remains disabled. In
 particular, merging must not silently deploy a Worker when the installation
@@ -257,8 +258,9 @@ either new component live. A naturally compatible, component-only change may
 deploy selectively. Do not add legacy database structures or dual-version API
 behavior just to make every change compatible with a rolling release.
 The planner fails closed if `packages/database/src/schema.ts` changes without
-a changed SQL migration under `packages/database/drizzle/`; a changed SQL file
-still requires human review of the generated migration and cutover plan.
+an added or modified SQL migration under `packages/database/drizzle/`. A
+deleted SQL migration does not satisfy this guard. Even a valid changed SQL
+file still requires human review of the generated migration and cutover plan.
 
 A **breaking** schema or API change requires a coordinated cutover, not the
 ordinary sequential deploy. Before migration, an enforced maintenance/routing
