@@ -339,7 +339,18 @@ operator privileges needed to change `ops.release_control`.
 from the release role, and retain only the application grants below. The two
 roles deliberately share the verified branch endpoint and database, not the
 same PostgreSQL privileges.
-The read tokens and direct URL belong in restricted environment secrets, never
+For automatic migration, also provide environment-scoped
+`RELEASE_MIGRATION_DATABASE_URL` and `RELEASE_MIGRATION_DATABASE_ROLE`. The
+migration URL must be direct/non-pooled TLS, must identify the selected Neon
+branch/database, and must not use the Hyperdrive app role. The migration
+command checks the exact drained gate closure, the deployed Drizzle ledger
+against checked-in history, and the pending SQL paths against the reviewed
+release plan before applying anything. It checks the latest schema hash and
+the still-closed gate afterward. A drift or incomplete validation fails the
+release in maintenance; do not automatically reopen or retry a partly
+understood migration.
+
+The read tokens and direct URLs belong in restricted environment secrets, never
 in arguments or output. `RELEASE_ENVIRONMENT` alone does not prove identity.
 The CLI accepts only one `sslmode=require` or `sslmode=verify-full` query
 parameter plus an optional single literal `channel_binding=require` from a

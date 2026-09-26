@@ -167,7 +167,7 @@ function requiredEnvironment(environment: Environment, name: string): string {
   return value;
 }
 
-function releaseTargetFromEnvironment(
+export function releaseTargetFromEnvironment(
   environment: Environment,
 ): ReleaseTargetInput {
   const name = environment.RELEASE_ENVIRONMENT;

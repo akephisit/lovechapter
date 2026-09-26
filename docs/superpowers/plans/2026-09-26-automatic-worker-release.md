@@ -119,7 +119,7 @@ Do Tasks 1–7 without enabling production promotion. Task 8 performs the one-ti
 
 ### Task 7: Serial cutover runner and guarded GitHub workflow
 
-**Files:** Create `scripts/release-orchestrator.mjs`, `scripts/release-orchestrator.test.mjs`, `scripts/release-cli.mjs`, `scripts/release-workflow.test.mjs`, `.github/workflows/release.yml`, `.github/CODEOWNERS`; modify `docs/DEPLOYMENT.md` to document the disabled-by-default workflow. Keep existing `.github/workflows/ci.yml` as an independent PR gate.
+**Files:** Create `scripts/release-orchestrator.mjs`, `scripts/release-orchestrator.test.mjs`, `scripts/release-cli.mjs`, `scripts/release-workflow.test.mjs`, `scripts/release-migration-command.mjs`, `packages/database/src/release-migration-cli.ts`, `.github/workflows/release.yml`, `.github/CODEOWNERS`; modify `docs/DEPLOYMENT.md` to document the disabled-by-default workflow. Keep existing `.github/workflows/ci.yml` as an independent PR gate.
 
 **Interfaces:** `runCutover({ environment, sha, impact, migration }, driver): Promise<ReleaseResult>` calls `driver.prepare → close → drain → migrate-if-required → deploy → privateSmoke → open → publicCheck → record`; every method receives the full SHA and returns a typed result or throws. `driver.reclose(sha)` runs if `publicCheck` fails after open. `driver` supplies the Task 2–6 adapters. A production call additionally requires exact-SHA staging acceptance, baseline match, recovery checkpoint, protected `main`, and `PRODUCTION_RELEASE_ENABLED === "true"`; otherwise no production mutation. `scripts/release-cli.mjs` is the only workflow entry point and never prints secret arguments.
 

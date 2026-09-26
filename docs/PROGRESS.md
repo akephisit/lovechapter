@@ -1160,3 +1160,12 @@ require a distinct `RELEASE_APP_DATABASE_ROLE` for Hyperdrive while
 the exact selected Neon branch host/database. Focused release-target and gate
 CLI tests passed (20 tests), as did the database typecheck. Live staging and
 production were not touched; the default release entrypoint remains disabled.
+
+Task 7 now also has a local migration command slice. It uses a separately
+configured direct migration credential, re-verifies provider target identity and the exact
+drained closure, checks the deployed Drizzle ledger is an exact prefix of the
+checked-in migrations, and rejects pending SQL outside the reviewed plan.
+After the migration it checks the expected schema hash and gate closure again.
+The Bun subprocess wrapper rejects malformed results and hides child errors.
+Its unit tests passed locally; a disposable PostgreSQL integration and wiring
+into the disabled release entrypoint are still pending. No live migration ran.
