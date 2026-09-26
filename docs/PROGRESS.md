@@ -1391,3 +1391,15 @@ URLs still connect. The new URL was stored as GitHub staging
 remains `neondb_owner`. Existing machine-local staging owner URLs using the
 old password are now stale; Hyperdrive uses its separate app role and was not
 changed. No migration was applied and the release switches remain off.
+
+The first post-setup main push, `91edf51`, passed its hosted CI and disposable
+PostgreSQL jobs; staging and production jobs were skipped with both release
+switches unset. An independent cross-tenant acceptance fixture was then
+created on the active staging database: one synthetic `release_fixture` user
+with no auth account, one wedding owned by that user, and its owner
+membership. A transaction checked that this owner differs from the sole
+verified staging account before committing. Its wedding UUID is stored as
+GitHub staging variable `RELEASE_FOREIGN_WEDDING_ID`; no production data was
+changed. The fixture remains intentionally persistent for future negative
+authorization probes and can be identified by its provider/subject and
+`Release isolation fixture` wedding name.
