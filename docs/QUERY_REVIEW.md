@@ -169,7 +169,7 @@ earlier seven representative SELECT plans were rerun on `staging-test` with
 synthetic data rolled back; no new business-query shape was introduced by
 `5718cdc`.
 
-## Automated release-plan gate (implementation pending live evidence)
+## Automated release-plan gate (disposable branch evidence)
 
 The new `runQueryPlanProbe` takes its direct test URL and confirmation from
 environment-scoped secrets, then asks Neon for the expected disposable branch's
@@ -181,13 +181,24 @@ fixture inside one transaction, runs only the seven SELECT-shaped
 `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` statements, checks the reviewed
 critical index names, and requires a successful rollback. It does not run
 mutating statements under `EXPLAIN ANALYZE` and never connects to production.
-The local unit tests prove rejection/rollback behavior; this new gate has not
-yet been executed on the live disposable Neon branch.
+The local unit tests prove rejection/rollback behavior. On 2026-09-26 the
+new gate also ran on a fresh, expiring Neon branch cloned from
+`staging-test`, with provider-verified host and distinct staging/production
+hosts. Its seven representative SELECT plans passed: wedding page 1.990 ms,
+guest page 1.347 ms, invitation lookup 0.059 ms, account lookup 0.026 ms,
+session lookup 0.040 ms, due email jobs 0.046 ms, and expired rate-limit
+page 1.020 ms. The guest lookup used `guests_pkey`; invitation, account,
+session, due-job, and expiry plans used their reviewed indexes. These are
+single-run synthetic measurements, not latency guarantees. A post-rollback
+read found zero probe users, accounts, and rate-limit rows. The temporary
+branch was deleted after the test; neither active staging nor production
+was modified by this probe.
 
 The companion staging jobs check waits for the actual scheduled Worker to
 mark a test-account reset-mail job sent and remove one exact expired
 `auth_rate_limits` marker. It does not invoke cron manually. Provider
 rejection, a missed deadline, or marker-cleanup failure rejects acceptance.
-The separate PostgreSQL fake-provider 429→success test remains the durable
-retry evidence; the live probe does not claim to have induced a Resend failure
-or observed delivery to a real inbox.
+The separate PostgreSQL fake-provider 429→success test passed on that same
+disposable branch (1/1). The live probe does not claim to have induced a
+Resend failure or observed delivery to a real inbox. The real 1-minute and
+15-minute Worker-tick acceptance has not yet run for this release SHA.

@@ -19,8 +19,9 @@ retryable email-provider failure was not induced by design. ADR-025 accepts
 real scheduled sends plus disposable PostgreSQL retry evidence. The owner
 confirmed receipt of both verification and reset email on the test inbox;
 the staging code acceptance is recorded below, while remote PR CI remains
-pending. There is no VPS, custom domain, or Neon production database
-provisioned or claimed.
+pending. There is no VPS or custom domain. A Neon branch named `production`
+exists, but it has not passed the production bootstrap or been connected to
+production Workers.
 
 ## Implemented
 
@@ -1068,14 +1069,19 @@ The jobs/query-plan acceptance code now has local unit coverage for real-tick
 observation, provider-error and deadline rejection, disposable-branch identity,
 critical plan names, and mandatory transaction rollback. The previous
 machine-local `.env.staging-*` query-plan inputs were removed in favor of
-environment-scoped values. The new disposable-Neon probe has not been run
-live, and the disposable PostgreSQL retry integration was not rerun in this
-worktree; production remains disabled.
+environment-scoped values. A fresh, expiring Neon child branch of
+`staging-test` then passed database integration (7 files, 40 passed, 1
+skipped), durable fake-provider retry (1/1), and all seven representative
+query plans. Post-rollback probe counts were zero; the branch was deleted.
+The real staging Worker cron acceptance has not run from this worktree, and
+production remains disabled.
 
 During a Neon CLI diagnostic for Task 6, an owner-role connection string was
 accidentally emitted in tool output. Its password matched the `neondb_owner`
-role on several LoveChapter branches, so it must be rotated before live
-database testing resumes. The temporary branch created solely for the
+role on several LoveChapter branches, so rotation was recommended. The
+temporary branch created solely for the
 integration attempt was deleted without running tests. Staging Hyperdrive
-uses the separate `lovechapter_staging_app` role. Owner-role rotation and any
-stored direct migration URL updates are pending the owner's direction.
+uses the separate `lovechapter_staging_app` role. The owner explicitly chose
+to keep the existing shared `neondb_owner` password. Its exposure therefore
+remains an accepted security risk; no rotation or migration URL update will be
+performed in this task.
