@@ -90,6 +90,12 @@ describe("automatic Worker release workflow policy", () => {
     expect(source).toMatch(
       /RELEASE_TEST_BRANCH_ID: \$\{\{ vars\.RELEASE_TEST_BRANCH_ID \}\}/u,
     );
+    expect(source).toMatch(
+      /acceptance: \$\{\{ steps\.release\.outputs\.acceptance \}\}/u,
+    );
+    expect(source).toMatch(
+      /RELEASE_STAGING_ACCEPTANCE: \$\{\{ needs\.staging\.outputs\.acceptance \}\}/u,
+    );
   });
 
   it("requests ownership review for release, migration, and security changes", () => {

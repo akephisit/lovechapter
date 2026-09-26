@@ -1188,3 +1188,10 @@ variables and direct/provider/test credentials from their environment-scoped
 GitHub variables or secrets, along with GitHub's same-run PostgreSQL result.
 This is configuration scaffolding only: no secrets were added, neither flag
 was enabled, and the live release CLI still fails closed.
+
+The same-run staging-to-production handoff now has a checked, secret-free
+GitHub output contract: the staging job can emit its accepted SHA, exact named
+checks, and `inboxDelivery: waived`; production will reject a missing,
+different-SHA, or incomplete report. The workflow exposes that output but the
+disabled CLI has not yet been wired to write or consume it, so it cannot
+promote production from this code alone.

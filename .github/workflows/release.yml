@@ -83,6 +83,7 @@ jobs:
       contents: read
     outputs:
       accepted_sha: ${{ steps.release.outputs.accepted_sha }}
+      acceptance: ${{ steps.release.outputs.acceptance }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -159,6 +160,7 @@ jobs:
           PRODUCTION_RELEASE_ENABLED: ${{ vars.PRODUCTION_RELEASE_ENABLED }}
           RELEASE_ENVIRONMENT: production
           RELEASE_STAGING_SHA: ${{ needs.staging.outputs.accepted_sha }}
+          RELEASE_STAGING_ACCEPTANCE: ${{ needs.staging.outputs.acceptance }}
           RELEASE_NEON_PROJECT_ID: ${{ vars.RELEASE_NEON_PROJECT_ID }}
           RELEASE_NEON_BRANCH_ID: ${{ vars.RELEASE_NEON_BRANCH_ID }}
           RELEASE_DATABASE_NAME: ${{ vars.RELEASE_DATABASE_NAME }}
