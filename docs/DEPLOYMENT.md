@@ -39,7 +39,7 @@ Hyperdrive binding. Never commit real values.
 | VPS API    | `DATABASE_URL`, `DATABASE_POOL_MAX=6`, `AUTH_MODE=local`, `PUBLIC_WEB_ORIGIN`, `WEB_PROXY_SHARED_SECRET`, `RATE_LIMIT_HMAC_KEY`, `AUTH_TOKEN_ACTIVE_KEY_VERSION`, `AUTH_TOKEN_HMAC_KEYS`, `API_HOST=127.0.0.1`, `API_PORT=3001`       |
 | VPS Jobs   | `DATABASE_URL`, `DATABASE_POOL_MAX=2`, `PUBLIC_WEB_ORIGIN`, `AUTH_TOKEN_ACTIVE_KEY_VERSION`, `AUTH_TOKEN_HMAC_KEYS`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`                                                                            |
 | API Worker | `HYPERDRIVE` binding, `NODE_ENV=production`, `AUTH_MODE=local`, `PUBLIC_WEB_ORIGIN`, `WEB_PROXY_SHARED_SECRET`, `RATE_LIMIT_HMAC_KEY`, `AUTH_TOKEN_ACTIVE_KEY_VERSION`, `AUTH_TOKEN_HMAC_KEYS`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL` |
-| Web        | `API_UPSTREAM_ORIGIN`, `WEB_PROXY_SHARED_SECRET`                                                                                                                                                                                      |
+| Web        | `API_UPSTREAM_ORIGIN`, `WEB_PROXY_SHARED_SECRET`, `RELEASE_PROBE_SECRET`                                                                                                                                                              |
 
 `API_HOST` and `API_PORT` are the implementation's names for the plan's generic
 host/port settings. The checked-in systemd unit pins both so only the API gets a
@@ -135,8 +135,12 @@ testers during this interval.
 7. In Cloudflare Workers & Pages, open **only** `lovechapter-web-staging` →
    Settings → Variables and Secrets. Add `API_UPSTREAM_ORIGIN` containing the
    exact API HTTPS origin (a plaintext variable or secret) and
-   `WEB_PROXY_SHARED_SECRET` as a secret matching the API value. Deploy those
-   settings, then redeploy the web Worker with the staging command. Both may
+   `WEB_PROXY_SHARED_SECRET` as a secret matching the API value. For a
+   gate-aware web revision, add `RELEASE_PROBE_SECRET` as a separate canonical
+   32-byte base64url secret, never equal to the proxy credential. It grants
+   only GET/HEAD maintenance-page presentation bypass for private release
+   probes; it never authorizes an API operation. Deploy those settings, then
+   redeploy the web Worker with the staging command. The secrets may
    also be uploaded together as secrets using `wrangler secret bulk --env
 staging`; the web config's `keep_vars` preserves them on code redeploy.
    Confirm `/api` reaches the API Worker, never itself or the Bun/VPS backend.

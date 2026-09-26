@@ -809,3 +809,25 @@ Focused Worker/jobs tests passed 30 cases, and the full provider-free suite
 passed 74 files / 494 tests. API and jobs typechecks, Bun 1.4.2 API/jobs
 builds, staging API Worker dry-run, lint, and formatting passed. This is still
 code-only; no active staging or production cron/deployment was changed.
+
+## Release gate web presentation slice (2026-09-26)
+
+The web proxy now reads only the protected API release mode and fails closed
+with a self-contained English 503 page or JSON API 503. A separate canonical
+`RELEASE_PROBE_SECRET` allows GET/HEAD presentation inspection, strips the
+probe header before rendering/forwarding, and never bypasses API admission.
+The service worker still has no fetch cache. No active staging or production
+web Worker was deployed in this slice.
+
+The web-focused suite passed 13 tests and the full provider-free suite passed
+77 files / 507 tests. Web typecheck, lint, formatting, native Next build,
+vinext build/check (95% compatible, zero issues, existing `reactStrictMode`
+partial), and staging web dry-run passed. A local `wrangler dev` run against
+the built Worker confirmed 503/no-store for home, sign-in, invitation, and
+`/api`; static icon/chunk returned 200; a valid GET/HEAD probe rendered pages
+while POST remained 503; and no probe value appeared in response headers or
+body. This is local built-Worker evidence, not a deployed staging result.
+With a loopback mock of the protected release-state API returning `open`, the
+same built Worker rendered sign-in and invitation pages normally and forwarded
+`/api` to the mock upstream; the mock's 403 was expected for that unimplemented
+business route. This also exercised the state fetch in the local Worker runtime.
