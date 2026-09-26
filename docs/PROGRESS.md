@@ -775,3 +775,22 @@ suite passed 73 files / 474 tests; database typecheck, lint, format, and
 control-row admission and tiny sequential scans for the empty lease table;
 these plans are not production-cardinality evidence. Neither active staging
 nor production was migrated or deployed in this slice.
+
+## Release gate API admission slice (2026-09-26)
+
+The API Worker and Bun server now use one pre-Elysia admission rule: direct
+untrusted ingress is rejected before PostgreSQL, every business request takes
+an HTTP lease, and a closed or unreadable gate returns a no-store 503 with
+`Retry-After`. Response streaming holds the lease until completion,
+cancellation, or failure. Liveness stays database-independent; protected
+readiness checks both PostgreSQL and the gate singleton even during
+maintenance, and the private no-store release-state route exposes only the
+mode. This is code-only: no active staging or production deployment occurred.
+
+The focused API suite passed 46 tests. The full provider-free suite passed
+74 files / 487 tests. API typecheck, lint, formatting, Bun 1.4.2 build and
+smoke, and both default and staging API Worker dry-runs passed. A concurrent
+first full-suite run had two unrelated 5-second test timeouts; those files
+and then the entire suite passed when rerun without competing checks. The
+default Worker dry-run still shows the intentional top-level placeholder;
+the staging dry-run selected the distinct staging Hyperdrive binding.

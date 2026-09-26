@@ -2,6 +2,7 @@ import { createPostgresRuntime } from "@lovechapter/database";
 
 import { createApiHandler } from "./api-handler";
 import { approvedBunVersion, parseApiRuntimeConfig } from "./runtime-config";
+import { withApiAdmission } from "./release-admission";
 
 type FetchHandler = (request: Request) => Promise<Response> | Response;
 
@@ -92,7 +93,16 @@ export async function runApiServer(): Promise<Bun.Server<undefined>> {
     },
   });
   const lifecycle = createGracefulHttpLifecycle({
-    fetch: app.fetch,
+    fetch: (request) =>
+      withApiAdmission(
+        request,
+        postgres.releaseGateStore,
+        {
+          proxyCredential: config.proxyCredential,
+          fingerprintKey: config.rateLimitHmacKey,
+        },
+        async () => app.fetch(request),
+      ),
     close: () => postgres.close(),
   });
   const server = startApiServer({

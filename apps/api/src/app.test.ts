@@ -475,6 +475,20 @@ describe("LoveChapter API", () => {
     expect(readiness).toHaveBeenCalledOnce();
   });
 
+  it("serves protected release state without exposing lease details", async () => {
+    const fixture = testFixture({ releaseMode: async () => "maintenance" });
+    const rejected = await fixture.app.handle(
+      new Request(`${apiOrigin}/health/release-state`),
+    );
+    const accepted = await fixture.app.handle(
+      trustedRequest("/health/release-state"),
+    );
+    expect(rejected.status).toBe(403);
+    expect(accepted.status).toBe(200);
+    expect(accepted.headers.get("cache-control")).toBe("no-store");
+    await expect(accepted.json()).resolves.toEqual({ mode: "maintenance" });
+  });
+
   it("returns generic 202 responses for sign-up, resend, and forgot password", async () => {
     const fixture = testFixture();
 
@@ -1093,6 +1107,7 @@ type Fixture = ReturnType<typeof testFixture>;
 function testFixture(
   options: {
     readiness?: () => Promise<void>;
+    releaseMode?: () => Promise<"open" | "maintenance">;
     principal?: Principal;
     operationsRepository?: WeddingOperationsRepository;
   } = {},
@@ -1135,6 +1150,7 @@ function testFixture(
     proxyCredential,
     fingerprintKey,
     readiness: options.readiness ?? (async () => undefined),
+    releaseMode: options.releaseMode ?? (async () => "open"),
     run: (request, operation) =>
       operation(
         new LoveChapterService(

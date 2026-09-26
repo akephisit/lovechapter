@@ -37,7 +37,11 @@ export function createApiDependencies(
     publicWebOrigin: config.publicWebOrigin,
     proxyCredential: config.proxyCredential,
     fingerprintKey: config.rateLimitHmacKey,
-    readiness: postgres.readiness,
+    readiness: async () => {
+      await postgres.readiness();
+      await postgres.releaseGateStore.readMode();
+    },
+    releaseMode: () => postgres.releaseGateStore.readMode(),
     run: (request, operation) =>
       operation(
         new LoveChapterService(
