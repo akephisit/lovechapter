@@ -96,7 +96,7 @@ export async function proxyApiRequest(
   );
 }
 
-function parseUpstreamOrigin(value: string): string {
+export function parseUpstreamOrigin(value: string): string {
   const configured = value.trim();
   let url: URL;
   try {
@@ -125,7 +125,7 @@ function isLoopback(hostname: string): boolean {
   );
 }
 
-function validateProxySecret(value: string): void {
+export function validateProxySecret(value: string): void {
   if (!/^[A-Za-z0-9_-]{43}$/.test(value)) {
     throw new Error(
       "WEB_PROXY_SHARED_SECRET must contain 32 canonical base64url bytes",

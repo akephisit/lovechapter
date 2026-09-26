@@ -104,3 +104,67 @@ distribution. Bounded page sizes, index definitions, PostgreSQL integration
 tests, and live staging CSV/RSVP behavior have been reviewed; repeat the probe
 when real staging data grows rather than adding indexes to eliminate every
 small-table scan.
+
+## Release gate admission review (2026-09-26)
+
+The Worker now issues one parameterized `SELECT ops.admit_release_lease($1)`
+per admitted HTTP or scheduled batch. The owner-run function takes a shared
+lock on the singleton control row, returns null while closed, or inserts one
+UUID lease before returning. Lease release is one parameterized `DELETE` by
+primary key. There is no per-row application loop, unbounded result, or
+network call inside a database transaction. The function replaces the
+previous multi-round-trip application transaction and lets the app role work
+without control-row `UPDATE` or direct lease `INSERT` privileges.
+
+Safe `EXPLAIN (FORMAT JSON)` on the disposable Neon recovery branch showed
+`LockRows → Seq Scan` for the one-row control lookup, a sequential scan for
+the one-row mode read, and tiny sequential scans for the empty lease count,
+bounded oldest-100 status query, and keyed lease delete. The branch had one
+control row and zero leases; these are sparse-branch plans, not latency
+measurements or representative high-concurrency plans. The existing primary
+keys enforce the singleton and lease identity. No secondary index is
+justified by this tiny transient set yet; revisit count/status plans if
+real lease cardinality grows. The mutating admission function was not run
+under `EXPLAIN ANALYZE`.
+
+The exact corrected Worker SHA reran the seven representative read plans on
+`staging-test` with the synthetic transaction rolled back. Single-run
+execution times were wedding page 0.918 ms, guest page 1.336 ms, invitation
+lookup 0.059 ms, account lookup 0.028 ms, session lookup 0.043 ms, due email
+jobs 0.039 ms, and expired rate-limit page 1.128 ms. The relevant invitation,
+account, session, due-job, and expiry indexes remained in use; small-table
+or low-selectivity scans remained reasonable. These are not production
+latency guarantees.
+
+A warm, alternating 40-request direct staging API probe measured p95
+53.7 ms for protected release-state (one control read) and 88.3 ms for an
+unauthenticated wedding list (admission function, lease release, and auth
+rejection). The 34.6 ms difference is **not** an isolated release-gate
+overhead estimate: the routes perform different work, and this was not a
+production-load benchmark. Admission adds one Worker→PostgreSQL round trip
+and release adds one; the function internally locks the singleton and
+inserts one lease. A comparable pre-gate p95 baseline for this SHA does not
+exist, so no production performance acceptance is inferred from this probe.
+
+## Exact-SHA schema readiness and Worker probe (2026-09-26)
+
+Commit `5718cdc1f70c6b7563ebe8bdb78f8eedd7ca0f28` adds one protected
+readiness query against `drizzle.__drizzle_migrations`. It selects only the
+latest `id` and matches the compiled latest SQL hash; the staging app role
+has column-scoped read privileges on `id` and `hash` only. On the disposable
+`staging-test` branch, a safe `EXPLAIN (FORMAT JSON)` of that parameterized
+SELECT found ten migration rows and used the
+`__drizzle_migrations_pkey`: a backward index-only scan obtains `max(id)`,
+then a keyed index scan filters the hash. This is a readiness-path query,
+not a per-business-request query or a latency benchmark. A live protected
+staging readiness request returned 200 after granting only those columns.
+
+On the exact deployed Worker pair, an alternating warm 20-request-per-route
+direct API probe measured p95 92.0 ms for protected release-state and
+89.1 ms for unauthenticated wedding listing. The routes do different work;
+these values **do not** isolate release-gate overhead or establish a
+production-load baseline. The gate still contributes one database admission
+round trip and one lease-release round trip per business request. The
+earlier seven representative SELECT plans were rerun on `staging-test` with
+synthetic data rolled back; no new business-query shape was introduced by
+`5718cdc`.

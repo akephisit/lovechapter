@@ -60,24 +60,26 @@ weaken the approved security gates to answer the remaining questions.
 
 ## Backend/operations
 
-- Which one backend option will the first production installation use:
-  Cloudflare API Worker with Hyperdrive, or Bun 1.4.2 on a VPS?
-- If VPS is chosen: provider, region, sizing, backup, and recovery ownership
-- Production result of the passing Bun 1.4.2 scrypt benchmark on the selected
-  VPS class (the local development-runner result is not a substitute)
-- Stable HTTPS backend hostname, DNS, certificate, and reverse-proxy ownership
+The first production installation selects the Worker backend (ADR-026). Bun/VPS
+questions below apply only if a different installation chooses that option.
+
+- For a future VPS installation: provider, region, sizing, backup, and recovery
+  ownership; scrypt benchmark on that VPS class; stable HTTPS backend hostname,
+  DNS, certificate, and reverse-proxy ownership; a separate Bun/VPS staging
+  cutover drill and schema-hash readiness parity (the current Bun readiness
+  checks database connectivity while Worker readiness checks the migration)
 - Production monitoring and token-safe observability strategy
 - Acceptable maintenance-window duration and notice policy for a breaking
-  schema/API cutover; ownership of the enforced write/job gate and restore drill
+  schema/API cutover; production release operator and restore-drill ownership
 - Upgrade cadence for Bun 1.4.2 and Elysia 2.0.0-beta.16
 - When Elysia 2 no longer needs the localized TypeBox compatibility shim
-- If Workers are chosen: the owner reports upgrading the staging account to
-  Workers Paid. The staging API is now deployed with local auth and reports the
-  Standard usage model, but Cloudflare's Billing API returned 403 to the
-  available OAuth token, so subscription status is not independently verified.
-  The measured scrypt path uses 128–149 ms CPU per request. Production
-  plan/CPU budget, cron backlog handling, and streaming CSV end-to-end
-  measurements remain open.
+- For the selected Worker path: the owner reports upgrading the staging
+  account to Workers Paid. The staging API is deployed with local auth and
+  reports the Standard usage model, but Cloudflare's Billing API returned 403
+  to the available OAuth token, so subscription status is not independently
+  verified. The measured scrypt path uses 128–149 ms CPU per request.
+  Production plan/CPU budget, cron backlog handling, and streaming CSV
+  end-to-end measurements remain open.
 
 ## Database
 

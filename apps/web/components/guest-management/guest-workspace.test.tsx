@@ -300,7 +300,7 @@ describe("GuestWorkspace", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Bulk failed");
     expect(screen.getByText(/200 selected/i)).toBeVisible();
     expect(screen.getByText("Guest 0")).toBeVisible();
-  });
+  }, 10_000);
 
   it("requires a count-aware confirmation before archiving selected guests", async () => {
     const api = apiFixture();

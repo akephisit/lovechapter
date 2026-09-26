@@ -4,6 +4,22 @@ import type { Client } from "pg";
 import { withPostgresRuntime, withPostgresResponse } from "./client";
 
 describe("withPostgresRuntime", () => {
+  it("fails readiness when the business-schema migration does not match", async () => {
+    const client = {
+      connect: vi.fn(async () => undefined),
+      end: vi.fn(async () => undefined),
+      query: vi.fn(async () => ({ rows: [], rowCount: 0 })),
+    } as unknown as Client;
+    await expect(
+      withPostgresRuntime(
+        "postgres://hyperdrive-placeholder",
+        (runtime) => runtime.readiness(),
+        () => client,
+      ),
+    ).rejects.toThrow("schema");
+    expect(client.end).toHaveBeenCalledOnce();
+  });
+
   it("connects lazily, shares repositories, and closes after readiness", async () => {
     const connect = vi.fn(async () => undefined);
     const end = vi.fn(async () => undefined);
@@ -37,7 +53,7 @@ describe("withPostgresRuntime", () => {
     const client = {
       connect: vi.fn(async () => undefined),
       end,
-      query: vi.fn(async () => ({ rows: [], rowCount: 0 })),
+      query: vi.fn(async () => ({ rows: [{ one: 1 }], rowCount: 1 })),
     } as unknown as Client;
     await expect(
       withPostgresRuntime(

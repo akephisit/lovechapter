@@ -10,14 +10,107 @@ import {
   type EmailJobRetry,
   type EmailJobStore,
 } from "@lovechapter/auth";
+import type { ReleaseGateStore } from "@lovechapter/database";
 import { describe, expect, it, vi } from "vitest";
 
 import { EmailDeliveryError, type EmailSender } from "./resend-email-sender";
-import { processEmailBatch, runJobLoop } from "./processor";
+import { processEmailBatch, runAdmittedBatch, runJobLoop } from "./processor";
 
 const now = new Date("2026-09-22T12:00:00.000Z");
 
 describe("durable email processor", () => {
+  it("holds lease through provider send", async () => {
+    const codec = tokenCodec();
+    const store = new FakeJobStore(jobs(codec, 1));
+    let finishSend!: () => void;
+    const sending = new Promise<void>((resolve) => (finishSend = resolve));
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => (markStarted = resolve));
+    const releaseGate = gate();
+    const sender: EmailSender = {
+      async send() {
+        markStarted();
+        await sending;
+        return { providerMessageId: "email_123" };
+      },
+    };
+    const batch = runAdmittedBatch(releaseGate, "email", async () => {
+      await processEmailBatch(processorOptions(store, sender, codec));
+    });
+    await started;
+    expect(releaseGate.release).not.toHaveBeenCalled();
+    finishSend();
+    await expect(batch).resolves.toBe(true);
+    expect(store.sentJobs).toHaveLength(1);
+    expect(releaseGate.release).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips unreadable admission with a token-safe event", async () => {
+    const releaseGate = gate();
+    releaseGate.admit = async () => {
+      throw new Error("postgres://private-credential@example.test/database");
+    };
+    const work = vi.fn(async () => undefined);
+    const log = vi.fn();
+    await expect(
+      runAdmittedBatch(releaseGate, "email", work, log),
+    ).resolves.toBe(false);
+    expect(work).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith("release_gate_admission_unavailable", {
+      kind: "email",
+    });
+    expect(JSON.stringify(log.mock.calls)).not.toContain("private-credential");
+  });
+
+  it("propagates failed lease release after work", async () => {
+    const releaseGate = gate();
+    const release = vi.fn(async () => {
+      throw new Error("lease cleanup failed");
+    });
+    releaseGate.release = release;
+    const work = vi.fn(async () => undefined);
+    await expect(
+      runAdmittedBatch(releaseGate, "cleanup", work),
+    ).rejects.toThrow("lease cleanup failed");
+    expect(work).toHaveBeenCalledOnce();
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("sleeps then resumes Bun loop", async () => {
+    const codec = tokenCodec();
+    const store = new FakeJobStore(jobs(codec, 1));
+    const claimEmailJobs = vi.spyOn(store, "claimEmailJobs");
+    const cleanupExpired = vi.spyOn(store, "cleanupExpired");
+    const controller = new AbortController();
+    let open = false;
+    const releaseGate = gate(() => open);
+    let sleeps = 0;
+    await runJobLoop({
+      ...processorOptions(
+        store,
+        {
+          send: async () => ({ providerMessageId: "email_123" }),
+        },
+        codec,
+      ),
+      releaseGate,
+      signal: controller.signal,
+      sleep: async () => {
+        sleeps += 1;
+        if (sleeps === 1) {
+          expect(claimEmailJobs).not.toHaveBeenCalled();
+          expect(cleanupExpired).not.toHaveBeenCalled();
+          open = true;
+        } else {
+          controller.abort();
+        }
+      },
+    });
+    expect(sleeps).toBe(2);
+    expect(store.sentJobs).toHaveLength(1);
+    expect(cleanupExpired).toHaveBeenCalledOnce();
+    expect(releaseGate.release).toHaveBeenCalledTimes(3);
+  });
   it("cleans expired guest imports on maintenance cadence without logging row values", async () => {
     const store = new FakeJobStore([]);
     const controller = new AbortController();
@@ -26,6 +119,7 @@ describe("durable email processor", () => {
     let calls = 0;
     await runJobLoop({
       ...processorOptions(store, { send: vi.fn() }, tokenCodec()),
+      releaseGate: gate(),
       guestImportCleanup: { cleanupExpiredGuestImports: cleanup },
       log,
       signal: controller.signal,
@@ -182,6 +276,7 @@ describe("durable email processor", () => {
 
     await runJobLoop({
       ...processorOptions(store, { send: vi.fn() }, codec),
+      releaseGate: gate(),
       signal: controller.signal,
       sleep: async (milliseconds) => {
         delays.push(milliseconds);
@@ -209,6 +304,7 @@ describe("durable email processor", () => {
         },
         codec,
       ),
+      releaseGate: gate(),
       signal: controller.signal,
       sleep: async (milliseconds) => {
         delays.push(milliseconds);
@@ -220,6 +316,15 @@ describe("durable email processor", () => {
     expect(delays).toEqual([250]);
   });
 });
+
+function gate(admitted: boolean | (() => boolean) = true): ReleaseGateStore {
+  const isOpen = () => (typeof admitted === "function" ? admitted() : admitted);
+  return {
+    readMode: async () => (isOpen() ? "open" : "maintenance"),
+    admit: vi.fn(async () => (isOpen() ? crypto.randomUUID() : null)),
+    release: vi.fn(async () => undefined),
+  };
+}
 
 class FakeJobStore implements EmailJobStore {
   readonly sentJobs: EmailJobCompletion[] = [];

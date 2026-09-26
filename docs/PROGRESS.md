@@ -729,3 +729,290 @@ passed with 73 files / 472 tests, format, lint, workspace typechecks, Bun
 builds and smoke, migration snapshot check, Next/vinext builds and check,
 and Worker dry-runs. The final staging revision check and remote PR CI on
 this correction remain before a separate merge decision.
+
+## PR #2 merge and Worker production direction (2026-09-26)
+
+The final planner correction passed PR CI and PR #2 was merged to `main` as
+`63054888056389743c7e078b795bfff1dd61ecf9`. Post-merge GitHub CI passed.
+The staging evidence above belongs to PR #2; production has not been
+provisioned or deployed. The owner selected the Worker backend for the first
+production installation, confirmed full user-facing maintenance for breaking
+releases, and requested automatic production promotion only after exact-SHA
+staging acceptance. ADR-026 records those decisions.
+
+The Worker maintenance-gate/cutover design is in
+`docs/superpowers/specs/2026-09-26-worker-maintenance-cutover-design.md` for
+owner review. It has not been implemented. The existing linked worktree for
+the new design branch passed the local baseline unit suite (73 files, 472
+tests) before documentation edits; that is not a new staging acceptance run.
+
+## Worker maintenance-gate implementation plan (2026-09-26)
+
+The owner approved the Worker maintenance/cutover design. The follow-on
+implementation plan is in
+`docs/superpowers/plans/2026-09-26-worker-maintenance-gate.md`. It separates
+database admission, API/streaming, cron/Bun job parity, web maintenance,
+direct operator control, and exact-SHA staging acceptance into testable
+slices. No gate implementation, staging migration/deploy, production resource,
+or promotion automation has been performed in this planning step.
+
+## Release gate database slice (2026-09-26)
+
+The first implementation slice adds a separate `ops` schema with one seeded
+release-control row and bounded active-work leases. Application admissions
+hold a short shared row lock through lease insert; the direct controller's
+closure update conflicts with admissions and reopening requires the expected
+SHA plus zero leases. No lease is automatically expired or cleared. The schema
+migration changes no business tables and has only the table primary keys, not
+speculative secondary indexes.
+
+The disposable staging-test PostgreSQL branch accepted the migration and
+passed seven new release-gate integration tests, including a lock-order race,
+plus the existing 30 database integration tests. A temporary no-lock mutation
+made the race test fail, and restoring `FOR SHARE` made it pass. The local unit
+suite passed 73 files / 474 tests; database typecheck, lint, format, and
+`drizzle-kit check` passed. Safe SELECT plans showed a primary-key scan for
+control-row admission and tiny sequential scans for the empty lease table;
+these plans are not production-cardinality evidence. Neither active staging
+nor production was migrated or deployed in this slice.
+
+## Release gate API admission slice (2026-09-26)
+
+The API Worker and Bun server now use one pre-Elysia admission rule: direct
+untrusted ingress is rejected before PostgreSQL, every business request takes
+an HTTP lease, and a closed or unreadable gate returns a no-store 503 with
+`Retry-After`. Response streaming holds the lease until completion,
+cancellation, or failure. Liveness stays database-independent; protected
+readiness checks both PostgreSQL and the gate singleton even during
+maintenance, and the private no-store release-state route exposes only the
+mode. This is code-only: no active staging or production deployment occurred.
+
+The focused API suite passed 46 tests. The full provider-free suite passed
+74 files / 487 tests. API typecheck, lint, formatting, Bun 1.4.2 build and
+smoke, and both default and staging API Worker dry-runs passed. A concurrent
+first full-suite run had two unrelated 5-second test timeouts; those files
+and then the entire suite passed when rerun without competing checks. The
+default Worker dry-run still shows the intentional top-level placeholder;
+the staging dry-run selected the distinct staging Hyperdrive binding.
+
+## Release gate scheduled-work slice (2026-09-26)
+
+The Worker minute email batch and quarter-hour retention batch now acquire
+separate release leases before any claim or cleanup. The Bun jobs loop uses
+the same rule for each bounded email and combined cleanup pass, sleeps while
+closed, and retries cleanup after reopening rather than treating a skipped
+pass as completed. Admission errors produce only a fixed safe event; lease
+release failures propagate so a cutover cannot silently report a clean drain.
+The existing 10-email and 500-row cleanup caps are unchanged.
+
+Focused Worker/jobs tests passed 30 cases, and the full provider-free suite
+passed 74 files / 494 tests. API and jobs typechecks, Bun 1.4.2 API/jobs
+builds, staging API Worker dry-run, lint, and formatting passed. This is still
+code-only; no active staging or production cron/deployment was changed.
+
+## Release gate web presentation slice (2026-09-26)
+
+The web proxy now reads only the protected API release mode and fails closed
+with a self-contained English 503 page or JSON API 503. A separate canonical
+`RELEASE_PROBE_SECRET` allows GET/HEAD presentation inspection, strips the
+probe header before rendering/forwarding, and never bypasses API admission.
+The service worker still has no fetch cache. No active staging or production
+web Worker was deployed in this slice.
+
+The web-focused suite passed 13 tests and the full provider-free suite passed
+77 files / 507 tests. Web typecheck, lint, formatting, native Next build,
+vinext build/check (95% compatible, zero issues, existing `reactStrictMode`
+partial), and staging web dry-run passed. A local `wrangler dev` run against
+the built Worker confirmed 503/no-store for home, sign-in, invitation, and
+`/api`; static icon/chunk returned 200; a valid GET/HEAD probe rendered pages
+while POST remained 503; and no probe value appeared in response headers or
+body. This is local built-Worker evidence, not a deployed staging result.
+With a loopback mock of the protected release-state API returning `open`, the
+same built Worker rendered sign-in and invitation pages normally and forwarded
+`/api` to the mock upstream; the mock's 403 was expected for that unimplemented
+business route. This also exercised the state fetch in the local Worker runtime.
+
+## Release gate operator slice (2026-09-26)
+
+The direct PostgreSQL staging CLI now supports `status`, `close`, `drain`, and
+evidence-gated `open`; it rejects pooled-looking URLs, wrong environments,
+malformed or nonmatching SHAs, incomplete evidence, and active leases. A
+timeout/interruption never reopens maintenance. Status exposes only mode,
+target SHA, and lease count. The runbook records least-privilege app grants,
+the exact-SHA cutover order, private smoke, and forward-fix/verified-restore
+behavior. No production command is enabled.
+
+Seven CLI unit tests passed. The disposable staging-test PostgreSQL suite
+passed 7 files / 38 tests, including wrong-SHA and orphaned-lease reopen
+rejection. A real Bun 1.4.2 CLI `status` call against that disposable branch
+returned open/zero leases without exposing the connection URL; a production
+environment invocation exited nonzero with a generic error. Database
+typecheck and Drizzle snapshot check passed. Active staging and production
+were not closed, migrated, or deployed in this slice.
+The full provider-free suite also passed 78 files / 514 tests before commit.
+
+## Release gate least-privilege correction (2026-09-26)
+
+Active staging exposed a grant mismatch after the first gate-aware deploy:
+PostgreSQL requires `UPDATE` for direct `SELECT ... FOR SHARE`, while the
+Hyperdrive app role intentionally has no control-row mutation privilege.
+Business admission failed closed with HTTP 503 even though the gate mode was
+open. The closure drill stopped; production was not touched. A separate
+disposable recovery branch reproduced SQLSTATE 42501 with the genuinely
+restricted staging app role. A Neon API-created test role on `staging-test`
+unexpectedly inherited `neon_superuser`; with owner approval, it was deleted
+from that branch and never used as privilege evidence.
+
+Custom migration `0010_release_gate_admission.sql` adds an owner-run,
+restricted-search-path `SECURITY DEFINER` function that atomically locks the
+control row and inserts a lease. `PUBLIC` execution is revoked. The API and
+jobs now use one function call per admission; the app role needs only
+`EXECUTE`, lease `SELECT (id)`/`DELETE`, schema usage, and control `SELECT`.
+The restricted-role regression failed before this correction and passed
+after the migration and explicit grants on the disposable branch. Its full
+database integration suite passed 7 files / 39 tests. Local repository CI
+then passed 78 files / 514 tests, format, lint, typechecks, builds, migration
+check, Bun smoke, vinext/Next checks, and Worker dry-runs. Safe sparse-branch
+query plans and the remaining cardinality caveat are recorded in
+`docs/QUERY_REVIEW.md`. Active staging has not yet received migration 0010 or
+the corrected Worker revision; the staging closure and acceptance drill
+remain open.
+
+## Worker staging maintenance drill on the corrected SHA (2026-09-26)
+
+Commit `e463dc8e9627ee1d5d542b3fb811e56302377c3b` passed local CI
+(78 files / 514 tests, format, lint, typechecks, builds, migration check,
+Bun smoke, Next/vinext checks, and Worker dry-runs) and 7 PostgreSQL
+integration files / 39 tests on a disposable recovery branch. API and web
+staging dry-runs selected the staging configurations. Active staging received
+additive migration 0010 and the narrowed app grants before API deployment;
+the existing direct lease `INSERT` was revoked only after the new API served
+all traffic. Catalog checks showed no app control-row `UPDATE`, no direct
+lease `INSERT`, app function `EXECUTE`/lease `SELECT (id)`/`DELETE`, and no
+`PUBLIC` function execution. The retained staging data was 1 user and 2
+weddings. API Worker version
+`7d53e8a7-eb31-4ef0-9f96-2c2c5d808ba0` and web Worker version
+`a13126e9-b02c-40d7-ab91-f54fa98f3141` were deployed from that SHA.
+Protected readiness and release-state returned 200/open, direct business
+ingress returned 403, the public sign-in page returned 200, and an
+unauthenticated web-proxied business request returned the expected 401
+instead of the earlier 503.
+
+On active staging, a synthetic HTTP lease admitted while open remained
+visible after CLI closure. New HTTP/email/cleanup admissions returned null.
+Public sign-in and API returned no-store 503; protected readiness stayed
+200, valid private GET probe rendered sign-in, and an invalid probe stayed 503. The synthetic lease was released, CLI drain confirmed zero active
+leases, and evidence-gated CLI open restored the same SHA. A first `open`
+invocation used a relative evidence path from the workspace package and
+failed closed; the absolute path succeeded. After reopening, the gate was
+open with zero leases, sign-in returned 200, and unauthenticated business
+access returned 401. The earlier no-compute staging checkpoint and
+disposable PITR rehearsal remain the recovery evidence; no production
+branch or service was touched.
+
+On this exact deployed SHA, the verified staging test account requested a
+fresh reset through the web proxy. Real minute Worker cron sent the new job
+once; its persisted token hash matched reconstructed metadata, and the owner
+confirmed inbox receipt. Reset, sign-in, session, sign-out, and revoked
+session checks passed. A disposable wedding and Unicode guest completed
+public invitation/RSVP without a guest account; an over-limit RSVP was
+rejected and readback retained the valid party size. CSV upload preview
+flagged one invalid row, mapping excluded it, stale mapping returned 409,
+commit created one guest, same-key replay matched, and no-store export
+contained Unicode data. Only the wedding created by this test was removed;
+the account password is now an ephemeral test value unknown to the owner and
+can be changed through Forgot password. The earlier verified account and
+verification-inbox evidence still apply; no new verification email was
+requested for this already-verified account.
+
+The controlled Resend 429→success retry integration passed on isolated
+`staging-test` PostgreSQL (1 test); no staging Resend key was changed and a
+real provider failure was not claimed. Seven representative SELECT plans
+were rerun against synthetic transactional data on `staging-test` and rolled
+back; details are in `docs/QUERY_REVIEW.md`. A separately scoped expired
+rate-limit marker was present before the next deployed quarter-hour cleanup
+tick and absent afterward; the gate remained open with zero leases and the
+two pre-existing weddings. Remote PR CI and any merge decision remain
+pending. Production deployment and automatic promotion remain disabled.
+
+## Exact-SHA release-gate correction and Worker staging acceptance (2026-09-26)
+
+A read-only review identified four Important defects after the earlier
+`e463dc8` staging drill: duplicate `sslmode` parameters could bypass the
+CLI's TLS check; evidence from an earlier closure of the same SHA could
+reopen a later closure; an unresponsive web release-state fetch could hang;
+and readiness did not compare the deployed API with the latest migration.
+Commit `5718cdc1f70c6b7563ebe8bdb78f8eedd7ca0f28` corrects all four
+with focused red/green regressions. The CLI rejects duplicate `sslmode`,
+requires evidence newer than the current closure, and compares that closure
+timestamp atomically during reopen. The web state fetch/body has a
+three-second deadline. Protected readiness compares the newest Drizzle
+migration hash with the compiled revision. Active staging's restricted app
+role received only `USAGE` on `drizzle` and `SELECT (id, hash)` on the
+migration ledger; disposable-branch restricted-role and live readiness
+checks passed. This correction changed no business table or migration.
+
+The exact `5718cdc` API/web staging Worker versions are
+`03e59c3b-1850-4850-969f-0a11635334d0` and
+`50640419-55bf-4067-8da5-f606717367dc`. A fresh active-staging closure
+blocked public pages and API with no-store 503 while protected readiness and
+the private GET probe returned 200. A queued reset-email job remained
+pending with zero attempts during a real minute-cron tick, then was sent
+once after reopen (`attempt_count=1`, no error); the owner confirmed inbox
+receipt. A deliberate lock of the control row stalled the web release-state
+request; public access failed closed to no-store 503 in about 3.1 seconds.
+The CLI refused to reopen with an active synthetic lease, accepted a drained
+state with new evidence, and later rejected that evidence after a second
+closure of the same SHA.
+
+The second closure held a **real API Worker HTTP request** in flight by
+temporarily locking only `auth_rate_limits` on staging. One HTTP lease was
+visible after closure; a new public sign-in page returned no-store 503. The
+already-admitted request completed with its expected 401 after the lock was
+released, and the lease count returned to zero. Protected readiness and
+private sign-in presentation still returned 200 while closed. New exact-SHA
+evidence recorded the API/web version IDs and post-closure private smoke;
+the CLI reopened staging. Readback showed mode `open`, zero leases, two
+pre-existing weddings, one test account, public sign-in 200, and
+unauthenticated session 401. The temporary table lock was rolled back and
+scratch test scripts were removed. The active staging checkpoint is Neon
+branch `br-royal-term-azoxtj68` at parent LSN `0/1D60CD8`; the earlier
+disposable PITR restore rehearsal used branch `br-soft-recipe-azs60m8r` and
+left active staging and production untouched.
+
+On this same `5718cdc` Worker pair, the reset token metadata matched its
+stored hash; reset/sign-in/session/sign-out/revoked-session returned
+200/200/200/204/401. A disposable wedding and Unicode guest completed
+invitation view, account-free RSVP, over-limit rejection, and readback.
+CSV upload, invalid-row preview/exclusion, stale mapping rejection,
+idempotent commit replay, and no-store Unicode export passed. The
+test-created wedding was removed. The test account's password is now an
+ephemeral value unknown to the owner; use Forgot password to set a new one.
+The earlier received verification email still covers the already-verified
+test account; no second verification message was generated. Real staging
+cron sent queued reset mail and performed the prior cleanup exercise; the
+controlled 429→success retry remains disposable-PostgreSQL evidence, not a
+claimed live Resend failure. Seven representative SELECT plans were rerun on
+`staging-test` and rolled back. The new readiness query selected the Drizzle
+migration primary key on its ten-row ledger; details and measurement limits
+are in `docs/QUERY_REVIEW.md`.
+
+Local CI on `5718cdc` passed 79 files / 519 tests plus format, lint,
+typechecks, migration check, Bun builds/smoke, Next/vinext builds/check, and
+both Worker dry-runs. Two initial full-suite attempts exposed an existing
+201-row guest UI test's five-second timeout under full-suite contention;
+the focused test passed and its test-specific timeout was raised to ten
+seconds before the passing full run. A subsequent read-only review found
+that PostgreSQL query-string `host=` can override the URL authority host
+after the CLI's pooled-host check. A new regression failed before a fix and
+passed after URL options were restricted to TLS mode and optional required
+channel binding. That CLI-only follow-up has not been redeployed as a new
+Worker SHA. After that correction and the documentation update, local CI
+passed 79 files / 520 tests, format, lint, every workspace typecheck, the
+migration check, Bun builds/smoke, Next/vinext builds/check, and Worker
+dry-runs. The disposable `staging-test` PostgreSQL suite passed 7 files /
+39 tests with one test skipped, and its controlled jobs retry test passed 1/1.
+Remote PR CI and the merge decision remain
+pending. Neither production resources nor automatic
+promotion were created; staging acceptance does not authorize a production
+release.

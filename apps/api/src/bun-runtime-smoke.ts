@@ -29,6 +29,7 @@ const app = createApiApp({
   readiness: async () => {
     throw new Error("The Bun smoke test must not connect to PostgreSQL");
   },
+  releaseMode: rejectApplicationTraffic,
   run: rejectApplicationTraffic,
 }).compile();
 let closed = false;

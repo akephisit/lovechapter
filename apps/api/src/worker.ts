@@ -12,6 +12,7 @@ import { parseJobsRuntimeConfig } from "@lovechapter/jobs/runtime-config";
 import { createApiDependencies } from "./api-handler";
 import { createApiApp, type ApiDependencies } from "./app";
 import { parseApiRuntimeConfig } from "./runtime-config";
+import { withApiAdmission } from "./release-admission";
 import { runScheduledBatch } from "./worker-jobs";
 
 const invocation = new AsyncLocalStorage<ApiDependencies>();
@@ -40,6 +41,7 @@ const app = createApiApp({
     return currentDependencies().fingerprintKey;
   },
   readiness: () => currentDependencies().readiness(),
+  releaseMode: () => currentDependencies().releaseMode(),
   run: (request, operation) => currentDependencies().run(request, operation),
 } satisfies ApiDependencies).compile();
 
@@ -87,7 +89,16 @@ export function createWorkerHandlers(createClient?: PostgresClientFactory) {
         async (postgres) =>
           invocation.run(
             createApiDependencies(variables, config, postgres),
-            () => app.fetch(request),
+            () =>
+              withApiAdmission(
+                request,
+                postgres.releaseGateStore,
+                {
+                  proxyCredential: config.proxyCredential,
+                  fingerprintKey: config.rateLimitHmacKey,
+                },
+                async () => app.fetch(request),
+              ),
           ),
         createClient,
       );
@@ -108,17 +119,21 @@ export function createWorkerHandlers(createClient?: PostgresClientFactory) {
       await withPostgresRuntime(
         connectionString,
         async (postgres) =>
-          runScheduledBatch(event.cron, {
-            store: postgres.emailJobStore,
-            guestImportCleanup: postgres.guestImportRepository,
-            sender: createResendEmailSender({ apiKey: config.resendApiKey }),
-            tokenCodec: createActionTokenCodec({
-              activeVersion: config.authTokenActiveKeyVersion,
-              keys: config.authTokenHmacKeys,
-            }),
-            publicWebOrigin: config.publicWebOrigin,
-            fromEmail: config.resendFromEmail,
-          }),
+          runScheduledBatch(
+            event.cron,
+            {
+              store: postgres.emailJobStore,
+              guestImportCleanup: postgres.guestImportRepository,
+              sender: createResendEmailSender({ apiKey: config.resendApiKey }),
+              tokenCodec: createActionTokenCodec({
+                activeVersion: config.authTokenActiveKeyVersion,
+                keys: config.authTokenHmacKeys,
+              }),
+              publicWebOrigin: config.publicWebOrigin,
+              fromEmail: config.resendFromEmail,
+            },
+            postgres.releaseGateStore,
+          ),
         createClient,
       );
     },

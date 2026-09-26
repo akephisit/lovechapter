@@ -5,12 +5,15 @@
 Choose one backend path for each installation: **Cloudflare API Worker** or
 **Bun/VPS**. Never run both APIs or both job processors against the same
 deployment. Both paths use the same Elysia API, Neon schema and frontend
-same-origin proxy. No infrastructure is provisioned or claimed by this
-repository itself: a separate Worker staging installation exists, with local
-Git-ignored credentials and partial live acceptance recorded in
-`docs/PROGRESS.md`. Production resources and the remaining acceptance gates
-are external. Neither a VPS nor a custom domain is required for the Worker
-path.
+same-origin proxy. The first production installation selects the Worker
+backend (ADR-026); the Bun/VPS option remains available for a different
+installation. No infrastructure is provisioned or claimed by this repository
+itself: a separate Worker staging installation exists, with local Git-ignored
+credentials and PR #2 acceptance recorded in `docs/PROGRESS.md`. Production
+resources, a production maintenance gate, and production promotion are not
+in place. The staging maintenance gate passed its Worker drill; see
+`docs/PROGRESS.md`. This does not enable a production cutover.
+Neither a VPS nor a custom domain is required for the Worker path.
 
 ```text
 Browser -> Cloudflare frontend Worker -> same-origin /api proxy
@@ -38,7 +41,7 @@ Hyperdrive binding. Never commit real values.
 | VPS API    | `DATABASE_URL`, `DATABASE_POOL_MAX=6`, `AUTH_MODE=local`, `PUBLIC_WEB_ORIGIN`, `WEB_PROXY_SHARED_SECRET`, `RATE_LIMIT_HMAC_KEY`, `AUTH_TOKEN_ACTIVE_KEY_VERSION`, `AUTH_TOKEN_HMAC_KEYS`, `API_HOST=127.0.0.1`, `API_PORT=3001`       |
 | VPS Jobs   | `DATABASE_URL`, `DATABASE_POOL_MAX=2`, `PUBLIC_WEB_ORIGIN`, `AUTH_TOKEN_ACTIVE_KEY_VERSION`, `AUTH_TOKEN_HMAC_KEYS`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`                                                                            |
 | API Worker | `HYPERDRIVE` binding, `NODE_ENV=production`, `AUTH_MODE=local`, `PUBLIC_WEB_ORIGIN`, `WEB_PROXY_SHARED_SECRET`, `RATE_LIMIT_HMAC_KEY`, `AUTH_TOKEN_ACTIVE_KEY_VERSION`, `AUTH_TOKEN_HMAC_KEYS`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL` |
-| Web        | `API_UPSTREAM_ORIGIN`, `WEB_PROXY_SHARED_SECRET`                                                                                                                                                                                      |
+| Web        | `API_UPSTREAM_ORIGIN`, `WEB_PROXY_SHARED_SECRET`, `RELEASE_PROBE_SECRET`                                                                                                                                                              |
 
 `API_HOST` and `API_PORT` are the implementation's names for the plan's generic
 host/port settings. The checked-in systemd unit pins both so only the API gets a
@@ -134,8 +137,12 @@ testers during this interval.
 7. In Cloudflare Workers & Pages, open **only** `lovechapter-web-staging` →
    Settings → Variables and Secrets. Add `API_UPSTREAM_ORIGIN` containing the
    exact API HTTPS origin (a plaintext variable or secret) and
-   `WEB_PROXY_SHARED_SECRET` as a secret matching the API value. Deploy those
-   settings, then redeploy the web Worker with the staging command. Both may
+   `WEB_PROXY_SHARED_SECRET` as a secret matching the API value. For a
+   gate-aware web revision, add `RELEASE_PROBE_SECRET` as a separate canonical
+   32-byte base64url secret, never equal to the proxy credential. It grants
+   only GET/HEAD maintenance-page presentation bypass for private release
+   probes; it never authorizes an API operation. Deploy those settings, then
+   redeploy the web Worker with the staging command. The secrets may
    also be uploaded together as secrets using `wrangler secret bulk --env
 staging`; the web config's `keep_vars` preserves them on code redeploy.
    Confirm `/api` reaches the API Worker, never itself or the Bun/VPS backend.
@@ -229,14 +236,15 @@ An installation must explicitly select exactly one backend runtime, `worker` or
 the other API/job processor against that installation's database. The first
 Worker staging installation has local, Git-ignored credentials and live
 acceptance evidence recorded in `docs/PROGRESS.md`. ADR-025 defines the
-approved split evidence for email retry. The deployable application source
-is unchanged by the subsequent planner/documentation corrections. PR CI passed
-on the earlier `f795fad` revision; CI on the final planner correction is the
-next gate.
+approved split evidence for email retry. PR #2's final CI and post-merge CI
+passed; it was merged to `main` as `6305488`. The next gate is implementation
+and staging acceptance of the maintenance/cutover subsystem, not a rerun of
+the merged PR's CI.
+
 Production credentials, protected environment, and enforced acceptance gate
 are not in place, so automatic production deployment remains disabled. In
-particular, merging must not silently deploy a Worker when the installation
-might select Bun/VPS.
+particular, merging must not silently deploy production before the approved
+release controls and separate resources exist.
 
 For a release, classify changed paths with `scripts/release-impact.mjs` using
 full base and head commit SHAs:
@@ -270,10 +278,137 @@ includes Cron Triggers, not just HTTP traffic. Verify a recoverable Neon
 backup/PITR point, then transform and validate existing data, deploy the
 selected backend and web from the same tested revision, smoke-test the new
 system, and only then reopen traffic and jobs. Never run an old Worker or Bun
-process against the new incompatible schema. The current repository has no
-tested maintenance/job gate, so a breaking production migration is blocked
-until that capability and a staging cutover/recovery drill exist. This
-deliberately permits a maintenance window; it does not promise zero downtime.
+process against the new incompatible schema. The gate-aware code and staging
+operator command passed an active staging closure/drain/reopen drill on
+`5718cdc`, including a disposable-branch PITR rehearsal. A breaking
+**production** migration remains blocked because the production gate,
+resources, permissions, and promotion workflow do not exist. The Worker design is in
+`docs/superpowers/specs/2026-09-26-worker-maintenance-cutover-design.md`.
+This deliberately permits a maintenance window; it does not promise zero
+downtime.
+
+### Staging Worker maintenance cutover (gate-aware revisions only)
+
+The `release:gate` command is enabled for `RELEASE_ENVIRONMENT=staging` only.
+Run it on a trusted operator machine with Bun 1.4.2 and a separate
+`RELEASE_DATABASE_URL` direct, non-pooled TLS credential. Load the credential
+from a restricted secret store or mode-`0600` local file; do not paste it into
+Git, chat, command arguments, or logs. The command rejects pooled-looking
+hosts and does not fall back to the application `DATABASE_URL`. Verify the
+Neon project, branch, database, and role independently before any command:
+`RELEASE_ENVIRONMENT=staging` alone cannot prove that a URL points to staging.
+The CLI accepts only one `sslmode=require` or `sslmode=verify-full` query
+parameter plus an optional single literal `channel_binding=require` from a
+Neon URL; node-postgres 8.23 does not itself enforce that latter URL option.
+It rejects
+duplicate or other PostgreSQL URL query options because the driver can use
+them to override the authority host, role, database, or TLS behavior after a
+superficial URL check.
+There is no production CLI command or automatic production release yet.
+
+The API Worker/Hyperdrive application role needs `USAGE` on `ops`, `SELECT`
+on `ops.release_control`, `EXECUTE` on `ops.admit_release_lease(text)`, and
+`SELECT (id)` plus `DELETE` on `ops.release_leases`. The admission function
+locks the control row and inserts a lease atomically as its owner. PostgreSQL
+requires an `UPDATE` privilege for direct `SELECT ... FOR SHARE`, so the
+Worker must call this function instead of locking the row directly. Its
+`SECURITY DEFINER` search path is restricted and `PUBLIC` execution is
+revoked in the migration. Do not grant the app role control-row `UPDATE`,
+`INSERT`, or `DELETE`; only the direct operator changes gate mode. On a new
+installation, do not grant direct lease `INSERT` either. Review actual grants
+before bootstrapping the gate-aware Worker. The SQL below is a role-specific
+example, not a command to run with the placeholder unchanged:
+
+```sql
+GRANT USAGE ON SCHEMA drizzle TO STAGING_APP_ROLE;
+GRANT SELECT (id, hash) ON drizzle.__drizzle_migrations TO STAGING_APP_ROLE;
+GRANT USAGE ON SCHEMA ops TO STAGING_APP_ROLE;
+GRANT SELECT ON ops.release_control TO STAGING_APP_ROLE;
+GRANT EXECUTE ON FUNCTION ops.admit_release_lease(text) TO STAGING_APP_ROLE;
+GRANT SELECT (id) ON ops.release_leases TO STAGING_APP_ROLE;
+GRANT DELETE ON ops.release_leases TO STAGING_APP_ROLE;
+REVOKE INSERT, UPDATE, DELETE ON ops.release_control FROM STAGING_APP_ROLE;
+REVOKE INSERT ON ops.release_leases FROM STAGING_APP_ROLE;
+```
+
+Protected readiness compares the latest recorded Drizzle migration hash to
+the hash compiled from the newest checked-in migration. Its CI test requires
+updating that compiled value whenever a migration changes. Grant only the
+`id`/`hash` ledger columns above; a missing ledger, mismatched migration, or
+unreadable ledger makes readiness return 503 while maintenance stays closed.
+The operator must check the exact target API/schema pairing before reopening.
+
+For an existing gate-aware deployment, apply the additive function migration,
+grant `EXECUTE`, lease `SELECT (id)`, and the narrowed migration-ledger read,
+deploy the function-calling API to
+100% of traffic, and only then revoke direct lease `INSERT`. Do not revoke it
+while an older API version may still be serving. Verify the app role cannot
+update the control row or directly insert a lease, and can admit/release via
+the function. The web Worker does not need database grants.
+
+For a breaking staging revision, use this sequence. Do not apply an
+incompatible migration to active staging until the nonbreaking `ops` migration
+is seeded and 100% of both serving Workers are gate-aware. Use one reviewed,
+immutable 40-character commit SHA throughout:
+
+1. Build API and web artifacts from that SHA and run CI, disposable-database
+   migration/query tests, and the auth/email, RSVP, CSV, and cron acceptance
+   checks. Record the currently deployed SHA and the target SHA.
+2. Confirm an active-staging Neon recoverable point and rehearse restore on a
+   disposable branch, validating retained data. Never rehearse a destructive
+   restore on active staging.
+3. Close and then drain using the commands below. `drain` waits for zero
+   HTTP/email/cleanup leases; a timeout, interrupted command, or
+   stuck lease leaves maintenance closed. Investigate the owning operation;
+   there is no time-based lease-clear command.
+4. Apply the reviewed migration using the separate direct migration role,
+   not Hyperdrive or the application role. Validate the resulting business
+   schema and retained data while the gate stays closed.
+5. Deploy the new API and web Worker versions from that same SHA to all
+   staging traffic, without a gradual split with ungated or old-schema code.
+   Record both Cloudflare version IDs. Confirm protected readiness and the
+   exact API/schema combination, then perform private GET/HEAD web smoke with
+   the independent `RELEASE_PROBE_SECRET`. Confirm business API ingress and
+   cron remain blocked while closed. The probe does not authorize mutations.
+6. Write an operator-controlled JSON evidence file with the exact fields
+   below only after the migration and private smoke actually pass. Then run
+   the `open` command below. The CLI
+   verifies the matching SHA, populated version IDs, true checks, an
+   `acceptedAt` later than the current gate closure, and zero active leases;
+   PostgreSQL atomically refuses reopening if a lease appears or the gate
+   has been closed again since the evidence was checked. Evidence from an
+   earlier closure of the same SHA is invalid.
+   Confirm public pages, API mutations, and queued email processing resume.
+
+```json
+{
+  "commitSha": "FULL_40_CHARACTER_LOWERCASE_SHA",
+  "apiWorkerVersion": "RECORDED_API_VERSION_ID",
+  "webWorkerVersion": "RECORDED_WEB_VERSION_ID",
+  "migrationChecked": true,
+  "privateSmokePassed": true,
+  "acceptedAt": "ACTUAL_ISO_8601_ACCEPTANCE_TIMESTAMP"
+}
+```
+
+After loading the trusted staging environment securely, run the commands
+from the repository root; substitute one real full SHA and evidence path:
+
+```bash
+npm run release:gate --workspace @lovechapter/database -- status
+npm run release:gate --workspace @lovechapter/database -- close --sha FULL_TARGET_SHA
+npm run release:gate --workspace @lovechapter/database -- drain --sha FULL_TARGET_SHA
+npm run release:gate --workspace @lovechapter/database -- open --sha FULL_TARGET_SHA --evidence /restricted/path/acceptance.json
+```
+
+`status` prints only mode, target SHA, and active lease count. `close`,
+`drain`, and `open` never output a database URL, token, or invitation. A failed
+post-migration smoke stays closed. An old Worker binary alone is not a
+rollback for a changed schema: choose a reviewed forward fix or a verified
+database restore, validate data and the matching Worker pair, repeat smoke,
+and only then reopen. Do not delete a lease solely because it is old. The
+evidence file records operator checks; the CLI does not claim inbox receipt
+or fabricate staging acceptance.
 
 The first staging installation selects the Worker backend. Provision a
 disposable Neon branch, a cache-disabled Hyperdrive binding, Cloudflare API
@@ -285,7 +420,8 @@ Hyperdrive, Worker, and secret resources. A future Bun/VPS production release
 needs its own Bun/VPS staging acceptance; a passing Worker staging run does not
 validate a different runtime.
 
-Before rerunning CI or approving the PR, record on the exact staging commit:
+For a future release requiring full Worker staging acceptance, record on its
+exact commit before the final CI and merge decision:
 
 1. Auth and email: registration, received verification mail, verification,
    sign-in/session, reset mail and session revocation through the web proxy.

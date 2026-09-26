@@ -408,3 +408,22 @@ binding/origin/ingress isolation, and the deployed staging Worker passed direct
 and proxied health/readiness checks. Build-time AOT remains a possible future
 optimization, not a requirement for this correction. Do not substitute
 another HTTP framework or enable local auth/cron without their separate gates.
+
+## ADR-026 — First production installation selects the Worker backend
+
+**Status:** Accepted (2026-09-26); narrows ADR-023 for the first production installation
+
+The first production installation will use the Cloudflare API Worker, its two
+scheduled handlers, and a separate frontend Worker. It will not run a Bun/VPS
+API or job processor against that installation. ADR-023 still supports Bun/VPS
+as an alternative for a different installation; this selection does not
+remove runtime parity from shared domain behavior.
+
+The owner requires a maintenance window for breaking releases: prebuild both
+components, close admission for user-facing pages, API work and scheduled
+work, drain admitted work, verify recovery, migrate the one canonical schema,
+deploy both Workers from the same tested SHA, smoke-test privately, and reopen
+only after success. Auth and guest RSVP pages also show maintenance. Production
+promotion should be automatic only after exact-SHA staging acceptance. These
+are release requirements, not a claim that the gate, production resources, or
+promotion workflow are already implemented.

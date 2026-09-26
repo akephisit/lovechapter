@@ -9,6 +9,7 @@ import {
   integer,
   jsonb,
   pgEnum,
+  pgSchema,
   pgTable,
   primaryKey,
   timestamp,
@@ -16,6 +17,48 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+
+export const ops = pgSchema("ops");
+
+export const releaseControl = ops.table(
+  "release_control",
+  {
+    id: integer("id").primaryKey(),
+    mode: varchar("mode", { length: 16 }).notNull(),
+    targetSha: varchar("target_sha", { length: 40 }),
+    changedAt: timestamp("changed_at", { withTimezone: true, mode: "string" })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check("release_control_singleton_chk", sql`${table.id} = 1`),
+    check(
+      "release_control_mode_chk",
+      sql`${table.mode} in ('open', 'maintenance')`,
+    ),
+    check(
+      "release_control_target_sha_chk",
+      sql`${table.targetSha} is null or ${table.targetSha} ~ '^[0-9a-f]{40}$'`,
+    ),
+  ],
+);
+
+export const releaseLeases = ops.table(
+  "release_leases",
+  {
+    id: uuid("id").primaryKey(),
+    kind: varchar("kind", { length: 16 }).notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true, mode: "string" })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check(
+      "release_leases_kind_chk",
+      sql`${table.kind} in ('http', 'email', 'cleanup')`,
+    ),
+  ],
+);
 
 export const membershipRole = pgEnum("membership_role", [
   "owner",
