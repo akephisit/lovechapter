@@ -15,6 +15,18 @@ import { PostgresEnvelopeRepository } from "./envelope-repository";
 import { PostgresPlanningRepository } from "./planning-repository";
 import { PostgresWeddingOperationsRepository } from "./wedding-operations-repository";
 import { PostgresReleaseGateStore } from "./release-gate-repository";
+import { expectedSchemaMigrationHash } from "./schema-revision";
+
+async function verifySchemaRevision(executor: QueryExecutor): Promise<void> {
+  const result = await executor.execute<{ one: number }>(
+    sql`select 1 as one from drizzle.__drizzle_migrations
+        where id = (select max(id) from drizzle.__drizzle_migrations)
+          and hash = ${expectedSchemaMigrationHash}`,
+  );
+  if (result.rows.length !== 1 || result.rows[0]?.one !== 1) {
+    throw new Error("Deployed business schema revision does not match");
+  }
+}
 
 class DrizzleQueryExecutor implements QueryExecutor {
   constructor(private readonly database: NodePgDatabase) {}
@@ -169,7 +181,7 @@ export async function withPostgresRuntime<T>(
     return await operation({
       ...repositoriesFor(executor),
       readiness: async () => {
-        await executor.execute(sql`select 1 as one`);
+        await verifySchemaRevision(executor);
       },
     });
   } finally {
@@ -196,7 +208,7 @@ export async function withPostgresResponse(
   const runtime = {
     ...repositoriesFor(executor),
     readiness: async () => {
-      await executor.execute(sql`select 1 as one`);
+      await verifySchemaRevision(executor);
     },
   };
   let response: Response;

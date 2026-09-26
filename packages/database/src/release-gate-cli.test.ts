@@ -13,11 +13,13 @@ function fixture(
     mode?: "open" | "maintenance";
     targetSha?: string | null;
     leases?: number;
+    changedAt?: string;
   } = {},
 ) {
   let mode = initial.mode ?? "open";
   let targetSha = initial.targetSha ?? null;
   let leases = initial.leases ?? 0;
+  const changedAt = initial.changedAt ?? "2026-09-26T06:00:00.000Z";
   const query = vi.fn(async (statement: string, params?: unknown[]) => {
     if (statement.includes("set mode = 'maintenance'")) {
       if (mode === "maintenance" && targetSha !== params?.[0]) {
@@ -28,7 +30,12 @@ function fixture(
       return { rows: [{ id: 1 }], rowCount: 1 };
     }
     if (statement.includes("set mode = 'open'")) {
-      if (mode !== "maintenance" || targetSha !== params?.[0] || leases) {
+      if (
+        mode !== "maintenance" ||
+        targetSha !== params?.[0] ||
+        changedAt !== params?.[1] ||
+        leases
+      ) {
         return { rows: [], rowCount: 0 };
       }
       mode = "open";
@@ -38,7 +45,10 @@ function fixture(
       return { rows: [{ count: String(leases) }], rowCount: 1 };
     }
     if (statement.includes("select mode, target_sha")) {
-      return { rows: [{ mode, target_sha: targetSha }], rowCount: 1 };
+      return {
+        rows: [{ mode, target_sha: targetSha, changed_at: changedAt }],
+        rowCount: 1,
+      };
     }
     if (statement.includes("from ops.release_leases")) {
       return { rows: [], rowCount: 0 };
@@ -134,6 +144,10 @@ describe("release gate CLI", () => {
           "ep-example-pooler",
         ),
       },
+      {
+        ...context.environment,
+        RELEASE_DATABASE_URL: `${databaseUrl}&sslmode=disable`,
+      },
     ]) {
       await expect(
         runReleaseGateCli(["close", "--sha", sha], environment, {
@@ -211,6 +225,26 @@ describe("release gate CLI", () => {
       options,
     );
     expect(context.state().mode).toBe("open");
+  });
+
+  it("rejects evidence accepted before the current closure", async () => {
+    const context = fixture({
+      mode: "maintenance",
+      targetSha: sha,
+      changedAt: "2026-09-26T07:01:00.000Z",
+    });
+    await expect(
+      runReleaseGateCli(
+        ["open", "--sha", sha, "--evidence", "acceptance.json"],
+        context.environment,
+        {
+          createClient: context.createClient,
+          readEvidence: async () => evidence(),
+        },
+      ),
+    ).rejects.toThrow();
+    expect(context.state().mode).toBe("maintenance");
+    expect(context.end).toHaveBeenCalledOnce();
   });
 
   it("rejects malformed command arguments without querying the database", async () => {

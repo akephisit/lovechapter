@@ -54,6 +54,7 @@ export class PostgresReleaseGateStore implements ReleaseGateStore {
 export type ReleaseGateStatus = {
   mode: ReleaseMode;
   targetSha: string | null;
+  changedAt: string;
   activeCount: number;
   oldestLeases: { id: string; kind: GateKind; startedAt: string }[];
 };
@@ -94,7 +95,10 @@ export class PostgresReleaseGateController {
     const control = await this.client.query<{
       mode: string;
       target_sha: string | null;
-    }>("select mode, target_sha from ops.release_control where id = 1");
+      changed_at: string;
+    }>(
+      "select mode, target_sha, changed_at::text from ops.release_control where id = 1",
+    );
     const mode = modeFromRows(control.rows);
     const row = control.rows[0];
     if (!row) throw new Error("Release control state is unavailable");
@@ -109,6 +113,7 @@ export class PostgresReleaseGateController {
     return {
       mode,
       targetSha: row.target_sha,
+      changedAt: row.changed_at,
       activeCount,
       oldestLeases: leases.rows.map((row) => ({
         id: row.id,
@@ -118,16 +123,20 @@ export class PostgresReleaseGateController {
     };
   }
 
-  async openFor(sha: string): Promise<boolean> {
+  async openFor(sha: string, changedAt: string): Promise<boolean> {
     if (!shaPattern.test(sha))
       throw new Error("A full lowercase commit SHA is required");
+    if (!Number.isFinite(Date.parse(changedAt))) {
+      throw new Error("Release closure timestamp is invalid");
+    }
     const result = await this.client.query(
       `update ops.release_control
        set mode = 'open', changed_at = now()
        where id = 1 and mode = 'maintenance' and target_sha = $1
+         and changed_at = $2::timestamptz
          and not exists (select 1 from ops.release_leases)
        returning id`,
-      [sha],
+      [sha, changedAt],
     );
     return result.rowCount === 1;
   }

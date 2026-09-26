@@ -64,7 +64,7 @@ export async function runReleaseGateCli(
     const readEvidence =
       options.readEvidence ?? ((path: string) => readFile(path, "utf8"));
     const rawEvidence = await readEvidence(command.evidencePath);
-    validateEvidence(rawEvidence, command.sha);
+    const acceptedAt = validateEvidence(rawEvidence, command.sha);
     const status = await controller.status();
     if (
       status.mode !== "maintenance" ||
@@ -73,7 +73,11 @@ export async function runReleaseGateCli(
     ) {
       throw new Error("Release target is not drained for this SHA");
     }
-    if (!(await controller.openFor(command.sha))) {
+    const closedAt = Date.parse(status.changedAt);
+    if (!Number.isFinite(closedAt) || acceptedAt <= closedAt) {
+      throw new Error("Release evidence predates the current closure");
+    }
+    if (!(await controller.openFor(command.sha, status.changedAt))) {
       throw new Error("Release gate could not reopen atomically");
     }
     write(JSON.stringify({ mode: "open", targetSha: command.sha }));
@@ -136,6 +140,7 @@ function directDatabaseUrl(value: string | undefined): string {
     !url.username ||
     !url.password ||
     /(?:^|[-.])(?:pooler|pgbouncer)(?:[.-]|$)/iu.test(url.hostname) ||
+    url.searchParams.getAll("sslmode").length !== 1 ||
     !["require", "verify-full"].includes(url.searchParams.get("sslmode") ?? "")
   ) {
     throw new Error("RELEASE_DATABASE_URL must be a direct TLS PostgreSQL URL");
@@ -167,7 +172,7 @@ async function drain(
   }
 }
 
-function validateEvidence(raw: string, sha: string): void {
+function validateEvidence(raw: string, sha: string): number {
   let evidence: unknown;
   try {
     evidence = JSON.parse(raw);
@@ -191,6 +196,7 @@ function validateEvidence(raw: string, sha: string): void {
   ) {
     throw new Error("Release evidence is incomplete or targets another SHA");
   }
+  return Date.parse(value.acceptedAt);
 }
 
 function isCanonicalTimestamp(value: string): boolean {

@@ -293,6 +293,8 @@ Git, chat, command arguments, or logs. The command rejects pooled-looking
 hosts and does not fall back to the application `DATABASE_URL`. Verify the
 Neon project, branch, database, and role independently before any command:
 `RELEASE_ENVIRONMENT=staging` alone cannot prove that a URL points to staging.
+The CLI rejects duplicate `sslmode` parameters rather than trusting a value
+different from the one the PostgreSQL driver would use.
 There is no production CLI command or automatic production release yet.
 
 The API Worker/Hyperdrive application role needs `USAGE` on `ops`, `SELECT`
@@ -309,6 +311,8 @@ before bootstrapping the gate-aware Worker. The SQL below is a role-specific
 example, not a command to run with the placeholder unchanged:
 
 ```sql
+GRANT USAGE ON SCHEMA drizzle TO STAGING_APP_ROLE;
+GRANT SELECT (id, hash) ON drizzle.__drizzle_migrations TO STAGING_APP_ROLE;
 GRANT USAGE ON SCHEMA ops TO STAGING_APP_ROLE;
 GRANT SELECT ON ops.release_control TO STAGING_APP_ROLE;
 GRANT EXECUTE ON FUNCTION ops.admit_release_lease(text) TO STAGING_APP_ROLE;
@@ -318,8 +322,16 @@ REVOKE INSERT, UPDATE, DELETE ON ops.release_control FROM STAGING_APP_ROLE;
 REVOKE INSERT ON ops.release_leases FROM STAGING_APP_ROLE;
 ```
 
+Protected readiness compares the latest recorded Drizzle migration hash to
+the hash compiled from the newest checked-in migration. Its CI test requires
+updating that compiled value whenever a migration changes. Grant only the
+`id`/`hash` ledger columns above; a missing ledger, mismatched migration, or
+unreadable ledger makes readiness return 503 while maintenance stays closed.
+The operator must check the exact target API/schema pairing before reopening.
+
 For an existing gate-aware deployment, apply the additive function migration,
-grant `EXECUTE` and lease `SELECT (id)`, deploy the function-calling API to
+grant `EXECUTE`, lease `SELECT (id)`, and the narrowed migration-ledger read,
+deploy the function-calling API to
 100% of traffic, and only then revoke direct lease `INSERT`. Do not revoke it
 while an older API version may still be serving. Verify the app role cannot
 update the control row or directly insert a lease, and can admit/release via
@@ -352,8 +364,11 @@ immutable 40-character commit SHA throughout:
 6. Write an operator-controlled JSON evidence file with the exact fields
    below only after the migration and private smoke actually pass. Then run
    the `open` command below. The CLI
-   verifies the matching SHA, populated version IDs, true checks, and zero
-   active leases; PostgreSQL atomically refuses reopening if a lease appears.
+   verifies the matching SHA, populated version IDs, true checks, an
+   `acceptedAt` later than the current gate closure, and zero active leases;
+   PostgreSQL atomically refuses reopening if a lease appears or the gate
+   has been closed again since the evidence was checked. Evidence from an
+   earlier closure of the same SHA is invalid.
    Confirm public pages, API mutations, and queued email processing resume.
 
 ```json

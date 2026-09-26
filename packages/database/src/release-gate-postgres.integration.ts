@@ -28,10 +28,11 @@ type GateController = {
   status(): Promise<{
     mode: "open" | "maintenance";
     targetSha: string | null;
+    changedAt: string;
     activeCount: number;
     oldestLeases: { id: string; kind: string; startedAt: string }[];
   }>;
-  openFor(sha: string): Promise<boolean>;
+  openFor(sha: string, changedAt: string): Promise<boolean>;
 };
 
 let runtime: PostgresRuntime;
@@ -202,12 +203,15 @@ describe("PostgreSQL release gate", () => {
       if (!instance.value) return;
       const sha = "a".repeat(40);
       await instance.value.closeFor(sha);
-      expect(await instance.value.openFor("b".repeat(40))).toBe(false);
+      const closedAt = (await instance.value.status()).changedAt;
+      expect(await instance.value.openFor("b".repeat(40), closedAt)).toBe(
+        false,
+      );
       const gate = store();
       expect(gate).toBeDefined();
       if (!gate) return;
       expect(await gate.admit("http")).toBeNull();
-      expect(await instance.value.openFor(sha)).toBe(true);
+      expect(await instance.value.openFor(sha, closedAt)).toBe(true);
     } finally {
       await instance.close();
     }
@@ -223,10 +227,32 @@ describe("PostgreSQL release gate", () => {
       const lease = await gate.admit("cleanup");
       expect(lease).not.toBeNull();
       await instance.value.closeFor("e".repeat(40));
-      expect(await instance.value.openFor("e".repeat(40))).toBe(false);
+      const closedAt = (await instance.value.status()).changedAt;
+      expect(await instance.value.openFor("e".repeat(40), closedAt)).toBe(
+        false,
+      );
       expect(await instance.value.activeCount()).toBe(1);
       if (lease) await gate.release(lease);
-      expect(await instance.value.openFor("e".repeat(40))).toBe(true);
+      expect(await instance.value.openFor("e".repeat(40), closedAt)).toBe(true);
+    } finally {
+      await instance.close();
+    }
+  });
+
+  it("cannot reopen with a closure timestamp from an earlier close of the same SHA", async () => {
+    const instance = await controller();
+    try {
+      expect(instance.value).toBeDefined();
+      if (!instance.value) return;
+      const sha = "f".repeat(40);
+      await instance.value.closeFor(sha);
+      const stale = (await instance.value.status()).changedAt;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      await instance.value.closeFor(sha);
+      const current = (await instance.value.status()).changedAt;
+      expect(current).not.toBe(stale);
+      expect(await instance.value.openFor(sha, stale)).toBe(false);
+      expect(await instance.value.openFor(sha, current)).toBe(true);
     } finally {
       await instance.close();
     }

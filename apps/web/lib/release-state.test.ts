@@ -54,4 +54,46 @@ describe("private release state", () => {
     ).rejects.toThrow();
     expect(upstream).not.toHaveBeenCalled();
   });
+
+  it("times out a release-state request that never responds", async () => {
+    vi.useFakeTimers();
+    try {
+      let request: Request | undefined;
+      const pending = fetchReleaseMode("https://web.example.workers.dev/", {
+        apiUpstreamOrigin: "https://api.example.workers.dev",
+        proxySharedSecret: secret,
+        fetch: vi.fn((input) => {
+          request = input as Request;
+          return new Promise<Response>(() => undefined);
+        }),
+      });
+      const rejected = expect(pending).rejects.toThrow("timed out");
+      await vi.advanceTimersByTimeAsync(3_000);
+      await rejected;
+      expect(request?.signal.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("times out when the release-state response body never completes", async () => {
+    vi.useFakeTimers();
+    try {
+      const pending = fetchReleaseMode("https://web.example.workers.dev/", {
+        apiUpstreamOrigin: "https://api.example.workers.dev",
+        proxySharedSecret: secret,
+        fetch: vi.fn(
+          async () =>
+            new Response(new ReadableStream({ start: () => undefined }), {
+              headers: { "content-type": "application/json" },
+            }),
+        ),
+      });
+      const rejected = expect(pending).rejects.toThrow("timed out");
+      await vi.advanceTimersByTimeAsync(3_000);
+      await rejected;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
