@@ -39,10 +39,16 @@ and a subprocess adapter for the target-verified release gate. Gate `status`
 now includes its closure timestamp so reopen evidence can be tied to the
 current closure. These adapters have local tests only and are not yet
 connected to the disabled release CLI; no remote target was mutated.
-Local CI passed for this slice with 93 test files / 600 tests, migration
+An exact-field evidence builder now preserves the unchanged Worker's recorded
+version/source SHA during selective deployment, rejects stale private-smoke
+timestamps, and strips unexpected provider fields before the gate sees the
+evidence. It is also not yet connected to a live release.
+Local CI passed for the preceding helper slice with 93 test files / 600 tests, migration
 snapshot check, Bun API/jobs builds and smoke, Next/vinext builds/check, and
 Worker dry-runs. This does not substitute for a disposable PostgreSQL run or
 live staging acceptance of the final coordinator.
+After the evidence builder, format, lint, and 94 test files / 605 tests passed;
+the full build gate was not rerun for that last helper alone.
 
 ## Implemented
 
