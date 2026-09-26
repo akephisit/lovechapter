@@ -1182,3 +1182,9 @@ derives component impact from that accepted baseline rather than the push
 event's before-SHA. It skips a validated docs-only plan without creating a
 deploy-capable driver. This layer has local tests only; the live CLI factory,
 environment preflight, and real acceptance credentials are still unwired.
+
+The disabled-by-default release workflow now maps the planned identity
+variables and direct/provider/test credentials from their environment-scoped
+GitHub variables or secrets, along with GitHub's same-run PostgreSQL result.
+This is configuration scaffolding only: no secrets were added, neither flag
+was enabled, and the live release CLI still fails closed.

@@ -366,6 +366,18 @@ The gate stores both Worker versions atomically with reopen. Migration
 `0011_release_versions` and this new evidence contract are not yet applied on
 live staging or production. There is no automatic production release yet.
 
+The disabled GitHub release workflow reads target IDs, database/role names,
+Hyperdrive ID, and Worker `workers.dev` origins from each environment's
+`RELEASE_*` variables. Store direct gate/migration URLs, Neon/Cloudflare API
+tokens, `WEB_PROXY_SHARED_SECRET`, and `RELEASE_PROBE_SECRET` as environment
+secrets, never repository variables. Staging additionally needs environment
+secrets for its verified test account email/password, separate unverified
+verification email, and isolated test-branch database URL; set the foreign
+tenant wedding ID and test branch ID as staging environment variables. The
+workflow receives `GITHUB_TOKEN` and the same-SHA PostgreSQL job result from
+GitHub automatically. Keep both release-enabled flags false until the guarded
+CLI, protected `main`, scoped secrets, and live staging rehearsal are complete.
+
 The API Worker/Hyperdrive application role needs `USAGE` on `ops`, `SELECT`
 on `ops.release_control`, `EXECUTE` on `ops.admit_release_lease(text)`, and
 `SELECT (id)` plus `DELETE` on `ops.release_leases`. The admission function

@@ -50,6 +50,48 @@ describe("automatic Worker release workflow policy", () => {
     expect(source).toMatch(/secrets\.RELEASE_CLOUDFLARE_API_TOKEN/u);
   });
 
+  it("passes environment-scoped target identities and keeps credentials in secrets", () => {
+    const source = readFileSync(workflowPath, "utf8");
+    for (const name of [
+      "RELEASE_NEON_PROJECT_ID",
+      "RELEASE_NEON_BRANCH_ID",
+      "RELEASE_DATABASE_NAME",
+      "RELEASE_DATABASE_ROLE",
+      "RELEASE_APP_DATABASE_ROLE",
+      "RELEASE_MIGRATION_DATABASE_ROLE",
+      "RELEASE_CLOUDFLARE_ACCOUNT_ID",
+      "RELEASE_HYPERDRIVE_ID",
+      "RELEASE_WEB_ORIGIN",
+      "RELEASE_API_ORIGIN",
+    ]) {
+      const setting = `${name}: ` + "${{ vars." + name + " }}";
+      expect(source.split(setting)).toHaveLength(3);
+    }
+    for (const name of [
+      "RELEASE_DATABASE_URL",
+      "RELEASE_MIGRATION_DATABASE_URL",
+      "RELEASE_NEON_API_KEY",
+      "RELEASE_CLOUDFLARE_API_TOKEN",
+      "WEB_PROXY_SHARED_SECRET",
+      "RELEASE_PROBE_SECRET",
+    ]) {
+      const setting = `${name}: ` + "${{ secrets." + name + " }}";
+      expect(source.split(setting)).toHaveLength(3);
+    }
+    expect(source).toMatch(
+      /RELEASE_POSTGRES_JOB_RESULT: \$\{\{ needs\.postgres\.result \}\}/u,
+    );
+    expect(source).toMatch(
+      /RELEASE_TEST_DATABASE_URL: \$\{\{ secrets\.RELEASE_TEST_DATABASE_URL \}\}/u,
+    );
+    expect(source).toMatch(
+      /RELEASE_TEST_PASSWORD: \$\{\{ secrets\.RELEASE_TEST_PASSWORD \}\}/u,
+    );
+    expect(source).toMatch(
+      /RELEASE_TEST_BRANCH_ID: \$\{\{ vars\.RELEASE_TEST_BRANCH_ID \}\}/u,
+    );
+  });
+
   it("requests ownership review for release, migration, and security changes", () => {
     const owners = readFileSync(ownersPath, "utf8");
     for (const path of [
