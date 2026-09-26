@@ -11,7 +11,9 @@ cannot supply by itself.
 - Will ownership, DNS, and publicly trusted TLS for `lovechapter.net` be
   confirmed?
 - If not, what will the final custom domain be?
-- Which stable HTTPS hostname will expose the VPS API to the frontend Worker?
+- If the VPS option is selected, which stable HTTPS hostname will expose its
+  API to the frontend Worker? On the Worker option, use the generated API
+  `workers.dev` HTTPS origin until a domain is registered.
 - Final logo/visual identity
 
 Until ownership is verified, keep every origin and hostname configurable. The
@@ -58,28 +60,48 @@ weaken the approved security gates to answer the remaining questions.
 
 ## Backend/operations
 
-- VPS provider, region, sizing, backup, and recovery ownership
+- Which one backend option will the first production installation use:
+  Cloudflare API Worker with Hyperdrive, or Bun 1.4.2 on a VPS?
+- If VPS is chosen: provider, region, sizing, backup, and recovery ownership
 - Production result of the passing Bun 1.4.2 scrypt benchmark on the selected
   VPS class (the local development-runner result is not a substitute)
 - Stable HTTPS backend hostname, DNS, certificate, and reverse-proxy ownership
 - Production monitoring and token-safe observability strategy
+- Acceptable maintenance-window duration and notice policy for a breaking
+  schema/API cutover; ownership of the enforced write/job gate and restore drill
 - Upgrade cadence for Bun 1.4.2 and Elysia 2.0.0-beta.16
 - When Elysia 2 no longer needs the localized TypeBox compatibility shim
+- If Workers are chosen: the owner reports upgrading the staging account to
+  Workers Paid. The staging API is now deployed with local auth and reports the
+  Standard usage model, but Cloudflare's Billing API returned 403 to the
+  available OAuth token, so subscription status is not independently verified.
+  The measured scrypt path uses 128–149 ms CPU per request. Production
+  plan/CPU budget, cron backlog handling, and streaming CSV end-to-end
+  measurements remain open.
 
 ## Database
 
-- Neon region
+- Production Neon region (staging uses AWS Singapore)
 - PostgreSQL Row Level Security decision
 - Production query monitoring/observability strategy
-- Representative staging query-plan results after direct-pool provisioning
-- Measured API/job pool sizes within Neon and VPS connection budgets
-- Disposable staging credentials for the PostgreSQL concurrency suite and live
-  query-plan review
+- Query-plan remeasurement as real tenant/CSV cardinalities grow; the initial
+  multi-tenant staging-test representative reads and 14 exact generated SQL
+  shapes are recorded in `docs/QUERY_REVIEW.md`
+- If VPS is chosen: measured API/job pool sizes within Neon connection budgets
+- Retention and rotation ownership for the ignored local staging and
+  staging-test credential files used for the repeat concurrency and plan runs
 
 ## Product
 
 - Free guest limit
 - Custom wedding domains
-- Guest invitation recovery
+- Whether and when to add automatic email/QR delivery or guest self-service
+  recovery; couple-initiated link replacement and manual sharing are available
 - Advanced seating UX
 - AI provider/scope
+- Whether to publish any part of the private day-of run sheet as a separate
+  guest-facing schedule, and who may edit/publish it
+- Whether future seating assigns individual attendees within a guest party
+  instead of the whole invited party to a table
+- Whether budgets later track individual payment transactions, taxes, vendor
+  quote attachments, or multiple currencies with explicit conversion

@@ -71,6 +71,7 @@ CREATE TABLE "weddings" (
 ALTER TABLE "guests" ADD CONSTRAINT "guests_wedding_id_weddings_id_fk" FOREIGN KEY ("wedding_id") REFERENCES "public"."weddings"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "invitations" ADD CONSTRAINT "invitations_created_by_user_id_users_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."users"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "invitations" ADD CONSTRAINT "invitations_guest_scope_fk" FOREIGN KEY ("wedding_id","guest_id") REFERENCES "public"."guests"("wedding_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "invitations_wedding_guest_id_unique" ON "invitations" USING btree ("wedding_id","guest_id","id");--> statement-breakpoint
 ALTER TABLE "rsvps" ADD CONSTRAINT "rsvps_invitation_scope_fk" FOREIGN KEY ("wedding_id","guest_id","invitation_id") REFERENCES "public"."invitations"("wedding_id","guest_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "wedding_members" ADD CONSTRAINT "wedding_members_wedding_id_weddings_id_fk" FOREIGN KEY ("wedding_id") REFERENCES "public"."weddings"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "wedding_members" ADD CONSTRAINT "wedding_members_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -79,7 +80,6 @@ ALTER TABLE "weddings" ADD CONSTRAINT "weddings_workspace_owner_user_id_users_id
 ALTER TABLE "weddings" ADD CONSTRAINT "weddings_billing_owner_user_id_users_id_fk" FOREIGN KEY ("billing_owner_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "guests_wedding_created_idx" ON "guests" USING btree ("wedding_id","created_at" DESC NULLS LAST,"id" DESC NULLS LAST);--> statement-breakpoint
 CREATE UNIQUE INDEX "invitations_token_hash_unique" ON "invitations" USING btree ("token_hash");--> statement-breakpoint
-CREATE UNIQUE INDEX "invitations_wedding_guest_id_unique" ON "invitations" USING btree ("wedding_id","guest_id","id");--> statement-breakpoint
 CREATE UNIQUE INDEX "invitations_one_active_per_guest" ON "invitations" USING btree ("wedding_id","guest_id") WHERE "invitations"."revoked_at" is null;--> statement-breakpoint
 CREATE INDEX "invitations_creator_idx" ON "invitations" USING btree ("created_by_user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "rsvps_wedding_guest_unique" ON "rsvps" USING btree ("wedding_id","guest_id");--> statement-breakpoint

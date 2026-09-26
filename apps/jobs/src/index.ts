@@ -24,6 +24,7 @@ export async function runEmailWorker(): Promise<void> {
   try {
     await runJobLoop({
       store: postgres.emailJobStore,
+      guestImportCleanup: postgres.guestImportRepository,
       sender: createResendEmailSender({ apiKey: config.resendApiKey }),
       tokenCodec: createActionTokenCodec({
         activeVersion: config.authTokenActiveKeyVersion,

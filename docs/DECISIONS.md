@@ -27,7 +27,7 @@ Keep separate:
 
 ## ADR-004 — Cloudflare-first
 
-**Status:** Accepted historically; backend-runtime portion superseded by ADR-016
+**Status:** Accepted historically; backend-runtime portion superseded by ADR-016 and ADR-023
 
 Frontend and API target Cloudflare Workers.
 
@@ -35,7 +35,7 @@ Do not introduce VPS/Kubernetes/Redis by default.
 
 ## ADR-005 — Elysia 2 backend
 
-**Status:** Accepted with known compatibility risk; runtime portion superseded by ADR-016
+**Status:** Accepted with known compatibility risk; runtime portion superseded by ADR-016 and ADR-023
 
 Elysia 2 is the chosen API framework.
 
@@ -60,7 +60,7 @@ Compatibility must be verified before relying on version-sensitive features.
 
 ## ADR-007 — Neon PostgreSQL + Hyperdrive + Drizzle
 
-**Status:** Accepted historically; connection path superseded by ADR-016
+**Status:** Accepted historically; connection path governed by ADR-023
 
 Primary database: Neon PostgreSQL.
 
@@ -216,14 +216,14 @@ prebuilt sign-in/sign-up components, while the separate Elysia API uses
 `@clerk/backend`. Reassess compatibility before introducing Clerk server helpers
 inside the Next.js application.
 
-## ADR-016 — Bun/VPS is the sole backend production runtime
+## ADR-016 — Bun/VPS backend production runtime
 
-**Status:** Accepted; supersedes the backend-runtime portions of ADR-004, ADR-005, and ADR-007
+**Status:** Superseded in its exclusivity by ADR-023; VPS implementation retained
 
 The Next.js/vinext frontend remains on Cloudflare Workers. Elysia 2 runs as an
 always-on Bun HTTP process on a VPS, with a separate Bun background-job process.
 Both use bounded direct PostgreSQL pools. Hyperdrive and backend Workers are no
-longer production targets.
+longer production targets under this historical decision.
 
 The browser calls the API through a server-only same-origin proxy on the
 frontend Worker. The proxy forwards to one configured HTTPS backend origin and
@@ -271,4 +271,140 @@ Releases use a separate migration credential, immutable release directories,
 an atomic `current` symlink, retained rollback artifacts, verified backups, and
 coordinated secret rotation. These checked-in assets are operational guidance;
 they do not claim that a VPS, domain, certificate, database, or email sender has
-been provisioned.
+been provisioned. ADR-024 governs recovery for a breaking migration: switching
+the symlink back without restoring the matching database state is not a safe
+rollback.
+
+## ADR-020 — Guest affiliations are wedding-defined
+
+**Status:** Accepted
+
+Guest affiliations belong to one wedding and are created, named, colored,
+ordered, and deleted by its authenticated members. LoveChapter does not seed or
+hardcode bride-side, groom-side, family, friend, or work categories.
+
+A guest has at most one affiliation in this phase. Deleting an affiliation is
+atomic: affected guests remain in the wedding and become unassigned before the
+affiliation is removed. Postal address is not part of affiliation management
+and is not required for guest creation. Existing guests can be reassigned, and
+each wedding is bounded to 100 affiliations so the complete ordered set remains
+manageable in one operation.
+
+## ADR-021 — Guest CSV import is creation-only and staged
+
+**Status:** Accepted
+
+Uploads use `csv-parse@7.0.2` with strict UTF-8/comma CSV, the existing 1 MiB
+request limit, 5,000 data rows, 40 columns, and 4,096 Unicode characters per
+cell. Original bytes are discarded after parsing. Wedding-scoped normalized
+rows and preview metadata expire after 24 hours; the maintenance job deletes
+up to 500 expired batches every 15 minutes, cascading their rows. Mapping is
+versioned, unknown affiliations must be explicitly mapped or excluded, and
+duplicate warnings require a “create anyway” decision. Commit inserts only
+new guests and optional addresses in one transaction, with an idempotency key
+valid for the remaining batch lifetime. No invitation link is imported or
+created. CSV export and imported dangerous formula prefixes are neutralized.
+
+## ADR-022 — Envelope output is browser print with safe saved templates
+
+**Status:** Accepted
+
+The first release does not generate server PDFs. A scoped query accepts at
+most 500 unique active guest IDs, preserves request order, and fails the
+entire request for a missing, archived, or foreign guest. Name-only printing
+uses the envelope name or guest name without a postal address; address mode
+shows missing-address warnings in preview. Templates are limited to 50 per
+wedding and contain only server-validated integer measurements, enum choices,
+and booleans. Presets are DL, C5, and C6; custom dimensions stay within
+90–330 × 55–480 mm. React emits guest text as text nodes, CSS is generated
+solely from validated values, Thai fonts are self-hosted, and Print waits for
+font readiness. Hardware, driver scaling, feed orientation, and margins are
+external acceptance checks, not inferred from automated tests.
+
+## ADR-023 — Backend runtime is selected per installation
+
+**Status:** Accepted; supersedes ADR-016's sole-runtime restriction
+
+One installation runs either the Bun 1.4.2 API and separate background job
+process on a VPS, or one Cloudflare API Worker serving the Elysia fetch routes
+and two scheduled UTC cron triggers. The two backend alternatives are never
+run together for one installation. The Next.js frontend Worker continues to
+proxy same-origin `/api` requests to the selected backend over HTTPS.
+Every later backend feature must preserve equivalent HTTP, authorization,
+data, and durable job behavior for both runtime choices; implementation may
+use separate bootstrap and connection adapters without duplicating domain
+rules.
+
+The VPS retains separately bounded direct `pg.Pool` instances. The API Worker
+uses one lazy invocation-scoped `pg.Client` via a configured Hyperdrive binding
+for fetch and scheduled work; every invocation closes its client. A one-minute
+cron claims one bounded email batch and a 15-minute cron performs bounded
+retention cleanup. Both share the existing Neon schema, Elysia routes,
+first-party authorization, Resend outbox, and action-token key set. Migration
+credentials stay outside the Worker. Production must validate runtime scrypt
+costs and end-to-end email before enabling local authentication. Disable
+Hyperdrive query caching so revocations and writes are immediately visible;
+the frontend enables `global_fetch_strictly_public` to call the API Worker's
+generated HTTPS URL from its server-side proxy.
+
+## ADR-024 — Breaking releases use a coordinated schema cutover
+
+**Status:** Accepted
+
+One release has one canonical API contract and database schema. We do not keep
+legacy schema, dual reads/writes, or old/new API compatibility solely to allow
+rolling deployments. Worker and Bun/VPS parity applies to the current release,
+not to coexistence of different release versions. Nonbreaking web-only or
+backend-only changes may still deploy independently.
+
+A breaking release prebuilds and tests both frontend and backend, then blocks
+new writes and scheduled/background work, drains in-flight work, verifies a
+recoverable backup, migrates and validates retained data, deploys the selected
+backend and frontend from the same revision, smoke-tests, and reopens traffic.
+The release is blocked until an enforceable cutover gate and recovery plan
+exist. This policy does not promise zero downtime or mandate permanent
+compatibility layers. An incompatible migrated database is not rolled back by merely
+redeploying an old binary; recovery requires a reviewed forward fix or a
+verified database restore. Intentional user-data deletion requires separate
+explicit approval.
+
+## ADR-025 — First Worker staging retry acceptance uses split evidence
+
+**Status:** Accepted for the PR #2 Worker staging gate (2026-09-26)
+
+Do not disrupt the active staging Resend credential or force an account-wide
+rate limit to manufacture a retryable provider failure. For the first Worker
+staging acceptance, require both:
+
+1. The deployed Worker's real scheduled handler sends verification and reset
+   email jobs through Resend, with receipt confirmed in the test inbox.
+2. On the separate disposable PostgreSQL test branch, the real email
+   processor, action-token codec, and outbox repository handle a controlled
+   provider-HTTP 429 followed by success. Verify the persisted retry state,
+   due-time boundary, lease release, stable idempotency key, sent state, and
+   absence of a third send.
+
+This split evidence replaces the previous requirement to induce a transient
+provider failure on the deployed staging Worker. It does not claim that a
+live Resend 429 or timeout was observed. Continue to monitor backlog, retries,
+and terminal failures when operating a real installation; reconsider this
+acceptance method if the provider adapter or selected backend changes.
+
+## Staging blocker — Elysia 2 route compilation on Cloudflare Workers
+
+**Status:** Resolved for staging (2026-09-26); does not change ADR-023
+
+The first deployed staging API Worker fails before liveness with Cloudflare
+error 1101. Its exception says Elysia 2.0.0-beta.16 cannot compile route
+`OPTIONS /*` because code generation from strings is disallowed in the
+request context. The current Worker creates and compiles the Elysia app in
+`fetch`, while Cloudflare allows dynamic code generation only at startup.
+The Worker now compiles a single Elysia route table at isolate startup,
+where Cloudflare permits code generation, and obtains per-request dependencies
+through `AsyncLocalStorage`. This keeps Hyperdrive clients invocation-scoped
+and leaves the Bun/VPS handler path unchanged. The regression test simulates
+request-time code-generation prohibition, a concurrent request test checks
+binding/origin/ingress isolation, and the deployed staging Worker passed direct
+and proxied health/readiness checks. Build-time AOT remains a possible future
+optimization, not a requirement for this correction. Do not substitute
+another HTTP framework or enable local auth/cron without their separate gates.

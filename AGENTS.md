@@ -83,9 +83,10 @@ Backend:
 
 - Elysia 2
 - TypeScript
-- Bun 1.4.2 production runtime
-- always-on VPS HTTP process
-- separate Bun background-job process
+- select one production runtime per installation: Bun 1.4.2 on a VPS or
+  Cloudflare Workers
+- VPS: always-on Bun HTTP process and separate Bun background-job process
+- Workers: Elysia fetch handler and bounded scheduled job handlers
 - browser traffic reaches the API only through the frontend Worker's server-side
   same-origin proxy
 
@@ -93,7 +94,8 @@ Database:
 
 - Neon PostgreSQL
 - Drizzle ORM
-- bounded direct `pg` / node-postgres pools
+- VPS: bounded direct `pg` / node-postgres pools
+- Workers: invocation-scoped `pg.Client` through Hyperdrive
 
 Frontend-supporting Cloudflare services only when needed:
 
@@ -103,8 +105,8 @@ Frontend-supporting Cloudflare services only when needed:
 
 Bun:
 
-- pinned to 1.4.2 for backend production;
-- used for the API HTTP process and background-job process;
+- pinned to 1.4.2 for backend production on the VPS option;
+- used for the API HTTP process and background-job process on VPS installs;
 - Bun-only APIs stay in bootstrap/runtime modules.
 
 Do not use Bun-only server/runtime APIs in domain, authentication, or repository logic.
@@ -112,6 +114,63 @@ Do not use Bun-only server/runtime APIs in domain, authentication, or repository
 Do not replace Elysia 2 with another HTTP framework without explicit approval.
 
 Elysia 2 is version-sensitive. If a blocker exists, reproduce and document it rather than silently changing architecture.
+
+### Backend runtime parity — MANDATORY
+
+Every new or changed backend capability must work when an installation chooses
+**either** Bun/VPS **or** Cloudflare Workers. An installation runs one backend
+choice at a time; this rule does not require running both deployments together.
+
+- Keep routes, request/response contracts, authorization, sessions, business
+  rules, database schema, and outbox semantics shared across the two choices.
+- Keep Bun HTTP/process lifecycle and polling in their Bun bootstrap modules.
+  Keep Worker fetch/scheduled handlers and invocation-owned connections in
+  their Worker modules. Do not introduce a Bun-only or Worker-only dependency
+  into shared auth, domain, or repository code without a compatible adapter.
+- When adding durable background work, implement both the bounded Bun job path
+  and the bounded Worker scheduled path, with the same retry, lease, cleanup,
+  and idempotency rules. Do not use detached Worker work as the sole durable
+  delivery mechanism.
+- Preserve the frontend Worker's same-origin proxy, ingress credential,
+  tenant checks, and cookie behavior for either selected backend origin.
+- VPS uses bounded direct `pg.Pool` instances. Workers use Hyperdrive with
+  query caching disabled and a lazy `pg.Client` scoped to each invocation;
+  streamed responses retain the client until completion or cancellation.
+- A feature is incomplete if it works only on one runtime. If a capability is
+  genuinely unavailable on one platform, document and reproduce the blocker
+  before changing the agreed runtime support.
+
+### Release and schema evolution — MANDATORY
+
+Use one canonical application contract and one canonical database schema per
+release. Do not add legacy columns/tables, dual reads or writes, versioned API
+paths, or compatibility adapters solely to keep an older deployment working
+with a new release. Backend runtime parity means Worker and Bun/VPS implement
+the same current behavior; it does not mean old and new releases must coexist.
+
+For a breaking schema or API change, use a coordinated cutover rather than a
+rolling mixed-version deployment:
+
+1. Build and test the frontend, both backend runtime paths, and migration from
+   the same revision before touching the live installation.
+2. Have a tested way to stop new writes and scheduled/background jobs, and
+   drain in-flight work before applying an incompatible migration. If no such
+   gate exists, do not deploy the breaking change.
+3. Take and verify a recoverable database backup/PITR point. Migrate existing
+   data into the new structure, validate it, and then remove superseded schema
+   in the coordinated release; never discard user data implicitly.
+4. Deploy only the installation's selected backend and its frontend from that
+   revision, verify critical flows, then reopen traffic and jobs. Do not expose
+   an old application to the new schema or a new application to the old schema.
+5. If cutover fails, keep the installation closed while applying a reviewed
+   forward fix or restoring a verified backup. Do not assume an old binary can
+   be restarted against an incompatible migrated database.
+
+Naturally compatible changes may still deploy selectively. Do not require a
+breaking migration for every release. Zero-downtime breaking changes need a
+separately designed and approved atomic-switch mechanism; they are not a reason
+to accumulate permanent compatibility scaffolding. Record downtime, data
+transformation, validation, and recovery steps for each breaking release.
 
 Authentication:
 
@@ -249,7 +308,7 @@ Prefer:
 Avoid:
 
 - premature microservices;
-- a second backend runtime or API Worker;
+- simultaneous backend runtime deployments for one installation;
 - Kubernetes;
 - Redis without a demonstrated requirement;
 - giant service files;
@@ -271,6 +330,10 @@ Avoid:
 - Add cancellation, timeouts, and error aggregation where applicable.
 - Persist work that must survive a response before scheduling it.
 - Move CPU-heavy work away from the request loop when it cannot meet the runtime budget.
+- Before enabling local authentication on a Worker installation, compare
+  measured production-policy password-hash CPU time with the account's actual
+  per-invocation limit. Infrequent successful over-limit requests do not
+  establish sustained viability; do not weaken password hashing to fit a plan.
 
 Parallelism must not disguise N+1 access or issue unbounded remote work.
 
@@ -307,6 +370,13 @@ After meaningful changes run applicable:
 - type-check;
 - tests;
 - build.
+
+For backend behavior changes, verify shared tests and **both** deployment
+paths: Bun API/job builds and runtime smoke, plus the API Worker Wrangler
+bundle dry-run. Exercise the affected HTTP and background behavior on both
+paths where it can be tested locally or in CI. Keep CI gates for both choices;
+if real infrastructure is unavailable, state the unverified staging behavior
+instead of calling either path production-verified.
 
 For database changes also check:
 

@@ -85,15 +85,13 @@ describe("AuthenticatedHome", () => {
 
   it("removes protected workspace data after an API session 401", async () => {
     let finishWorkspaceRequest!: (response: Response) => void;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<typeof fetch>(
-        () =>
-          new Promise<Response>((resolve) => {
-            finishWorkspaceRequest = resolve;
-          }),
-      ),
+    const fetchWorkspace = vi.fn<typeof fetch>(
+      () =>
+        new Promise<Response>((resolve) => {
+          finishWorkspaceRequest = resolve;
+        }),
     );
+    vi.stubGlobal("fetch", fetchWorkspace);
     const getSession = vi
       .fn<AuthSessionApi["getSession"]>()
       .mockResolvedValueOnce({ user: userFixture() })
@@ -106,6 +104,7 @@ describe("AuthenticatedHome", () => {
       await screen.findByRole("heading", { name: /plan the chapter/i }),
     ).toBeVisible();
     expect(screen.getByText("Couple one")).toBeVisible();
+    await waitFor(() => expect(fetchWorkspace).toHaveBeenCalledOnce());
 
     finishWorkspaceRequest(
       jsonResponse(

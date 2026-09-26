@@ -1,13 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { IdentityProvider, Principal } from "./identity";
 import {
   DomainValidationError,
+  ConflictError,
   NotFoundError,
   OnboardingRequiredError,
 } from "./errors";
 import { LoveChapterService } from "./service";
 import { InMemoryLoveChapterRepository } from "./testing/in-memory-repository";
+import { InMemoryGuestImportRepository } from "./testing/in-memory-guest-import-repository";
+import { InMemoryPlanningRepository } from "./testing/in-memory-planning-repository";
 
 const couple: Principal = {
   provider: "development",
@@ -45,6 +48,224 @@ function service(
 }
 
 describe("LoveChapterService", () => {
+  it("manages a wedding-scoped checklist and preserves completion when editing", async () => {
+    const repository = new InMemoryLoveChapterRepository();
+    const planning = new InMemoryPlanningRepository(repository);
+    const owner = new LoveChapterService(
+      identity(couple),
+      repository,
+      "https://web.example.test",
+      undefined,
+      undefined,
+      undefined,
+      planning,
+    );
+    const outsider = new LoveChapterService(
+      identity(otherCouple),
+      repository,
+      "https://web.example.test",
+      undefined,
+      undefined,
+      undefined,
+      planning,
+    );
+    const wedding = await owner.createWedding({
+      name: "Planning",
+      timeZone: "UTC",
+      locale: "en",
+    });
+    const task = await owner.createPlanningTask(wedding.id, {
+      title: "  Confirm flowers  ",
+      dueDate: "2026-12-01",
+    });
+    expect(task).toMatchObject({ title: "Confirm flowers", completedAt: null });
+    expect(await owner.getPlanningOverview(wedding.id)).toMatchObject({
+      total: 1,
+      completed: 0,
+      upcoming: [task],
+    });
+    const done = await owner.updatePlanningTask(wedding.id, task.id, {
+      completed: true,
+    });
+    expect(done.completedAt).toBeTruthy();
+    const changed = await owner.updatePlanningTask(wedding.id, task.id, {
+      note: "  Call supplier  ",
+    });
+    expect(changed).toMatchObject({
+      note: "Call supplier",
+      completedAt: done.completedAt,
+    });
+    expect(
+      (
+        await owner.listPlanningTasks(wedding.id, {
+          limit: 20,
+          filter: "completed",
+        })
+      ).items,
+    ).toHaveLength(1);
+    await expect(
+      outsider.getPlanningOverview(wedding.id),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      outsider.updatePlanningTask(wedding.id, task.id, { completed: false }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await owner.deletePlanningTask(wedding.id, task.id);
+    expect((await owner.getPlanningOverview(wedding.id)).total).toBe(0);
+  });
+  it("stages, pages, remaps and excludes guest CSV rows without inventing affiliations", async () => {
+    const repository = new InMemoryLoveChapterRepository();
+    const guestImportRepository = new InMemoryGuestImportRepository(repository);
+    const coupleService = new LoveChapterService(
+      identity(couple),
+      repository,
+      "https://web.example.test",
+      undefined,
+      guestImportRepository,
+    );
+    const wedding = await coupleService.createWedding({
+      name: "Import",
+      timeZone: "UTC",
+      locale: "en",
+    });
+    const preview = await coupleService.stageGuestImport(wedding.id, {
+      sourceSha256: "a".repeat(64),
+      headers: ["name", "affiliation"],
+      rows: [
+        ["Nok", "unknown"],
+        ["Dao", ""],
+      ],
+    });
+    expect(preview.totals).toMatchObject({ invalid: 1, valid: 1 });
+    const changed = await coupleService.updateGuestImportMapping(
+      wedding.id,
+      preview.batchId,
+      {
+        expectedVersion: 1,
+        mapping: preview.mapping,
+        affiliationMappings: {},
+        excludedRowIds: [preview.items[0]!.id],
+      },
+    );
+    expect(changed).toMatchObject({
+      mappingVersion: 2,
+      totals: { excluded: 1, valid: 1 },
+    });
+    await expect(
+      coupleService.updateGuestImportMapping(wedding.id, preview.batchId, {
+        expectedVersion: 1,
+        mapping: preview.mapping,
+        affiliationMappings: {},
+        excludedRowIds: [],
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it("commits approved import rows once and rejects a different idempotency key", async () => {
+    const repository = new InMemoryLoveChapterRepository();
+    const guestImportRepository = new InMemoryGuestImportRepository(repository);
+    const coupleService = new LoveChapterService(
+      identity(couple),
+      repository,
+      "https://web.example.test",
+      undefined,
+      guestImportRepository,
+    );
+    const wedding = await coupleService.createWedding({
+      name: "Commit",
+      timeZone: "UTC",
+      locale: "en",
+    });
+    const preview = await coupleService.stageGuestImport(wedding.id, {
+      sourceSha256: "b".repeat(64),
+      headers: ["name"],
+      rows: [["Nok"]],
+    });
+    const input = {
+      expectedVersion: preview.mappingVersion,
+      includedRowIds: [preview.items[0]!.id],
+      createAnywayRowIds: [],
+      idempotencyKey: "import-attempt-1",
+    };
+    const first = await coupleService.commitGuestImport(
+      wedding.id,
+      preview.batchId,
+      input,
+    );
+    const replay = await coupleService.commitGuestImport(
+      wedding.id,
+      preview.batchId,
+      input,
+    );
+    expect(replay).toEqual(first);
+    expect(first).toMatchObject({ created: 1, excluded: 0 });
+    await expect(
+      coupleService.commitGuestImport(wedding.id, preview.batchId, {
+        ...input,
+        idempotencyKey: "different",
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
+    expect(
+      (await coupleService.listGuests(wedding.id, { limit: 20 })).items,
+    ).toHaveLength(1);
+  });
+  it("streams filtered CSV in bounded pages and stops after cancellation", async () => {
+    const repository = new InMemoryLoveChapterRepository();
+    const coupleService = service(repository);
+    const wedding = await coupleService.createWedding({
+      name: "Export",
+      timeZone: "UTC",
+      locale: "en",
+    });
+    await coupleService.addGuest(wedding.id, {
+      name: "คุณสมชาย",
+      allowedPartySize: 1,
+    });
+    const stream = await coupleService.streamGuestCsv(wedding.id, {
+      view: "active",
+      search: "คุณ",
+    });
+    const reader = stream.getReader();
+    const first = await reader.read();
+    expect(
+      new TextDecoder("utf-8", { ignoreBOM: true }).decode(first.value),
+    ).toContain("\uFEFFname,email,phone");
+    const second = await reader.read();
+    expect(new TextDecoder().decode(second.value)).toContain("คุณสมชาย");
+    await reader.cancel();
+  });
+
+  it("fetches 500-row export pages only as consumed and stops at cancellation", async () => {
+    const repository = new InMemoryLoveChapterRepository();
+    const coupleService = service(repository);
+    const wedding = await coupleService.createWedding({
+      name: "Many guests",
+      timeZone: "UTC",
+      locale: "en",
+    });
+    await Promise.all(
+      Array.from({ length: 501 }, (_, index) =>
+        coupleService.addGuest(wedding.id, {
+          name: `Guest ${index}`,
+          allowedPartySize: 1,
+        }),
+      ),
+    );
+    const fetchPage = vi.spyOn(repository, "listGuestExportPage");
+    const reader = (
+      await coupleService.streamGuestCsv(wedding.id, { view: "active" })
+    ).getReader();
+    expect(fetchPage).toHaveBeenCalledTimes(1);
+    await reader.read(); // Header
+    expect(fetchPage).toHaveBeenCalledTimes(1);
+    for (let index = 0; index < 500; index += 1) {
+      expect((await reader.read()).done).toBe(false);
+    }
+    expect(fetchPage).toHaveBeenCalledTimes(1);
+    expect((await reader.read()).done).toBe(false);
+    expect(fetchPage).toHaveBeenCalledTimes(2);
+    await reader.cancel();
+    expect(fetchPage).toHaveBeenCalledTimes(2);
+  });
   it("allows profile setup before external onboarding completes", async () => {
     const externalService = service(
       new InMemoryLoveChapterRepository(),
@@ -176,6 +397,46 @@ describe("LoveChapterService", () => {
     });
   });
 
+  it("replaces a lost invitation without erasing the guest's RSVP", async () => {
+    const repository = new InMemoryLoveChapterRepository();
+    const coupleService = service(repository);
+    const wedding = await coupleService.createWedding({
+      name: "Mali & Arun",
+      timeZone: "Asia/Bangkok",
+      locale: "en",
+    });
+    const guest = await coupleService.addGuest(wedding.id, {
+      name: "Nok",
+      allowedPartySize: 2,
+    });
+    const original = await coupleService.createInvitation(wedding.id, guest.id);
+    await coupleService.submitRsvp(original.token, {
+      attendance: "attending",
+      partySize: 2,
+    });
+
+    const replacement = await coupleService.replaceInvitation(
+      wedding.id,
+      guest.id,
+    );
+
+    expect(replacement.token).not.toBe(original.token);
+    await expect(
+      coupleService.getPublicInvitation(original.token),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      coupleService.submitRsvp(original.token, {
+        attendance: "declined",
+        partySize: 0,
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      coupleService.getPublicInvitation(replacement.token),
+    ).resolves.toMatchObject({
+      rsvp: { attendance: "attending", partySize: 2 },
+    });
+  });
+
   it("does not reveal another Couple's wedding", async () => {
     const repository = new InMemoryLoveChapterRepository();
     const wedding = await service(repository).createWedding({
@@ -187,6 +448,211 @@ describe("LoveChapterService", () => {
     await expect(
       service(repository, otherCouple).listGuests(wedding.id, { limit: 20 }),
     ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("normalizes optional guest details and distinguishes omitted from removed address", async () => {
+    const repository = new InMemoryLoveChapterRepository();
+    const coupleService = service(repository);
+    const wedding = await coupleService.createWedding({
+      name: "Mali & Arun",
+      timeZone: "UTC",
+      locale: "en",
+    });
+    const guest = await coupleService.addGuest(wedding.id, {
+      name: ` ${"ก".repeat(120)} `,
+      email: `${"a".repeat(307)}@example.test`,
+      phone: "1".repeat(40),
+      allowedPartySize: 2,
+      envelopeName: "ซอง",
+      note: "n".repeat(2_000),
+      postalAddress: {
+        addressLine1: "1".repeat(180),
+        addressLine2: "2".repeat(180),
+        locality: "l".repeat(120),
+        administrativeArea: "a".repeat(120),
+        postalCode: "p".repeat(32),
+        countryCode: "th",
+      },
+    });
+
+    await coupleService.updateGuest(wedding.id, guest.id, {
+      phone: "   ",
+      envelopeName: " คุณสมชายและครอบครัว ",
+      note: "  Vegetarian table  ",
+    });
+    expect(repository.lastGuestUpdate).toMatchObject({
+      phone: null,
+      envelopeName: "คุณสมชายและครอบครัว",
+      note: "Vegetarian table",
+    });
+    expect(repository.lastGuestUpdate).not.toHaveProperty("postalAddress");
+    await expect(
+      coupleService.getGuest(wedding.id, guest.id),
+    ).resolves.toMatchObject({
+      postalAddress: { countryCode: "TH" },
+    });
+
+    await coupleService.updateGuest(wedding.id, guest.id, {
+      postalAddress: null,
+    });
+    expect(repository.lastGuestUpdate).toMatchObject({ postalAddress: null });
+    await expect(
+      coupleService.getGuest(wedding.id, guest.id),
+    ).resolves.toMatchObject({ postalAddress: null });
+  });
+
+  it.each([
+    ["name", { name: "x".repeat(121) }],
+    ["email", { email: `${"a".repeat(308)}@example.test` }],
+    ["phone", { phone: "1".repeat(41) }],
+    ["envelope name", { envelopeName: "x".repeat(181) }],
+    ["note", { note: "x".repeat(2_001) }],
+    ["address line", { postalAddress: { addressLine1: "x".repeat(181) } }],
+    [
+      "address locality",
+      { postalAddress: { addressLine1: "1", locality: "x".repeat(121) } },
+    ],
+    [
+      "administrative area",
+      {
+        postalAddress: {
+          addressLine1: "1",
+          administrativeArea: "x".repeat(121),
+        },
+      },
+    ],
+    [
+      "postal code",
+      { postalAddress: { addressLine1: "1", postalCode: "x".repeat(33) } },
+    ],
+    [
+      "country code",
+      { postalAddress: { addressLine1: "1", countryCode: "THA" } },
+    ],
+  ] as const)("rejects an over-limit guest %s", async (_field, invalid) => {
+    const repository = new InMemoryLoveChapterRepository();
+    const coupleService = service(repository);
+    const wedding = await coupleService.createWedding({
+      name: "Mali & Arun",
+      timeZone: "UTC",
+      locale: "en",
+    });
+
+    await expect(
+      coupleService.addGuest(wedding.id, {
+        name: "Nok",
+        allowedPartySize: 1,
+        ...invalid,
+      }),
+    ).rejects.toBeInstanceOf(DomainValidationError);
+  });
+
+  it("rejects invalid, duplicate, empty, and oversized bulk guest selections", async () => {
+    const repository = new InMemoryLoveChapterRepository();
+    const coupleService = service(repository);
+    const wedding = await coupleService.createWedding({
+      name: "Mali & Arun",
+      timeZone: "UTC",
+      locale: "en",
+    });
+    const guestId = crypto.randomUUID();
+
+    await expect(
+      coupleService.bulkArchiveGuests(wedding.id, []),
+    ).rejects.toThrow("Bulk guest actions accept 1–200 unique guests");
+    await expect(
+      coupleService.bulkArchiveGuests(wedding.id, [guestId, guestId]),
+    ).rejects.toThrow("Bulk guest actions accept 1–200 unique guests");
+    await expect(
+      coupleService.bulkArchiveGuests(wedding.id, ["not-a-uuid"]),
+    ).rejects.toThrow("Bulk guest actions accept 1–200 unique guests");
+    await expect(
+      coupleService.bulkArchiveGuests(
+        wedding.id,
+        Array.from({ length: 201 }, () => crypto.randomUUID()),
+      ),
+    ).rejects.toThrow("Bulk guest actions accept 1–200 unique guests");
+  });
+
+  it("revokes an archived guest invitation and does not revive it on restore", async () => {
+    const repository = new InMemoryLoveChapterRepository();
+    const coupleService = service(repository);
+    const wedding = await coupleService.createWedding({
+      name: "Mali & Arun",
+      timeZone: "UTC",
+      locale: "en",
+    });
+    const guest = await coupleService.addGuest(wedding.id, {
+      name: "Nok",
+      allowedPartySize: 1,
+    });
+    const invitation = await coupleService.createInvitation(
+      wedding.id,
+      guest.id,
+    );
+
+    await coupleService.archiveGuest(wedding.id, guest.id);
+    await expect(
+      coupleService.getPublicInvitation(invitation.token),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await coupleService.restoreGuest(wedding.id, guest.id);
+    await expect(
+      coupleService.getPublicInvitation(invitation.token),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("assigns existing guests only to affiliations from the same wedding", async () => {
+    const repository = new InMemoryLoveChapterRepository();
+    const coupleService = service(repository);
+    const first = await coupleService.createWedding({
+      name: "First",
+      timeZone: "UTC",
+      locale: "en",
+    });
+    const second = await coupleService.createWedding({
+      name: "Second",
+      timeZone: "UTC",
+      locale: "en",
+    });
+    const affiliation = await coupleService.createGuestAffiliation(first.id, {
+      name: "Family",
+      color: "#a855f7",
+    });
+    const guest = await coupleService.addGuest(second.id, {
+      name: "Nok",
+      allowedPartySize: 1,
+    });
+
+    await expect(
+      coupleService.setGuestAffiliation(second.id, guest.id, affiliation.id),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      coupleService.setGuestAffiliation(second.id, guest.id, null),
+    ).resolves.toMatchObject({ id: guest.id, affiliation: null });
+  });
+
+  it("limits each wedding to 100 guest affiliations", async () => {
+    const repository = new InMemoryLoveChapterRepository();
+    const coupleService = service(repository);
+    const wedding = await coupleService.createWedding({
+      name: "Mali & Arun",
+      timeZone: "UTC",
+      locale: "en",
+    });
+
+    for (let index = 0; index < 100; index += 1) {
+      await coupleService.createGuestAffiliation(wedding.id, {
+        name: `Affiliation ${index}`,
+        color: "#a855f7",
+      });
+    }
+
+    await expect(
+      coupleService.createGuestAffiliation(wedding.id, {
+        name: "One too many",
+        color: "#a855f7",
+      }),
+    ).rejects.toBeInstanceOf(DomainValidationError);
   });
 
   it("rejects an expired invitation without disclosing guest data", async () => {

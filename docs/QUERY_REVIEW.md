@@ -68,9 +68,39 @@ deletion after an ordered bounded subquery.
 
 ## Live plan gate
 
-`EXPLAIN` and `EXPLAIN (ANALYZE, BUFFERS)` were not run because this workspace
-does not have a confirmed disposable `TEST_DATABASE_URL` or representative
-staging data. This remains a deployment gate, not a claimed success. In staging,
-review wedding/guest lists, public invitation/RSVP, email lookup, session
-resolve, due-job claim, and every cleanup variant at representative 10×/100×
-cardinalities. Use `EXPLAIN ANALYZE` only for safe reads outside production.
+On 2026-09-26, `scripts/staging-query-plan-probe.mjs` ran safe `SELECT`-only
+`EXPLAIN (ANALYZE, BUFFERS)` statements against the separate Neon staging-test
+branch. A transaction seeded 1,000 weddings and memberships, 20,000 guests
+across 10 weddings, 1,000 invitations, 1,000 auth
+accounts/sessions/tokens/email jobs, and 10,000 rate-limit buckets (1,000
+expired). It was rolled back; a post-run query found zero synthetic users,
+accounts, and rate-limit rows. The script refuses to run when the staging and
+staging-test hosts match. No production database was queried.
+
+| Representative read            | Execution time | Relevant plan observation                                                   |
+| ------------------------------ | -------------: | --------------------------------------------------------------------------- |
+| Wedding page                   |       0.853 ms | Sequential scans + sort over 1,000 memberships owned by one user            |
+| Guest page                     |       1.305 ms | Membership PK lookup, bitmap index on wedding-scoped guest PK, bounded sort |
+| Invitation lookup              |       0.128 ms | Token-hash unique index, guest PK, RSVP unique index                        |
+| Account by email               |       0.034 ms | `auth_accounts_email_key_unique`                                            |
+| Session by token hash          |       0.043 ms | `auth_sessions_token_hash_unique`, account PK                               |
+| Due email jobs                 |       0.035 ms | `auth_email_jobs_due_idx`                                                   |
+| Expired rate-limit bucket page |       1.100 ms | Bitmap scan of `auth_rate_limits_expiry_cleanup_idx`, bounded sort          |
+
+These are single-run, warm-cache, synthetic results, not latency guarantees.
+Sequential scans are reasonable for small/low-selectivity tables and are not
+alone a reason to add indexes. The probe uses representative read shapes rather
+than every exact generated statement. Separately, the actual Drizzle-generated
+SQL for wedding/guest/CSV-export pages, public invitation, RSVP upsert,
+account/session lookups, email-job claim, CSV preview, all four auth cleanup
+variants, and guest-import cleanup passed safe `EXPLAIN (FORMAT JSON)` on the
+staging-test branch. Those DML/CTE plans were **not** executed with
+`EXPLAIN ANALYZE`. The sparse-branch exact plans favored some sequential scans;
+the representative probe above supplies the larger-data index evidence.
+
+The remaining query-plan limitation is that exact generated CSV preview/export
+and mutation plans were not benchmarked at every possible tenant/cardinality
+distribution. Bounded page sizes, index definitions, PostgreSQL integration
+tests, and live staging CSV/RSVP behavior have been reviewed; repeat the probe
+when real staging data grows rather than adding indexes to eliminate every
+small-table scan.

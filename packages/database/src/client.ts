@@ -1,5 +1,5 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
-import type { SQL } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { Client, Pool, type PoolConfig } from "pg";
 
 import {
@@ -10,6 +10,10 @@ import {
   PostgresLoveChapterRepository,
   type QueryExecutor,
 } from "./repository";
+import { PostgresGuestImportRepository } from "./guest-import-repository";
+import { PostgresEnvelopeRepository } from "./envelope-repository";
+import { PostgresPlanningRepository } from "./planning-repository";
+import { PostgresWeddingOperationsRepository } from "./wedding-operations-repository";
 
 class DrizzleQueryExecutor implements QueryExecutor {
   constructor(private readonly database: NodePgDatabase) {}
@@ -40,10 +44,30 @@ export type PostgresRuntimeConfig = {
 export type PostgresRuntime = {
   pool: Pool;
   loveChapterRepository: PostgresLoveChapterRepository;
+  guestImportRepository: PostgresGuestImportRepository;
+  envelopeRepository: PostgresEnvelopeRepository;
+  planningRepository: PostgresPlanningRepository;
+  operationsRepository: PostgresWeddingOperationsRepository;
   authRepository: PostgresAuthRepository;
   emailJobStore: PostgresEmailJobStore;
   close(): Promise<void>;
 };
+
+export type InvocationPostgresRuntime = ReturnType<typeof repositoriesFor> & {
+  readiness(): Promise<void>;
+};
+
+function repositoriesFor(executor: QueryExecutor) {
+  return {
+    loveChapterRepository: new PostgresLoveChapterRepository(executor),
+    guestImportRepository: new PostgresGuestImportRepository(executor),
+    envelopeRepository: new PostgresEnvelopeRepository(executor),
+    planningRepository: new PostgresPlanningRepository(executor),
+    operationsRepository: new PostgresWeddingOperationsRepository(executor),
+    authRepository: new PostgresAuthRepository(executor),
+    emailJobStore: new PostgresEmailJobStore(executor),
+  };
+}
 
 export function createPoolConfig(
   environment: Record<string, string | undefined>,
@@ -79,9 +103,7 @@ export function createPostgresRuntime(
   const executor = new DrizzleQueryExecutor(drizzle({ client: pool }));
   return {
     pool,
-    loveChapterRepository: new PostgresLoveChapterRepository(executor),
-    authRepository: new PostgresAuthRepository(executor),
-    emailJobStore: new PostgresEmailJobStore(executor),
+    ...repositoriesFor(executor),
     close: () => pool.end(),
   };
 }
@@ -118,10 +140,109 @@ class LazyPostgresQueryExecutor implements QueryExecutor {
 
   private async connect(): Promise<DrizzleQueryExecutor> {
     const client = this.createClient(this.connectionString);
-    await client.connect();
     this.client = client;
+    await client.connect();
     return new DrizzleQueryExecutor(drizzle({ client }));
   }
+}
+
+export async function withPostgresRuntime<T>(
+  connectionString: string,
+  operation: (runtime: InvocationPostgresRuntime) => Promise<T>,
+  createClient: PostgresClientFactory = (value) =>
+    new Client({
+      connectionString: value,
+      connectionTimeoutMillis: 5_000,
+      query_timeout: 10_000,
+    }),
+): Promise<T> {
+  if (!connectionString?.trim())
+    throw new Error("Hyperdrive connection is not configured");
+  const executor = new LazyPostgresQueryExecutor(
+    connectionString,
+    createClient,
+  );
+  try {
+    return await operation({
+      ...repositoriesFor(executor),
+      readiness: async () => {
+        await executor.execute(sql`select 1 as one`);
+      },
+    });
+  } finally {
+    await executor.close();
+  }
+}
+
+export async function withPostgresResponse(
+  connectionString: string,
+  operation: (runtime: InvocationPostgresRuntime) => Promise<Response>,
+  createClient: PostgresClientFactory = (value) =>
+    new Client({
+      connectionString: value,
+      connectionTimeoutMillis: 5_000,
+      query_timeout: 10_000,
+    }),
+): Promise<Response> {
+  if (!connectionString?.trim())
+    throw new Error("Hyperdrive connection is not configured");
+  const executor = new LazyPostgresQueryExecutor(
+    connectionString,
+    createClient,
+  );
+  const runtime = {
+    ...repositoriesFor(executor),
+    readiness: async () => {
+      await executor.execute(sql`select 1 as one`);
+    },
+  };
+  let response: Response;
+  try {
+    response = await operation(runtime);
+  } catch (error) {
+    await executor.close();
+    throw error;
+  }
+  if (!response.body) {
+    await executor.close();
+    return response;
+  }
+
+  const reader = response.body.getReader();
+  let closed = false;
+  async function close() {
+    if (closed) return;
+    closed = true;
+    await executor.close();
+  }
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          controller.close();
+          await close();
+        } else {
+          controller.enqueue(value);
+        }
+      } catch (error) {
+        controller.error(error);
+        await close();
+      }
+    },
+    async cancel(reason) {
+      try {
+        await reader.cancel(reason);
+      } finally {
+        await close();
+      }
+    },
+  });
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
 }
 
 export async function withPostgresRepository<T>(

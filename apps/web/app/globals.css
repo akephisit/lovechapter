@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "@fontsource-variable/noto-sans-thai/wght.css";
+@import "@fontsource-variable/noto-serif-thai/wght.css";
 
 :root {
   --background: #fbf6ef;

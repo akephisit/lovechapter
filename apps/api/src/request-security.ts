@@ -64,6 +64,22 @@ export function requireJsonContentType(request: Request): void {
   }
 }
 
+export function isGuestCsvUpload(request: Request): boolean {
+  return (
+    request.method === "POST" &&
+    /^\/v1\/weddings\/[0-9a-f-]{36}\/guest-imports$/iu.test(
+      new URL(request.url).pathname,
+    )
+  );
+}
+
+export function requireGuestCsvContentType(request: Request): void {
+  const value = request.headers.get("content-type")?.trim().toLowerCase();
+  if (value !== "text/csv" && value !== "text/csv; charset=utf-8") {
+    throw new RequestSecurityError("request_content_type_rejected", 400);
+  }
+}
+
 function sameSecret(actual: string, expected: string): boolean {
   const actualBytes = Buffer.from(actual);
   const expectedBytes = Buffer.from(expected);

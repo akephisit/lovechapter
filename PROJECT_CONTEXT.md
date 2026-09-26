@@ -107,6 +107,39 @@ Resolution:
 
 Sensitive guest changes may later require email OTP or equivalent verification.
 
+### Guest affiliations — LOCKED
+
+- Affiliations are wedding-defined and are never hardcoded as bride side,
+  groom side, or another assumed family structure.
+- A wedding member can create, rename, color, order, and delete affiliations.
+- A wedding may have at most 100 affiliations, and the limit is enforced before
+  a new one is created.
+- A guest has zero or one affiliation in the first version.
+- Existing guests can be assigned, reassigned, or returned to unassigned.
+- Deleting an affiliation preserves every guest and leaves affected guests
+  unassigned.
+- Tags or multi-group membership are a separate future capability.
+- A postal address is not required to create or manage a guest.
+
+### Guest management, data exchange, and printing — LOCKED
+
+The approved design lives in
+`docs/superpowers/specs/2026-09-23-guest-management-csv-envelope-design.md`.
+Guest management uses optional contact, envelope name, note, and postal address
+fields; searchable, filterable active/archive lists; transactional invitation
+revocation on archive; restore without reviving links; and bounded atomic bulk
+operations. Address remains optional for RSVP, import/export, and name-only
+envelopes. CSV export streams the authorized filtered set in 500-row pages
+with spreadsheet-formula protection and no invitation secrets. CSV import is
+creation-only: a bounded `text/csv` parser stages normalized rows for 24 hours,
+previews mapping/errors/duplicates, requires explicit inclusion and duplicate
+decisions, and commits once per batch/idempotency key. Expired staging is
+cleaned in 500-batch maintenance runs. Browser envelope printing uses 1–500
+active guest IDs, optional postal addresses, validated DL/C5/C6/custom
+templates, self-hosted Thai fonts, and one text-only page per guest. The
+GitHub Actions runs the disposable PostgreSQL integration suite. Representative
+staging query plans and a physical-printer acceptance check remain unverified.
+
 ---
 
 ## 4. Ownership and billing — LOCKED
@@ -199,7 +232,7 @@ Domain code should emit notification events. Delivery providers should be isolat
 ### Guests
 
 - guest list
-- groups
+- wedding-defined affiliations
 - invitations
 - RSVP
 - party size / plus-one
@@ -282,10 +315,29 @@ Store money using a machine-safe amount representation and ISO currency code. Do
 
 ---
 
-## 9. Frontend Worker and Bun/VPS backend architecture — LOCKED
+## 9. Frontend Worker and selectable backend runtime — LOCKED
 
-The frontend targets Cloudflare Workers. The backend targets an always-on Bun
-process on a VPS, with a separate Bun background-job process.
+The frontend targets Cloudflare Workers. An installation selects **one**
+backend deployment: an always-on Bun API plus separate Bun jobs process on a
+VPS, or a Cloudflare API Worker with scheduled jobs in that same Worker. The
+application must not run both backend alternatives for one installation.
+Future backend features must remain usable with either selection: share the
+Elysia routes, domain rules, authorization, schema, and durable job behavior,
+while adapting process lifecycle and database connections to the selected
+runtime. A change is not complete if it silently removes one deployment path.
+
+### Release/schema cutover — LOCKED
+
+Each release targets one current application contract and database schema.
+LoveChapter does not maintain old/new application or schema compatibility merely
+to permit a rolling deployment. Breaking changes use a coordinated cutover:
+prebuild and test the new frontend and both backend runtime paths, stop writes
+and background work for the selected installation, verify a recoverable backup,
+migrate and validate existing data, deploy the selected backend and frontend
+from the same revision, smoke-test, then reopen. If a reliable write/job gate
+and recovery plan are not available, the breaking release remains blocked.
+Never silently discard existing customer data or run mixed incompatible
+versions. Nonbreaking component-only releases may still deploy selectively.
 
 Do not default to:
 
@@ -313,13 +365,13 @@ Current Cloudflare recommendation for new Next.js Workers applications is vinext
 
 - Elysia 2
 - TypeScript
-- Bun 1.4.2 production runtime
-- always-on VPS HTTP process
-- separate Bun background-job process
+- Bun 1.4.2 with an always-on VPS HTTP process and separate Bun jobs process,
+  or a Cloudflare Worker with Elysia fetch and scheduled job handlers
 
 Elysia 2 is an explicit project decision.
 
-The current Elysia 2 release line is beta and version-sensitive. Its Bun runtime behavior is an accepted project risk that must be actively validated.
+The current Elysia 2 release line is beta and version-sensitive. Validate both
+the Bun HTTP and Cloudflare Worker bundle/runtime paths before launch.
 
 Do not silently replace Elysia 2.
 
@@ -333,9 +385,10 @@ performs normal session authentication and server-side authorization.
 
 The proxy must keep the backend origin and ingress credential out of browser
 assets, remove spoofed forwarding headers, preserve approved `Set-Cookie`
-headers, and keep origins configurable. Production requires a stable backend
-hostname with publicly trusted TLS; a bare IP or self-signed certificate is not
-an accepted production path.
+headers, and keep origins configurable. On the VPS path production requires a
+stable backend hostname with publicly trusted TLS. On the Worker path the
+generated API `workers.dev` HTTPS origin is sufficient until a custom domain
+is registered. A bare IP or self-signed certificate is not an accepted path.
 
 If a blocker occurs:
 
@@ -366,7 +419,9 @@ Primary database:
 
 Access path:
 
-`Bun API/job process -> bounded pg.Pool -> Neon PostgreSQL`
+VPS: `Bun API/job processes -> bounded pg.Pool -> Neon PostgreSQL`
+
+Workers: `API fetch/scheduled invocation -> Hyperdrive -> Neon PostgreSQL`
 
 ORM:
 
@@ -374,14 +429,19 @@ ORM:
 
 Preferred PostgreSQL driver:
 
-- `pg` / node-postgres with separately bounded API and job-process pools
+- VPS: `pg` with separately bounded API and job-process pools
+- Workers: one lazy `pg.Client` per invocation, closed at invocation end
 
-Use a direct TLS PostgreSQL connection. Hyperdrive and backend Workers are not
-production targets.
+The VPS uses a direct TLS PostgreSQL connection. Workers use a configured
+Hyperdrive binding backed by Neon; database migrations use a separate direct
+connection outside the Worker. Disable Hyperdrive query caching because account
+and tenant authorization require fresh reads.
 
-The initial connection budgets are a maximum of 6 connections for the API
+The VPS initial connection budgets are a maximum of 6 connections for the API
 process and 2 for the job process. Changes require measurement against the
-deployed Neon and VPS limits.
+deployed Neon and VPS limits. Worker invocations use a lazy client through
+cache-disabled Hyperdrive; response streams may keep that client until the
+stream ends or is canceled.
 
 Use migrations.
 
@@ -544,9 +604,9 @@ Include:
 
 - monorepo foundation;
 - frontend Cloudflare Worker configuration;
-- Bun/VPS API and background-job configuration;
+- selectable Bun/VPS or Cloudflare Workers API and background-job configuration;
 - environment strategy;
-- Neon + bounded direct PostgreSQL pools + Drizzle foundation;
+- Neon + Drizzle foundation with bounded direct VPS pools and Worker Hyperdrive;
 - MVP schema/migrations;
 - wedding membership/authorization;
 - guest management;

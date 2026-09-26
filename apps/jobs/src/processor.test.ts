@@ -18,6 +18,29 @@ import { processEmailBatch, runJobLoop } from "./processor";
 const now = new Date("2026-09-22T12:00:00.000Z");
 
 describe("durable email processor", () => {
+  it("cleans expired guest imports on maintenance cadence without logging row values", async () => {
+    const store = new FakeJobStore([]);
+    const controller = new AbortController();
+    const cleanup = vi.fn(async () => 3);
+    const log = vi.fn();
+    let calls = 0;
+    await runJobLoop({
+      ...processorOptions(store, { send: vi.fn() }, tokenCodec()),
+      guestImportCleanup: { cleanupExpiredGuestImports: cleanup },
+      log,
+      signal: controller.signal,
+      sleep: async () => {
+        calls++;
+        if (calls === 2) controller.abort();
+      },
+    });
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(cleanup).toHaveBeenCalledWith({
+      now: now.toISOString(),
+      limit: 500,
+    });
+    expect(log).toHaveBeenCalledWith("guest_import_cleanup", { removed: 3 });
+  });
   it("sends no more than three jobs concurrently", async () => {
     const codec = tokenCodec();
     const store = new FakeJobStore(jobs(codec, 10));

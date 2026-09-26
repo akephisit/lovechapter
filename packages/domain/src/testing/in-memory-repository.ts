@@ -1,23 +1,37 @@
 import type {
   AuthenticatedUser,
+  BulkGuestResult,
+  CreateGuestAffiliationInput,
   CreateGuestInput,
   CreateWeddingInput,
+  GuestAffiliation,
+  GuestDetail,
+  GuestCsvRow,
   GuestSummary,
   InvitationCreated,
   Page,
   PublicInvitation,
   RsvpResponse,
   SubmitRsvpInput,
+  UpdateGuestAffiliationInput,
   UpdateProfileInput,
   WeddingSummary,
 } from "@lovechapter/contracts";
 
+export { InMemoryEnvelopeRepository } from "./in-memory-envelope-repository";
+export { InMemoryPlanningRepository } from "./in-memory-planning-repository";
+
+export { InMemoryGuestImportRepository } from "./in-memory-guest-import-repository";
+
 import { encodeCursor } from "../cursor";
-import { ConflictError, NotFoundError } from "../errors";
+import { ConflictError, DomainValidationError, NotFoundError } from "../errors";
 import type { Principal } from "../identity";
 import type {
   CreateInvitationRecord,
+  GuestExportPageRow,
+  GuestListRepositoryInput,
   LoveChapterRepository,
+  NormalizedGuestUpdate,
   RepositoryPageInput,
   RsvpWriteResult,
 } from "../ports";
@@ -29,7 +43,7 @@ type WeddingRecord = {
 
 type GuestRecord = {
   weddingId: string;
-  summary: GuestSummary;
+  detail: GuestDetail;
 };
 
 type InvitationRecord = CreateInvitationRecord & {
@@ -40,9 +54,14 @@ export class InMemoryLoveChapterRepository implements LoveChapterRepository {
   private readonly usersByIdentity = new Map<string, AuthenticatedUser>();
   private readonly weddings = new Map<string, WeddingRecord>();
   private readonly guests = new Map<string, GuestRecord>();
+  private readonly guestAffiliations = new Map<
+    string,
+    { weddingId: string; summary: GuestAffiliation }
+  >();
   private readonly invitations = new Map<string, InvitationRecord>();
   private readonly rsvpsByGuest = new Map<string, RsvpResponse>();
   private readonly now: () => Date;
+  lastGuestUpdate: NormalizedGuestUpdate | undefined;
 
   constructor(options?: { now?: () => Date }) {
     this.now = options?.now ?? (() => new Date());
@@ -130,19 +149,173 @@ export class InMemoryLoveChapterRepository implements LoveChapterRepository {
     return summary;
   }
 
+  async listGuestAffiliations(
+    userId: string,
+    weddingId: string,
+  ): Promise<GuestAffiliation[]> {
+    this.requireMember(userId, weddingId);
+    return this.affiliationsForWedding(weddingId);
+  }
+
+  async createGuestAffiliation(
+    userId: string,
+    weddingId: string,
+    id: string,
+    input: CreateGuestAffiliationInput,
+  ): Promise<GuestAffiliation> {
+    this.requireMember(userId, weddingId);
+    const current = this.affiliationsForWedding(weddingId);
+    if (current.length >= 100) {
+      throw new DomainValidationError(
+        "A wedding can have at most 100 guest affiliations",
+      );
+    }
+    this.assertUniqueAffiliationName(weddingId, input.name);
+    const summary: GuestAffiliation = {
+      id,
+      ...input,
+      sortOrder: (current.at(-1)?.sortOrder ?? -1) + 1,
+      createdAt: this.now().toISOString(),
+    };
+    this.guestAffiliations.set(id, { weddingId, summary });
+    return summary;
+  }
+
+  async updateGuestAffiliation(
+    userId: string,
+    weddingId: string,
+    affiliationId: string,
+    input: UpdateGuestAffiliationInput,
+  ): Promise<GuestAffiliation> {
+    this.requireMember(userId, weddingId);
+    const record = this.requireAffiliation(weddingId, affiliationId);
+    this.assertUniqueAffiliationName(weddingId, input.name, affiliationId);
+    const summary = { ...record.summary, ...input };
+    this.guestAffiliations.set(affiliationId, { weddingId, summary });
+    return summary;
+  }
+
+  async reorderGuestAffiliations(
+    userId: string,
+    weddingId: string,
+    affiliationIds: string[],
+  ): Promise<GuestAffiliation[]> {
+    this.requireMember(userId, weddingId);
+    const current = this.affiliationsForWedding(weddingId);
+    if (
+      current.length !== affiliationIds.length ||
+      affiliationIds.some(
+        (id) =>
+          !this.guestAffiliations.get(id) ||
+          this.guestAffiliations.get(id)?.weddingId !== weddingId,
+      )
+    ) {
+      throw new DomainValidationError("Invalid guest affiliation order");
+    }
+    affiliationIds.forEach((id, sortOrder) => {
+      const record = this.requireAffiliation(weddingId, id);
+      this.guestAffiliations.set(id, {
+        ...record,
+        summary: { ...record.summary, sortOrder },
+      });
+    });
+    return this.affiliationsForWedding(weddingId);
+  }
+
+  async deleteGuestAffiliation(
+    userId: string,
+    weddingId: string,
+    affiliationId: string,
+  ): Promise<void> {
+    this.requireMember(userId, weddingId);
+    this.requireAffiliation(weddingId, affiliationId);
+    this.guestAffiliations.delete(affiliationId);
+    for (const [guestId, record] of this.guests) {
+      if (
+        record.weddingId === weddingId &&
+        record.detail.affiliation?.id === affiliationId
+      ) {
+        this.guests.set(guestId, {
+          ...record,
+          detail: { ...record.detail, affiliation: null },
+        });
+      }
+    }
+  }
+
   async listGuests(
     userId: string,
     weddingId: string,
-    page: RepositoryPageInput,
+    input: GuestListRepositoryInput,
   ): Promise<Page<GuestSummary>> {
     this.requireMember(userId, weddingId);
     const items = [...this.guests.values()]
-      .filter((record) => record.weddingId === weddingId)
-      .map((record) => ({
-        ...record.summary,
-        rsvp: this.rsvpsByGuest.get(record.summary.id) ?? null,
-      }));
-    return paginate(items, page);
+      .filter(
+        (record) =>
+          record.weddingId === weddingId &&
+          (input.view === "archived"
+            ? Boolean(record.detail.archivedAt)
+            : !record.detail.archivedAt),
+      )
+      .filter((record) =>
+        matchesGuestFilters(record.detail, input, this.rsvpsByGuest),
+      )
+      .map((record) => guestSummary(record.detail, this.rsvpsByGuest));
+    return paginate(items, input);
+  }
+
+  async listGuestExportPage(
+    userId: string,
+    weddingId: string,
+    input: GuestListRepositoryInput & { limit: 500 },
+  ): Promise<Page<GuestExportPageRow>> {
+    this.requireMember(userId, weddingId);
+    const rows = [...this.guests.values()]
+      .filter(
+        (record) =>
+          record.weddingId === weddingId &&
+          (input.view === "archived"
+            ? Boolean(record.detail.archivedAt)
+            : !record.detail.archivedAt) &&
+          matchesGuestFilters(record.detail, input, this.rsvpsByGuest),
+      )
+      .map(({ detail }) => {
+        const address = detail.postalAddress;
+        const rsvp = this.rsvpsByGuest.get(detail.id);
+        const row: GuestCsvRow = {
+          name: detail.name,
+          email: detail.email ?? null,
+          phone: detail.phone ?? null,
+          allowedPartySize: detail.allowedPartySize,
+          affiliation: detail.affiliation?.name ?? null,
+          envelopeName: detail.envelopeName ?? null,
+          addressLine1: address?.addressLine1 ?? null,
+          addressLine2: address?.addressLine2 ?? null,
+          locality: address?.locality ?? null,
+          administrativeArea: address?.administrativeArea ?? null,
+          postalCode: address?.postalCode ?? null,
+          countryCode: address?.countryCode ?? null,
+          note: detail.note ?? null,
+          rsvpStatus: rsvp?.attendance ?? null,
+          rsvpPartySize: rsvp?.partySize ?? null,
+        };
+        return {
+          ...row,
+          id: detail.id,
+          createdAt: detail.createdAt,
+          cursorId: detail.id,
+          cursorCreatedAt: detail.createdAt,
+        };
+      });
+    const page = paginate(rows, input);
+    return {
+      ...page,
+      items: page.items.map(({ id, createdAt, ...row }) => {
+        void id;
+        void createdAt;
+        return row;
+      }),
+    };
   }
 
   async createGuest(
@@ -152,24 +325,178 @@ export class InMemoryLoveChapterRepository implements LoveChapterRepository {
     input: CreateGuestInput,
   ): Promise<GuestSummary> {
     this.requireMember(userId, weddingId);
-    const summary: GuestSummary = input.email
-      ? {
-          id,
-          name: input.name,
-          email: input.email,
-          allowedPartySize: input.allowedPartySize,
-          createdAt: this.now().toISOString(),
-          rsvp: null,
-        }
-      : {
-          id,
-          name: input.name,
-          allowedPartySize: input.allowedPartySize,
-          createdAt: this.now().toISOString(),
-          rsvp: null,
-        };
-    this.guests.set(id, { weddingId, summary });
-    return summary;
+    const affiliation = input.affiliationId
+      ? this.requireAffiliation(weddingId, input.affiliationId).summary
+      : null;
+    const timestamp = this.now().toISOString();
+    const detail: GuestDetail = {
+      id,
+      name: input.name,
+      allowedPartySize: input.allowedPartySize,
+      affiliation,
+      createdAt: timestamp,
+      rsvp: null,
+      postalAddress: input.postalAddress ?? null,
+      updatedAt: timestamp,
+    };
+    if (input.email) detail.email = input.email;
+    if (input.phone) detail.phone = input.phone;
+    if (input.envelopeName) detail.envelopeName = input.envelopeName;
+    if (input.note) detail.note = input.note;
+    this.guests.set(id, { weddingId, detail });
+    return guestSummary(detail, this.rsvpsByGuest);
+  }
+
+  async setGuestAffiliation(
+    userId: string,
+    weddingId: string,
+    guestId: string,
+    affiliationId: string | null,
+  ): Promise<GuestSummary> {
+    this.requireMember(userId, weddingId);
+    const record = this.guests.get(guestId);
+    if (!record || record.weddingId !== weddingId) {
+      throw new NotFoundError("Guest not found");
+    }
+    const affiliation = affiliationId
+      ? this.requireAffiliation(weddingId, affiliationId).summary
+      : null;
+    const detail = {
+      ...record.detail,
+      affiliation,
+      updatedAt: this.now().toISOString(),
+    };
+    this.guests.set(guestId, { ...record, detail });
+    return guestSummary(detail, this.rsvpsByGuest);
+  }
+
+  async getGuest(
+    userId: string,
+    weddingId: string,
+    guestId: string,
+  ): Promise<GuestDetail> {
+    this.requireMember(userId, weddingId);
+    const record = this.requireGuest(weddingId, guestId);
+    return guestDetail(record.detail, this.rsvpsByGuest);
+  }
+
+  async updateGuest(
+    userId: string,
+    weddingId: string,
+    guestId: string,
+    input: NormalizedGuestUpdate,
+  ): Promise<GuestDetail> {
+    this.requireMember(userId, weddingId);
+    const record = this.requireGuest(weddingId, guestId);
+    const affiliation =
+      input.affiliationId === undefined
+        ? record.detail.affiliation
+        : input.affiliationId
+          ? this.requireAffiliation(weddingId, input.affiliationId).summary
+          : null;
+    const detail: GuestDetail = {
+      ...record.detail,
+      affiliation,
+      updatedAt: this.now().toISOString(),
+    };
+    if (input.name !== undefined) detail.name = input.name;
+    if (input.allowedPartySize !== undefined) {
+      detail.allowedPartySize = input.allowedPartySize;
+    }
+    applyOptional(detail, "email", input.email);
+    applyOptional(detail, "phone", input.phone);
+    applyOptional(detail, "envelopeName", input.envelopeName);
+    applyOptional(detail, "note", input.note);
+    if (input.postalAddress !== undefined) {
+      detail.postalAddress = input.postalAddress;
+    }
+    this.lastGuestUpdate = input;
+    this.guests.set(guestId, { ...record, detail });
+    return guestDetail(detail, this.rsvpsByGuest);
+  }
+
+  async archiveGuest(
+    userId: string,
+    weddingId: string,
+    guestId: string,
+  ): Promise<GuestDetail> {
+    this.requireMember(userId, weddingId);
+    const record = this.requireGuest(weddingId, guestId);
+    const timestamp = this.now().toISOString();
+    const detail = {
+      ...record.detail,
+      archivedAt: record.detail.archivedAt ?? timestamp,
+      updatedAt: timestamp,
+    };
+    this.guests.set(guestId, { ...record, detail });
+    this.revokeInvitations(weddingId, new Set([guestId]));
+    return guestDetail(detail, this.rsvpsByGuest);
+  }
+
+  async restoreGuest(
+    userId: string,
+    weddingId: string,
+    guestId: string,
+  ): Promise<GuestDetail> {
+    this.requireMember(userId, weddingId);
+    const record = this.requireGuest(weddingId, guestId);
+    const active = { ...record.detail };
+    delete active.archivedAt;
+    const detail: GuestDetail = {
+      ...active,
+      updatedAt: this.now().toISOString(),
+    };
+    this.guests.set(guestId, { ...record, detail });
+    return guestDetail(detail, this.rsvpsByGuest);
+  }
+
+  async bulkSetGuestAffiliation(
+    userId: string,
+    weddingId: string,
+    guestIds: string[],
+    affiliationId: string | null,
+  ): Promise<BulkGuestResult> {
+    this.requireMember(userId, weddingId);
+    const records = guestIds.map((guestId) =>
+      this.requireGuest(weddingId, guestId),
+    );
+    const affiliation = affiliationId
+      ? this.requireAffiliation(weddingId, affiliationId).summary
+      : null;
+    const timestamp = this.now().toISOString();
+    guestIds.forEach((guestId, index) => {
+      const record = records[index]!;
+      this.guests.set(guestId, {
+        ...record,
+        detail: { ...record.detail, affiliation, updatedAt: timestamp },
+      });
+    });
+    return { affected: guestIds.length };
+  }
+
+  async bulkArchiveGuests(
+    userId: string,
+    weddingId: string,
+    guestIds: string[],
+  ): Promise<BulkGuestResult> {
+    this.requireMember(userId, weddingId);
+    const records = guestIds.map((guestId) =>
+      this.requireGuest(weddingId, guestId),
+    );
+    const timestamp = this.now().toISOString();
+    guestIds.forEach((guestId, index) => {
+      const record = records[index]!;
+      this.guests.set(guestId, {
+        ...record,
+        detail: {
+          ...record.detail,
+          archivedAt: record.detail.archivedAt ?? timestamp,
+          updatedAt: timestamp,
+        },
+      });
+    });
+    this.revokeInvitations(weddingId, new Set(guestIds));
+    return { affected: guestIds.length };
   }
 
   async createInvitation(
@@ -177,7 +504,11 @@ export class InMemoryLoveChapterRepository implements LoveChapterRepository {
   ): Promise<Omit<InvitationCreated, "token" | "publicUrl">> {
     this.requireMember(input.createdByUserId, input.weddingId);
     const guest = this.guests.get(input.guestId);
-    if (!guest || guest.weddingId !== input.weddingId) {
+    if (
+      !guest ||
+      guest.weddingId !== input.weddingId ||
+      guest.detail.archivedAt
+    ) {
       throw new NotFoundError("Guest not found");
     }
     const existing = [...this.invitations.values()].find(
@@ -188,6 +519,19 @@ export class InMemoryLoveChapterRepository implements LoveChapterRepository {
     );
     if (existing)
       throw new ConflictError("Guest already has an active invitation");
+    this.invitations.set(input.id, { ...input, expired: false });
+    return input.expiresAt
+      ? { id: input.id, guestId: input.guestId, expiresAt: input.expiresAt }
+      : { id: input.id, guestId: input.guestId };
+  }
+
+  async replaceInvitation(
+    input: CreateInvitationRecord,
+  ): Promise<Omit<InvitationCreated, "token" | "publicUrl">> {
+    this.requireMember(input.createdByUserId, input.weddingId);
+    const guest = this.requireGuest(input.weddingId, input.guestId);
+    if (guest.detail.archivedAt) throw new NotFoundError("Guest not found");
+    this.revokeInvitations(input.weddingId, new Set([input.guestId]));
     this.invitations.set(input.id, { ...input, expired: false });
     return input.expiresAt
       ? { id: input.id, guestId: input.guestId, expiresAt: input.expiresAt }
@@ -217,11 +561,11 @@ export class InMemoryLoveChapterRepository implements LoveChapterRepository {
     return {
       invitationId: invitation.id,
       guest: {
-        name: guest.summary.name,
-        allowedPartySize: guest.summary.allowedPartySize,
+        name: guest.detail.name,
+        allowedPartySize: guest.detail.allowedPartySize,
       },
       wedding: weddingView,
-      rsvp: this.rsvpsByGuest.get(guest.summary.id) ?? null,
+      rsvp: this.rsvpsByGuest.get(guest.detail.id) ?? null,
     };
   }
 
@@ -236,11 +580,11 @@ export class InMemoryLoveChapterRepository implements LoveChapterRepository {
     if (!guest) return { kind: "not_found" };
     if (
       input.attendance === "attending" &&
-      input.partySize > guest.summary.allowedPartySize
+      input.partySize > guest.detail.allowedPartySize
     ) {
       return {
         kind: "invalid_party_size",
-        allowedPartySize: guest.summary.allowedPartySize,
+        allowedPartySize: guest.detail.allowedPartySize,
       };
     }
     const updatedAt = this.now().toISOString();
@@ -248,7 +592,7 @@ export class InMemoryLoveChapterRepository implements LoveChapterRepository {
       ? { ...input, updatedAt }
       : { attendance: input.attendance, partySize: input.partySize, updatedAt };
     void id;
-    this.rsvpsByGuest.set(guest.summary.id, response);
+    this.rsvpsByGuest.set(guest.detail.id, response);
     return { kind: "saved", value: response };
   }
 
@@ -268,6 +612,64 @@ export class InMemoryLoveChapterRepository implements LoveChapterRepository {
     return wedding;
   }
 
+  private affiliationsForWedding(weddingId: string): GuestAffiliation[] {
+    return [...this.guestAffiliations.values()]
+      .filter((record) => record.weddingId === weddingId)
+      .map((record) => record.summary)
+      .toSorted(
+        (left, right) =>
+          left.sortOrder - right.sortOrder ||
+          left.createdAt.localeCompare(right.createdAt) ||
+          left.id.localeCompare(right.id),
+      );
+  }
+
+  private requireAffiliation(
+    weddingId: string,
+    affiliationId: string,
+  ): { weddingId: string; summary: GuestAffiliation } {
+    const record = this.guestAffiliations.get(affiliationId);
+    if (!record || record.weddingId !== weddingId) {
+      throw new NotFoundError("Guest affiliation not found");
+    }
+    return record;
+  }
+
+  private requireGuest(weddingId: string, guestId: string): GuestRecord {
+    const record = this.guests.get(guestId);
+    if (!record || record.weddingId !== weddingId) {
+      throw new NotFoundError("Guest not found");
+    }
+    return record;
+  }
+
+  private revokeInvitations(weddingId: string, guestIds: Set<string>): void {
+    for (const invitation of this.invitations.values()) {
+      if (
+        invitation.weddingId === weddingId &&
+        guestIds.has(invitation.guestId)
+      ) {
+        invitation.expired = true;
+      }
+    }
+  }
+
+  private assertUniqueAffiliationName(
+    weddingId: string,
+    name: string,
+    exceptId?: string,
+  ): void {
+    const duplicate = [...this.guestAffiliations.entries()].some(
+      ([id, record]) =>
+        id !== exceptId &&
+        record.weddingId === weddingId &&
+        record.summary.name.localeCompare(name, undefined, {
+          sensitivity: "accent",
+        }) === 0,
+    );
+    if (duplicate) throw new ConflictError("Guest affiliation already exists");
+  }
+
   private activeInvitation(tokenHash: string): InvitationRecord | undefined {
     return [...this.invitations.values()].find(
       (invitation) =>
@@ -277,6 +679,83 @@ export class InMemoryLoveChapterRepository implements LoveChapterRepository {
           invitation.expiresAt > this.now().toISOString()),
     );
   }
+}
+
+function guestSummary(
+  detail: GuestDetail,
+  rsvpsByGuest: Map<string, RsvpResponse>,
+): GuestSummary {
+  const summary: GuestSummary = {
+    id: detail.id,
+    name: detail.name,
+    allowedPartySize: detail.allowedPartySize,
+    affiliation: detail.affiliation,
+    createdAt: detail.createdAt,
+    rsvp: rsvpsByGuest.get(detail.id) ?? null,
+  };
+  if (detail.email) summary.email = detail.email;
+  if (detail.phone) summary.phone = detail.phone;
+  if (detail.archivedAt) summary.archivedAt = detail.archivedAt;
+  return summary;
+}
+
+function guestDetail(
+  detail: GuestDetail,
+  rsvpsByGuest: Map<string, RsvpResponse>,
+): GuestDetail {
+  return {
+    ...detail,
+    postalAddress: detail.postalAddress ? { ...detail.postalAddress } : null,
+    rsvp: rsvpsByGuest.get(detail.id) ?? null,
+  };
+}
+
+function applyOptional(
+  detail: GuestDetail,
+  key: "email" | "phone" | "envelopeName" | "note",
+  value: string | null | undefined,
+): void {
+  if (value === undefined) return;
+  if (value === null) {
+    delete detail[key];
+    return;
+  }
+  detail[key] = value;
+}
+
+function matchesGuestFilters(
+  detail: GuestDetail,
+  input: GuestListRepositoryInput,
+  rsvpsByGuest: Map<string, RsvpResponse>,
+): boolean {
+  const search = input.search?.toLocaleLowerCase();
+  if (
+    search &&
+    ![detail.name, detail.email, detail.phone].some((field) =>
+      field?.toLocaleLowerCase().startsWith(search),
+    )
+  ) {
+    return false;
+  }
+  if (input.affiliation === "unassigned" && detail.affiliation !== null) {
+    return false;
+  }
+  if (
+    input.affiliation &&
+    input.affiliation !== "unassigned" &&
+    detail.affiliation?.id !== input.affiliation
+  ) {
+    return false;
+  }
+  const rsvp = rsvpsByGuest.get(detail.id);
+  if (input.rsvp === "pending" && rsvp) return false;
+  if (input.rsvp === "attending" && rsvp?.attendance !== "attending") {
+    return false;
+  }
+  if (input.rsvp === "declined" && rsvp?.attendance !== "declined") {
+    return false;
+  }
+  return true;
 }
 
 function paginate<T extends { id: string; createdAt: string }>(

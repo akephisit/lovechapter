@@ -31,7 +31,11 @@ function isListCursor(value: unknown): value is ListCursor {
   if (typeof cursor.createdAt !== "string" || typeof cursor.id !== "string") {
     return false;
   }
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(cursor.createdAt)) {
+  if (
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}(?:\d{3})?Z$/.test(
+      cursor.createdAt,
+    )
+  ) {
     return false;
   }
   if (Number.isNaN(Date.parse(cursor.createdAt))) return false;

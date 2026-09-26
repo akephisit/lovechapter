@@ -51,10 +51,150 @@ export type WeddingSummary = CreateWeddingInput & {
   createdAt: string;
 };
 
+export type PlanningTask = {
+  id: string;
+  title: string;
+  category: string | null;
+  note: string | null;
+  dueDate: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+export type CreatePlanningTaskInput = {
+  title: string;
+  category?: string;
+  note?: string;
+  dueDate?: string;
+};
+export type UpdatePlanningTaskInput = Partial<{
+  title: string;
+  category: string | null;
+  note: string | null;
+  dueDate: string | null;
+  completed: boolean;
+}>;
+export type PlanningTaskFilter = "all" | "open" | "completed";
+export type PlanningOverview = {
+  total: number;
+  completed: number;
+  upcoming: PlanningTask[];
+};
+
+export type Budget = { currency: string; targetMinor: number | null };
+export type BudgetCategory = { id: string; name: string };
+export type BudgetCategoryInput = { name: string };
+export type VendorStatus = "researching" | "contacted" | "booked" | "cancelled";
+export type VendorInput = {
+  name: string;
+  status: VendorStatus;
+  contactName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  quoteMinor?: number | null;
+  note?: string | null;
+};
+export type Vendor = { id: string } & Required<VendorInput>;
+export type ExpenseInput = {
+  title: string;
+  plannedMinor: number;
+  paidMinor: number;
+  categoryId?: string | null;
+  vendorId?: string | null;
+  dueDate?: string | null;
+  note?: string | null;
+};
+export type Expense = { id: string } & Required<ExpenseInput>;
+export type BudgetOverview = {
+  budget: Budget | null;
+  plannedMinor: number;
+  paidMinor: number;
+  remainingMinor: number;
+};
+export type RunSheetItemInput = {
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  location?: string | null;
+  responsible?: string | null;
+  note?: string | null;
+};
+export type RunSheetItem = { id: string } & Required<RunSheetItemInput>;
+export type SeatingTableInput = { name: string; capacity: number };
+export type SeatingTable = SeatingTableInput & { id: string; reserved: number };
+export type SeatingAssignment = {
+  guestId: string;
+  guestName: string;
+  partySize: number;
+  tableId: string;
+};
+export type SeatingPlan = {
+  tables: SeatingTable[];
+  assignments: SeatingAssignment[];
+};
+
+export type GuestAffiliation = {
+  id: string;
+  name: string;
+  color: string;
+  sortOrder: number;
+  createdAt: string;
+};
+
+export type CreateGuestAffiliationInput = {
+  name: string;
+  color: string;
+};
+
+export type UpdateGuestAffiliationInput = CreateGuestAffiliationInput;
+
+export type ReorderGuestAffiliationsInput = {
+  ids: string[];
+};
+
+export type SetGuestAffiliationInput = {
+  affiliationId: string | null;
+};
+
+export const GUEST_RSVP_FILTER_VALUES = [
+  "pending",
+  "attending",
+  "declined",
+] as const;
+export type GuestRsvpFilter = (typeof GUEST_RSVP_FILTER_VALUES)[number];
+export type GuestView = "active" | "archived";
+
+export type PostalAddressInput = {
+  addressLine1: string;
+  addressLine2?: string;
+  locality?: string;
+  administrativeArea?: string;
+  postalCode?: string;
+  countryCode?: string;
+};
+
 export type CreateGuestInput = {
   name: string;
   email?: string;
+  phone?: string;
   allowedPartySize: number;
+  affiliationId?: string;
+  envelopeName?: string;
+  note?: string;
+  postalAddress?: PostalAddressInput;
+};
+
+export type UpdateGuestInput = Partial<
+  Omit<CreateGuestInput, "postalAddress">
+> & {
+  postalAddress?: PostalAddressInput | null;
+};
+
+export type GuestListInput = PageInput & {
+  search?: string;
+  affiliation?: string | "unassigned";
+  rsvp?: GuestRsvpFilter;
+  view: GuestView;
 };
 
 export type RsvpResponse = {
@@ -64,11 +204,157 @@ export type RsvpResponse = {
   updatedAt: string;
 };
 
-export type GuestSummary = CreateGuestInput & {
+export type GuestSummary = {
   id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  allowedPartySize: number;
+  affiliation: GuestAffiliation | null;
   createdAt: string;
+  archivedAt?: string;
   rsvp: RsvpResponse | null;
 };
+
+export type GuestCsvRow = {
+  name: string;
+  email: string | null;
+  phone: string | null;
+  allowedPartySize: number;
+  affiliation: string | null;
+  envelopeName: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  locality: string | null;
+  administrativeArea: string | null;
+  postalCode: string | null;
+  countryCode: string | null;
+  note: string | null;
+  rsvpStatus: Attendance | null;
+  rsvpPartySize: number | null;
+};
+
+export const GUEST_IMPORT_FIELDS = [
+  "name",
+  "email",
+  "phone",
+  "allowedPartySize",
+  "affiliation",
+  "envelopeName",
+  "addressLine1",
+  "addressLine2",
+  "locality",
+  "administrativeArea",
+  "postalCode",
+  "countryCode",
+  "note",
+] as const;
+export type GuestImportField = (typeof GUEST_IMPORT_FIELDS)[number];
+export type GuestImportMapping = Record<GuestImportField, number | null>;
+export type GuestImportMappingInput = {
+  expectedVersion: number;
+  mapping: GuestImportMapping;
+  affiliationMappings: Record<string, string>;
+  excludedRowIds: string[];
+};
+export type GuestImportCommitInput = {
+  expectedVersion: number;
+  includedRowIds: string[];
+  createAnywayRowIds: string[];
+  idempotencyKey: string;
+};
+export type GuestImportPreviewRow = {
+  id: string;
+  rowNumber: number;
+  sourceName: string | null;
+  sourceAffiliation: string | null;
+  candidate: CreateGuestInput | null;
+  errors: string[];
+  warnings: string[];
+  included: boolean;
+};
+export type GuestImportTotals = {
+  valid: number;
+  warning: number;
+  invalid: number;
+  excluded: number;
+};
+export type GuestImportPreview = {
+  batchId: string;
+  headers: string[];
+  mapping: GuestImportMapping;
+  affiliationMappings: Record<string, string>;
+  mappingVersion: number;
+  status: "previewed" | "committed";
+  totals: GuestImportTotals;
+  items: GuestImportPreviewRow[];
+  nextCursor: string | null;
+};
+export type GuestImportCommitResult = {
+  created: number;
+  excluded: number;
+  guestIds: string[];
+};
+
+export const ENVELOPE_ORIENTATIONS = ["landscape", "portrait"] as const;
+export const ENVELOPE_ALIGNMENTS = ["left", "center", "right"] as const;
+export const ENVELOPE_FONT_FAMILIES = [
+  "noto-sans-thai",
+  "noto-serif-thai",
+] as const;
+export const ENVELOPE_PRESETS = {
+  DL: { widthMm: 220, heightMm: 110 },
+  C5: { widthMm: 229, heightMm: 162 },
+  C6: { widthMm: 162, heightMm: 114 },
+} as const;
+export type EnvelopeTemplateInput = {
+  name: string;
+  widthMm: number;
+  heightMm: number;
+  orientation: (typeof ENVELOPE_ORIENTATIONS)[number];
+  marginTopMm: number;
+  marginRightMm: number;
+  marginBottomMm: number;
+  marginLeftMm: number;
+  alignment: (typeof ENVELOPE_ALIGNMENTS)[number];
+  fontFamily: (typeof ENVELOPE_FONT_FAMILIES)[number];
+  fontSizePt: number;
+  lineSpacingPercent: number;
+  showAddress: boolean;
+};
+export type EnvelopeTemplate = EnvelopeTemplateInput & {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+};
+export type EnvelopePrintGuest = {
+  id: string;
+  envelopeName: string;
+  postalAddress: PostalAddressInput | null;
+};
+export type EnvelopePrintDataInput = {
+  guestIds: string[];
+  templateId?: string;
+  template?: EnvelopeTemplateInput;
+};
+export type EnvelopePrintData = {
+  template: EnvelopeTemplateInput;
+  guests: EnvelopePrintGuest[];
+};
+
+export type GuestDetail = GuestSummary & {
+  envelopeName?: string;
+  note?: string;
+  postalAddress: PostalAddressInput | null;
+  updatedAt: string;
+};
+
+export type BulkGuestAffiliationInput = {
+  guestIds: string[];
+  affiliationId: string | null;
+};
+export type BulkGuestIdsInput = { guestIds: string[] };
+export type BulkGuestResult = { affected: number };
 
 export type InvitationCreated = {
   id: string;

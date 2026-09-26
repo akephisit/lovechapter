@@ -2,8 +2,9 @@
 
 ## Goal
 
-LoveChapter uses Neon PostgreSQL through bounded direct `pg` / node-postgres
-pools and Drizzle ORM.
+LoveChapter uses Neon PostgreSQL through `pg` / node-postgres and Drizzle ORM.
+VPS deployments use bounded direct pools; Worker deployments use Hyperdrive
+and a client scoped to each invocation.
 
 The ORM is a tool, not a substitute for SQL design.
 
@@ -19,7 +20,7 @@ Every engineer/agent must care about:
 
 ## 1. Connection architecture
 
-Production path:
+VPS production path:
 
 Elysia API and background-job processes on Bun/VPS
 -> separately bounded `pg.Pool` instances
@@ -33,9 +34,22 @@ Preferred:
 - one process-wide pool per backend process
 - initial maximum of 6 API connections and 2 job-process connections
 
-Hyperdrive and backend Cloudflare Workers are not production targets. Pool-size
-changes require measurement against the VPS concurrency and Neon connection
-budgets; do not multiply connection pools per request or repository.
+Worker production path:
+
+API fetch/scheduled invocation on Cloudflare Workers
+-> one lazy `pg.Client` via Hyperdrive per invocation
+-> Neon PostgreSQL
+
+The Hyperdrive configuration **must disable query caching**. Auth state,
+membership checks and writes require fresh reads; a cached SELECT can retain
+permissions after revocation or hide a newly verified account.
+
+Close scheduled Worker clients in `finally`; for HTTP responses close the
+client after a streamed body finishes or is canceled, including CSV exports
+that query lazily. Never create a global Worker client or a pool per request.
+Migrate outside Workers with a separate direct PostgreSQL URL. VPS pool-size
+changes require measurement against concurrency and Neon connection budgets;
+do not multiply pools per repository.
 
 ---
 
@@ -322,8 +336,16 @@ Every migration should be reviewed for:
 - table rewrite risk;
 - index build cost;
 - null/default behavior;
-- backward compatibility during deploy;
-- safe rollback/forward-fix strategy.
+- one-time transformation and validation of retained data;
+- whether the selected installation needs a write/job cutover gate;
+- backup/PITR readiness and a tested restore or reviewed forward-fix strategy.
+
+Do not retain legacy columns/tables, dual writes, or duplicate query paths
+solely to keep old binaries compatible during deployment. A breaking migration
+may replace the old structure in one coordinated release, but must not silently
+discard existing user data. Keep old application processes and cron/job workers
+away from the migrated schema. If that isolation cannot be enforced, do not
+apply the breaking migration. Do not assume a code rollback reverses SQL.
 
 ---
 
@@ -379,6 +401,7 @@ Raw passwords, session tokens, action-token MACs, raw client addresses, and
 complete token-bearing URLs must never be selected for diagnostics or logged.
 Only hashes/metadata required by the operation belong in PostgreSQL.
 
-Generated SQL contract tests and `drizzle-kit check` are merge gates. Live query
-plans and the opt-in PostgreSQL concurrency suite remain staging gates and must
-target a confirmed disposable database, never an inferred `DATABASE_URL`.
+Generated SQL contract tests, `drizzle-kit check`, and the disposable PostgreSQL
+integration suite are CI merge gates. Representative live query plans remain a
+staging gate. Any manual rerun of the integration suite must target a confirmed
+disposable database, never an inferred `DATABASE_URL`.

@@ -22,6 +22,48 @@
       "when": 1790059867279,
       "tag": "0002_custom_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790102239986,
+      "tag": "0003_worthless_vector",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790125040742,
+      "tag": "0004_mixed_payback",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790133042236,
+      "tag": "0005_tricky_black_panther",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790134874578,
+      "tag": "0006_lazy_namor",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790176249264,
+      "tag": "0007_square_starfox",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790178094782,
+      "tag": "0008_cool_wong",
+      "breakpoints": true
     }
   ]
 }

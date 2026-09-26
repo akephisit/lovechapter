@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [react()],
   test: {
     coverage: { enabled: false },
-    include: ["{apps,packages}/**/*.test.{ts,tsx}"],
+    include: ["{apps,packages}/**/*.test.{ts,tsx}", "scripts/**/*.test.mjs"],
     passWithNoTests: false,
     setupFiles: ["./apps/web/vitest.setup.ts"],
   },

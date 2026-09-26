@@ -10,10 +10,14 @@
     "dev": "vinext dev",
     "dev:next": "next dev",
     "deploy": "vinext-cloudflare deploy",
+    "deploy:staging": "vinext-cloudflare deploy --env staging",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@fontsource-variable/noto-sans-thai": "^5.3.0",
+    "@fontsource-variable/noto-serif-thai": "^5.3.0",
     "@lovechapter/contracts": "0.1.0",
+    "@lovechapter/domain": "0.1.0",
     "@tailwindcss/postcss": "4.3.3",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",

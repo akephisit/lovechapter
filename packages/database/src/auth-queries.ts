@@ -26,7 +26,7 @@ import {
 
 export function buildConsumeRateLimitQuery(input: RateLimitAttempt): SQL {
   return sql`insert into ${authRateLimits}
-      (${authRateLimits.scope}, ${authRateLimits.keyHash}, ${authRateLimits.bucketStartedAt}, ${authRateLimits.count}, ${authRateLimits.expiresAt})
+      (${sql.identifier(authRateLimits.scope.name)}, ${sql.identifier(authRateLimits.keyHash.name)}, ${sql.identifier(authRateLimits.bucketStartedAt.name)}, ${sql.identifier(authRateLimits.count.name)}, ${sql.identifier(authRateLimits.expiresAt.name)})
     values (${input.scope}, ${input.keyHash}, ${input.bucketStartedAt}, 1, ${input.expiresAt})
     on conflict ("scope", "key_hash", "bucket_started_at") do update set
       "count" = ${authRateLimits.count} + 1,
@@ -39,7 +39,7 @@ export function buildUpsertPendingAccountQuery(
   input: PendingRegistration,
 ): SQL {
   return sql`insert into ${authAccounts}
-      (${authAccounts.id}, ${authAccounts.email}, ${authAccounts.emailKey}, ${authAccounts.passwordHash}, ${authAccounts.credentialVersion}, ${authAccounts.createdAt}, ${authAccounts.updatedAt})
+      (${sql.identifier(authAccounts.id.name)}, ${sql.identifier(authAccounts.email.name)}, ${sql.identifier(authAccounts.emailKey.name)}, ${sql.identifier(authAccounts.passwordHash.name)}, ${sql.identifier(authAccounts.credentialVersion.name)}, ${sql.identifier(authAccounts.createdAt.name)}, ${sql.identifier(authAccounts.updatedAt.name)})
     values (${input.candidateAccountId}, ${input.email}, ${input.emailKey}, ${input.passwordHash}, 1, ${input.now}, ${input.now})
     on conflict ("email_key") do update set
       "email" = excluded."email",
@@ -56,7 +56,7 @@ export function buildSeedLocalUserQuery(input: {
   now: Date;
 }): SQL {
   return sql`insert into ${users}
-      (${users.id}, ${users.authProvider}, ${users.authSubject}, ${users.displayName}, ${users.email}, ${users.onboardingCompletedAt}, ${users.createdAt}, ${users.updatedAt})
+      (${sql.identifier(users.id.name)}, ${sql.identifier(users.authProvider.name)}, ${sql.identifier(users.authSubject.name)}, ${sql.identifier(users.displayName.name)}, ${sql.identifier(users.email.name)}, ${sql.identifier(users.onboardingCompletedAt.name)}, ${sql.identifier(users.createdAt.name)}, ${sql.identifier(users.updatedAt.name)})
     values (${input.accountId}, 'local', ${input.accountId}, ${input.displayName}, ${input.email}, ${input.now}, ${input.now}, ${input.now})
     on conflict ("auth_provider", "auth_subject") do update set
       "display_name" = excluded."display_name",
@@ -72,7 +72,7 @@ export function buildInvalidateTokensAndJobsQuery(input: {
 }): SQL {
   return sql`with "invalidated_tokens" as (
       update ${authTokens}
-      set ${authTokens.consumedAt} = ${input.now}
+      set ${sql.identifier(authTokens.consumedAt.name)} = ${input.now}
       where ${authTokens.accountId} = ${input.accountId}
         and ${authTokens.purpose} = ${input.purpose}
         and ${authTokens.consumedAt} is null
@@ -89,7 +89,7 @@ export function buildInsertActionTokenQuery(
   createdAt: Date,
 ): SQL {
   return sql`insert into ${authTokens}
-      (${authTokens.id}, ${authTokens.accountId}, ${authTokens.purpose}, ${authTokens.tokenHash}, ${authTokens.signingKeyVersion}, ${authTokens.expiresAt}, ${authTokens.createdAt})
+      (${sql.identifier(authTokens.id.name)}, ${sql.identifier(authTokens.accountId.name)}, ${sql.identifier(authTokens.purpose.name)}, ${sql.identifier(authTokens.tokenHash.name)}, ${sql.identifier(authTokens.signingKeyVersion.name)}, ${sql.identifier(authTokens.expiresAt.name)}, ${sql.identifier(authTokens.createdAt.name)})
     values (${token.id}, ${token.accountId}, ${token.purpose}, ${token.tokenHash}, ${token.signingKeyVersion}, ${new Date(token.expiresAtEpochSeconds * 1000)}, ${createdAt})`;
 }
 
@@ -98,7 +98,7 @@ export function buildInsertEmailJobQuery(
   createdAt: Date,
 ): SQL {
   return sql`insert into ${authEmailJobs}
-      (${authEmailJobs.id}, ${authEmailJobs.kind}, ${authEmailJobs.accountId}, ${authEmailJobs.authTokenId}, ${authEmailJobs.idempotencyKey}, ${authEmailJobs.availableAt}, ${authEmailJobs.createdAt}, ${authEmailJobs.updatedAt})
+      (${sql.identifier(authEmailJobs.id.name)}, ${sql.identifier(authEmailJobs.kind.name)}, ${sql.identifier(authEmailJobs.accountId.name)}, ${sql.identifier(authEmailJobs.authTokenId.name)}, ${sql.identifier(authEmailJobs.idempotencyKey.name)}, ${sql.identifier(authEmailJobs.availableAt.name)}, ${sql.identifier(authEmailJobs.createdAt.name)}, ${sql.identifier(authEmailJobs.updatedAt.name)})
     values (${issue.job.id}, ${issue.job.kind}, ${issue.job.accountId}, ${issue.job.authTokenId}, ${issue.job.idempotencyKey}, ${issue.job.availableAt}, ${createdAt}, ${createdAt})`;
 }
 
@@ -156,7 +156,7 @@ export function buildConsumeEmailVerificationQuery(
 ): SQL {
   return sql`with "consumed_token" as (
       update ${authTokens}
-      set ${authTokens.consumedAt} = ${input.now}
+      set ${sql.identifier(authTokens.consumedAt.name)} = ${input.now}
       where ${authTokens.id} = ${input.tokenId}
         and ${authTokens.accountId} = ${input.accountId}
         and ${authTokens.tokenHash} = ${input.tokenHash}
@@ -166,8 +166,8 @@ export function buildConsumeEmailVerificationQuery(
       returning ${authTokens.accountId} as "account_id"
     ), "verified_account" as (
       update ${authAccounts}
-      set ${authAccounts.emailVerifiedAt} = coalesce(${authAccounts.emailVerifiedAt}, ${input.now}),
-          ${authAccounts.updatedAt} = ${input.now}
+      set ${sql.identifier(authAccounts.emailVerifiedAt.name)} = coalesce(${authAccounts.emailVerifiedAt}, ${input.now}),
+          ${sql.identifier(authAccounts.updatedAt.name)} = ${input.now}
       from "consumed_token"
       where ${authAccounts.id} = "consumed_token"."account_id"
       returning ${authAccounts.id} as "id"
@@ -188,7 +188,7 @@ export function buildCreateSessionIfCredentialsCurrentQuery(
       for update
     )
     insert into ${authSessions}
-      (${authSessions.id}, ${authSessions.accountId}, ${authSessions.tokenHash}, ${authSessions.idleExpiresAt}, ${authSessions.absoluteExpiresAt}, ${authSessions.lastSeenAt}, ${authSessions.createdAt})
+      (${sql.identifier(authSessions.id.name)}, ${sql.identifier(authSessions.accountId.name)}, ${sql.identifier(authSessions.tokenHash.name)}, ${sql.identifier(authSessions.idleExpiresAt.name)}, ${sql.identifier(authSessions.absoluteExpiresAt.name)}, ${sql.identifier(authSessions.lastSeenAt.name)}, ${sql.identifier(authSessions.createdAt.name)})
     select ${input.id}, "eligible_account"."id", ${input.tokenHash}, ${input.idleExpiresAt}, ${input.absoluteExpiresAt}, ${input.now}, ${input.now}
     from "eligible_account"
     returning ${authSessions.id} as "id"`;
@@ -211,11 +211,11 @@ export function buildResolveSessionQuery(tokenHash: string, now: Date): SQL {
       limit 1
     ), "refreshed_session" as (
       update ${authSessions}
-      set ${authSessions.lastSeenAt} = ${now},
-          ${authSessions.idleExpiresAt} = least(${now} + interval '7 days', ${authSessions.absoluteExpiresAt})
+      set ${sql.identifier(authSessions.lastSeenAt.name)} = ${now},
+          ${sql.identifier(authSessions.idleExpiresAt.name)} = least((${now}::timestamptz) + interval '7 days', ${authSessions.absoluteExpiresAt})
       from "valid_session"
       where ${authSessions.id} = "valid_session"."session_id"
-        and ${authSessions.lastSeenAt} <= ${now} - interval '24 hours'
+        and ${authSessions.lastSeenAt} <= (${now}::timestamptz) - interval '24 hours'
       returning "valid_session"."account_id", "valid_session"."email"
     )
     select "account_id", "email" from "refreshed_session"
@@ -227,14 +227,14 @@ export function buildResolveSessionQuery(tokenHash: string, now: Date): SQL {
 
 export function buildRevokeSessionQuery(tokenHash: string, now: Date): SQL {
   return sql`update ${authSessions}
-    set ${authSessions.revokedAt} = coalesce(${authSessions.revokedAt}, ${now})
+    set ${sql.identifier(authSessions.revokedAt.name)} = coalesce(${authSessions.revokedAt}, ${now})
     where ${authSessions.tokenHash} = ${tokenHash}`;
 }
 
 export function buildRehashPasswordIfCurrentQuery(input: PasswordRehash): SQL {
   return sql`update ${authAccounts}
-    set ${authAccounts.passwordHash} = ${input.passwordHash},
-        ${authAccounts.updatedAt} = ${input.now}
+    set ${sql.identifier(authAccounts.passwordHash.name)} = ${input.passwordHash},
+        ${sql.identifier(authAccounts.updatedAt.name)} = ${input.now}
     where ${authAccounts.id} = ${input.accountId}
       and ${authAccounts.credentialVersion} = ${input.expectedCredentialVersion}
       and ${authAccounts.passwordHash} = ${input.expectedPasswordHash}
@@ -245,7 +245,7 @@ export function buildConsumePasswordResetQuery(
   input: PasswordResetConsumption,
 ): SQL {
   return sql`update ${authTokens}
-    set ${authTokens.consumedAt} = ${input.now}
+    set ${sql.identifier(authTokens.consumedAt.name)} = ${input.now}
     where ${authTokens.id} = ${input.tokenId}
       and ${authTokens.accountId} = ${input.accountId}
       and ${authTokens.tokenHash} = ${input.tokenHash}
@@ -261,9 +261,9 @@ export function buildUpdatePasswordQuery(
   now: Date,
 ): SQL {
   return sql`update ${authAccounts}
-    set ${authAccounts.passwordHash} = ${passwordHash},
-        ${authAccounts.credentialVersion} = ${authAccounts.credentialVersion} + 1,
-        ${authAccounts.updatedAt} = ${now}
+    set ${sql.identifier(authAccounts.passwordHash.name)} = ${passwordHash},
+        ${sql.identifier(authAccounts.credentialVersion.name)} = ${authAccounts.credentialVersion} + 1,
+        ${sql.identifier(authAccounts.updatedAt.name)} = ${now}
     where ${authAccounts.id} = ${accountId}
     returning ${authAccounts.id} as "id"`;
 }
@@ -273,7 +273,7 @@ export function buildRevokeAccountSessionsQuery(
   now: Date,
 ): SQL {
   return sql`update ${authSessions}
-    set ${authSessions.revokedAt} = ${now}
+    set ${sql.identifier(authSessions.revokedAt.name)} = ${now}
     where ${authSessions.accountId} = ${accountId}
       and ${authSessions.revokedAt} is null`;
 }
@@ -292,9 +292,9 @@ export function buildClaimEmailJobsQuery(input: EmailJobClaim): SQL {
       for update skip locked
     ), "claimed" as (
       update ${authEmailJobs}
-      set ${authEmailJobs.leasedUntil} = ${leasedUntil},
-          ${authEmailJobs.attemptCount} = ${authEmailJobs.attemptCount} + 1,
-          ${authEmailJobs.updatedAt} = ${input.now}
+      set ${sql.identifier(authEmailJobs.leasedUntil.name)} = ${leasedUntil},
+          ${sql.identifier(authEmailJobs.attemptCount.name)} = ${authEmailJobs.attemptCount} + 1,
+          ${sql.identifier(authEmailJobs.updatedAt.name)} = ${input.now}
       from "claimable"
       where ${authEmailJobs.id} = "claimable"."id"
       returning
@@ -328,30 +328,30 @@ export function buildClaimEmailJobsQuery(input: EmailJobClaim): SQL {
 
 export function buildMarkEmailJobSentQuery(input: EmailJobCompletion): SQL {
   return sql`update ${authEmailJobs}
-    set ${authEmailJobs.sentAt} = ${input.now},
-        ${authEmailJobs.leasedUntil} = null,
-        ${authEmailJobs.lastErrorCode} = null,
-        ${authEmailJobs.updatedAt} = ${input.now}
+    set ${sql.identifier(authEmailJobs.sentAt.name)} = ${input.now},
+        ${sql.identifier(authEmailJobs.leasedUntil.name)} = null,
+        ${sql.identifier(authEmailJobs.lastErrorCode.name)} = null,
+        ${sql.identifier(authEmailJobs.updatedAt.name)} = ${input.now}
     where ${authEmailJobs.id} = ${input.id}
       and ${authEmailJobs.leasedUntil} = ${input.leasedUntil}`;
 }
 
 export function buildRetryEmailJobQuery(input: EmailJobRetry): SQL {
   return sql`update ${authEmailJobs}
-    set ${authEmailJobs.availableAt} = ${input.availableAt},
-        ${authEmailJobs.leasedUntil} = null,
-        ${authEmailJobs.lastErrorCode} = ${input.lastErrorCode},
-        ${authEmailJobs.updatedAt} = ${input.now}
+    set ${sql.identifier(authEmailJobs.availableAt.name)} = ${input.availableAt},
+        ${sql.identifier(authEmailJobs.leasedUntil.name)} = null,
+        ${sql.identifier(authEmailJobs.lastErrorCode.name)} = ${input.lastErrorCode},
+        ${sql.identifier(authEmailJobs.updatedAt.name)} = ${input.now}
     where ${authEmailJobs.id} = ${input.id}
       and ${authEmailJobs.leasedUntil} = ${input.leasedUntil}`;
 }
 
 export function buildFailEmailJobQuery(input: EmailJobFailure): SQL {
   return sql`update ${authEmailJobs}
-    set ${authEmailJobs.attemptCount} = 8,
-        ${authEmailJobs.leasedUntil} = null,
-        ${authEmailJobs.lastErrorCode} = ${input.lastErrorCode},
-        ${authEmailJobs.updatedAt} = ${input.now}
+    set ${sql.identifier(authEmailJobs.attemptCount.name)} = 8,
+        ${sql.identifier(authEmailJobs.leasedUntil.name)} = null,
+        ${sql.identifier(authEmailJobs.lastErrorCode.name)} = ${input.lastErrorCode},
+        ${sql.identifier(authEmailJobs.updatedAt.name)} = ${input.now}
     where ${authEmailJobs.id} = ${input.id}
       and ${authEmailJobs.leasedUntil} = ${input.leasedUntil}`;
 }

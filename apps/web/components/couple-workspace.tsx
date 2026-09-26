@@ -2,27 +2,71 @@
 
 import type {
   AuthenticatedUser,
-  CreateGuestInput,
+  CreateGuestAffiliationInput,
   CreateWeddingInput,
+  GuestAffiliation,
   GuestSummary,
   InvitationCreated,
   Page,
+  UpdateGuestAffiliationInput,
   WeddingSummary,
 } from "@lovechapter/contracts";
-import { CalendarDays, Copy, Heart, Link2, Users } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Heart,
+  Link2,
+  Trash2,
+  Users,
+} from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
+import {
+  GuestWorkspace,
+  type GuestWorkspaceApi,
+} from "./guest-management/guest-workspace";
+import {
+  PlanningWorkspace,
+  type PlanningWorkspaceApi,
+} from "./planning/planning-workspace";
+import {
+  OperationsWorkspace,
+  type OperationsWorkspaceApi,
+} from "./operations/operations-workspace";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { Select } from "./ui/select";
 
-export interface CoupleWorkspaceApi {
+export interface CoupleWorkspaceApi
+  extends
+    GuestWorkspaceApi,
+    Partial<PlanningWorkspaceApi>,
+    Partial<Omit<OperationsWorkspaceApi, "listGuests">> {
   listWeddings(cursor?: string): Promise<Page<WeddingSummary>>;
   createWedding(input: CreateWeddingInput): Promise<WeddingSummary>;
-  listGuests(weddingId: string, cursor?: string): Promise<Page<GuestSummary>>;
-  addGuest(weddingId: string, input: CreateGuestInput): Promise<GuestSummary>;
+  listGuestAffiliations(weddingId: string): Promise<GuestAffiliation[]>;
+  createGuestAffiliation(
+    weddingId: string,
+    input: CreateGuestAffiliationInput,
+  ): Promise<GuestAffiliation>;
+  updateGuestAffiliation(
+    weddingId: string,
+    affiliationId: string,
+    input: UpdateGuestAffiliationInput,
+  ): Promise<GuestAffiliation>;
+  reorderGuestAffiliations(
+    weddingId: string,
+    ids: string[],
+  ): Promise<GuestAffiliation[]>;
+  deleteGuestAffiliation(
+    weddingId: string,
+    affiliationId: string,
+  ): Promise<void>;
   createInvitation(
     weddingId: string,
     guestId: string,
@@ -40,6 +84,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
   const [weddingCursor, setWeddingCursor] = useState<string | null>(null);
   const [selected, setSelected] = useState<WeddingSummary | null>(null);
   const [guests, setGuests] = useState<GuestSummary[]>([]);
+  const [affiliations, setAffiliations] = useState<GuestAffiliation[]>([]);
   const [guestCursor, setGuestCursor] = useState<string | null>(null);
   const [invitations, setInvitations] = useState<
     Record<string, InvitationCreated>
@@ -49,6 +94,8 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
   const [message, setMessage] = useState<string | null>(null);
   const [copiedGuestId, setCopiedGuestId] = useState<string | null>(null);
   const guestRequestId = useRef(0);
+  const weddingGeneration = useRef(0);
+  const workspaceMutationVersion = useRef(0);
 
   useEffect(() => {
     let current = true;
@@ -61,11 +108,22 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
         const first = weddingPage.items[0];
         if (!first) return;
         setSelected(first);
+        const generation = ++weddingGeneration.current;
         const requestId = ++guestRequestId.current;
-        const guestPage = await api.listGuests(first.id);
-        if (current && guestRequestId.current === requestId) {
+        const mutationVersion = workspaceMutationVersion.current;
+        const [guestPage, loadedAffiliations] = await Promise.all([
+          api.listGuests(first.id),
+          api.listGuestAffiliations(first.id),
+        ]);
+        if (
+          current &&
+          weddingGeneration.current === generation &&
+          guestRequestId.current === requestId &&
+          workspaceMutationVersion.current === mutationVersion
+        ) {
           setGuests(guestPage.items);
           setGuestCursor(guestPage.nextCursor);
+          setAffiliations(loadedAffiliations);
         }
       })
       .catch(() => {
@@ -80,6 +138,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
       });
     return () => {
       current = false;
+      weddingGeneration.current += 1;
       guestRequestId.current += 1;
     };
   }, [api]);
@@ -99,9 +158,11 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
         locale: stringValue(data, "locale"),
       });
       setWeddings((current) => [created, ...current]);
+      weddingGeneration.current += 1;
       guestRequestId.current += 1;
       setSelected(created);
       setGuests([]);
+      setAffiliations([]);
       setGuestCursor(null);
       setInvitations({});
       form.reset();
@@ -113,25 +174,44 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
   }
 
   async function chooseWedding(wedding: WeddingSummary) {
+    const generation = ++weddingGeneration.current;
     const requestId = ++guestRequestId.current;
+    const mutationVersion = workspaceMutationVersion.current;
     setSelected(wedding);
     setGuests([]);
+    setAffiliations([]);
     setGuestCursor(null);
     setInvitations({});
     setBusy("guests");
     setMessage(null);
     try {
-      const page = await api.listGuests(wedding.id);
-      if (guestRequestId.current === requestId) {
+      const [page, loadedAffiliations] = await Promise.all([
+        api.listGuests(wedding.id),
+        api.listGuestAffiliations(wedding.id),
+      ]);
+      if (
+        weddingGeneration.current === generation &&
+        guestRequestId.current === requestId &&
+        workspaceMutationVersion.current === mutationVersion
+      ) {
         setGuests(page.items);
         setGuestCursor(page.nextCursor);
+        setAffiliations(loadedAffiliations);
       }
     } catch (error) {
-      if (guestRequestId.current === requestId) {
+      if (
+        weddingGeneration.current === generation &&
+        guestRequestId.current === requestId
+      ) {
         setMessage(readableError(error, "We couldn't load this guest list."));
       }
     } finally {
-      if (guestRequestId.current === requestId) setBusy(null);
+      if (
+        weddingGeneration.current === generation &&
+        guestRequestId.current === requestId
+      ) {
+        setBusy(null);
+      }
     }
   }
 
@@ -140,38 +220,227 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
     if (!selected) return;
     const form = event.currentTarget;
     const data = new FormData(form);
+    const weddingId = selected.id;
+    const generation = weddingGeneration.current;
     setBusy("guest");
     setMessage(null);
     try {
       const email = stringValue(data, "email");
-      const created = await api.addGuest(selected.id, {
+      const affiliationId = stringValue(data, "affiliationId");
+      const created = await api.addGuest(weddingId, {
         name: stringValue(data, "guestName"),
         ...(email ? { email } : {}),
+        ...(affiliationId ? { affiliationId } : {}),
         allowedPartySize: Number(data.get("allowedPartySize")),
       });
-      setGuests((current) => [created, ...current]);
-      form.reset();
+      if (weddingGeneration.current === generation) {
+        workspaceMutationVersion.current += 1;
+        setGuests((current) => [created, ...current]);
+        form.reset();
+      }
     } catch (error) {
-      setMessage(readableError(error, "We couldn't add that guest."));
+      if (weddingGeneration.current === generation) {
+        setMessage(readableError(error, "We couldn't add that guest."));
+      }
     } finally {
-      setBusy(null);
+      if (weddingGeneration.current === generation) setBusy(null);
+    }
+  }
+
+  async function createGuestAffiliation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selected) return;
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const weddingId = selected.id;
+    const generation = weddingGeneration.current;
+    setBusy("affiliation:create");
+    setMessage(null);
+    try {
+      const created = await api.createGuestAffiliation(weddingId, {
+        name: stringValue(data, "name"),
+        color: stringValue(data, "color"),
+      });
+      if (weddingGeneration.current === generation) {
+        workspaceMutationVersion.current += 1;
+        setAffiliations((current) => [...current, created]);
+        form.reset();
+      }
+    } catch (error) {
+      if (weddingGeneration.current === generation) {
+        setMessage(readableError(error, "We couldn't add that affiliation."));
+      }
+    } finally {
+      if (weddingGeneration.current === generation) setBusy(null);
+    }
+  }
+
+  async function updateGuestAffiliation(
+    affiliation: GuestAffiliation,
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+    if (!selected) return;
+    const data = new FormData(event.currentTarget);
+    const weddingId = selected.id;
+    const generation = weddingGeneration.current;
+    setBusy(`affiliation:update:${affiliation.id}`);
+    setMessage(null);
+    try {
+      const updated = await api.updateGuestAffiliation(
+        weddingId,
+        affiliation.id,
+        {
+          name: stringValue(data, "name"),
+          color: stringValue(data, "color"),
+        },
+      );
+      if (weddingGeneration.current === generation) {
+        workspaceMutationVersion.current += 1;
+        setAffiliations((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
+        );
+        setGuests((current) =>
+          current.map((guest) =>
+            guest.affiliation?.id === updated.id
+              ? { ...guest, affiliation: updated }
+              : guest,
+          ),
+        );
+      }
+    } catch (error) {
+      if (weddingGeneration.current === generation) {
+        setMessage(
+          readableError(error, "We couldn't update that affiliation."),
+        );
+      }
+    } finally {
+      if (weddingGeneration.current === generation) setBusy(null);
+    }
+  }
+
+  async function moveGuestAffiliation(
+    affiliationId: string,
+    direction: -1 | 1,
+  ) {
+    if (!selected) return;
+    const weddingId = selected.id;
+    const generation = weddingGeneration.current;
+    const currentIndex = affiliations.findIndex(
+      (item) => item.id === affiliationId,
+    );
+    const nextIndex = currentIndex + direction;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= affiliations.length) {
+      return;
+    }
+    const ids = affiliations.map((item) => item.id);
+    [ids[currentIndex], ids[nextIndex]] = [ids[nextIndex]!, ids[currentIndex]!];
+    setBusy("affiliation:order");
+    setMessage(null);
+    try {
+      const reordered = await api.reorderGuestAffiliations(weddingId, ids);
+      if (weddingGeneration.current === generation) {
+        workspaceMutationVersion.current += 1;
+        setAffiliations(reordered);
+      }
+    } catch (error) {
+      if (weddingGeneration.current === generation) {
+        setMessage(readableError(error, "We couldn't reorder affiliations."));
+      }
+    } finally {
+      if (weddingGeneration.current === generation) setBusy(null);
+    }
+  }
+
+  async function deleteGuestAffiliation(affiliation: GuestAffiliation) {
+    if (!selected) return;
+    if (
+      !window.confirm(
+        `Delete “${affiliation.name}”? Guests in this affiliation will become unassigned.`,
+      )
+    ) {
+      return;
+    }
+    const weddingId = selected.id;
+    const generation = weddingGeneration.current;
+    setBusy(`affiliation:delete:${affiliation.id}`);
+    setMessage(null);
+    try {
+      await api.deleteGuestAffiliation(weddingId, affiliation.id);
+      if (weddingGeneration.current === generation) {
+        workspaceMutationVersion.current += 1;
+        setAffiliations((current) =>
+          current.filter((item) => item.id !== affiliation.id),
+        );
+        setGuests((current) =>
+          current.map((guest) =>
+            guest.affiliation?.id === affiliation.id
+              ? { ...guest, affiliation: null }
+              : guest,
+          ),
+        );
+      }
+    } catch (error) {
+      if (weddingGeneration.current === generation) {
+        setMessage(
+          readableError(error, "We couldn't delete that affiliation."),
+        );
+      }
+    } finally {
+      if (weddingGeneration.current === generation) setBusy(null);
+    }
+  }
+
+  async function setGuestAffiliation(
+    guest: GuestSummary,
+    affiliationId: string | null,
+  ) {
+    if (!selected) return;
+    const weddingId = selected.id;
+    const generation = weddingGeneration.current;
+    setBusy(`guest:affiliation:${guest.id}`);
+    setMessage(null);
+    try {
+      const updated = await api.setGuestAffiliation(weddingId, guest.id, {
+        affiliationId,
+      });
+      if (weddingGeneration.current === generation) {
+        workspaceMutationVersion.current += 1;
+        setGuests((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
+        );
+      }
+    } catch (error) {
+      if (weddingGeneration.current === generation) {
+        setMessage(
+          readableError(error, "We couldn't change that guest affiliation."),
+        );
+      }
+    } finally {
+      if (weddingGeneration.current === generation) setBusy(null);
     }
   }
 
   async function createInvitation(guest: GuestSummary) {
     if (!selected) return;
+    const weddingId = selected.id;
+    const generation = weddingGeneration.current;
     setBusy(`invitation:${guest.id}`);
     setMessage(null);
     try {
-      const invitation = await api.createInvitation(selected.id, guest.id);
-      setInvitations((current) => ({
-        ...current,
-        [guest.id]: invitation,
-      }));
+      const invitation = await api.createInvitation(weddingId, guest.id);
+      if (weddingGeneration.current === generation) {
+        setInvitations((current) => ({
+          ...current,
+          [guest.id]: invitation,
+        }));
+      }
     } catch (error) {
-      setMessage(readableError(error, "We couldn't create that invitation."));
+      if (weddingGeneration.current === generation) {
+        setMessage(readableError(error, "We couldn't create that invitation."));
+      }
     } finally {
-      setBusy(null);
+      if (weddingGeneration.current === generation) setBusy(null);
     }
   }
 
@@ -192,41 +461,73 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
 
   async function loadMoreGuests() {
     if (!selected || !guestCursor) return;
+    const weddingId = selected.id;
+    const generation = weddingGeneration.current;
+    const mutationVersion = workspaceMutationVersion.current;
     const requestId = ++guestRequestId.current;
     setBusy("more-guests");
     setMessage(null);
     try {
-      const page = await api.listGuests(selected.id, guestCursor);
-      if (guestRequestId.current === requestId) {
+      const page = await api.listGuests(weddingId, guestCursor);
+      if (
+        weddingGeneration.current === generation &&
+        guestRequestId.current === requestId &&
+        workspaceMutationVersion.current === mutationVersion
+      ) {
         setGuests((current) => appendUnique(current, page.items));
         setGuestCursor(page.nextCursor);
       }
     } catch (error) {
-      if (guestRequestId.current === requestId) {
+      if (
+        weddingGeneration.current === generation &&
+        guestRequestId.current === requestId &&
+        workspaceMutationVersion.current === mutationVersion
+      ) {
         setMessage(readableError(error, "We couldn't load more guests."));
       }
     } finally {
-      if (guestRequestId.current === requestId) setBusy(null);
+      if (
+        weddingGeneration.current === generation &&
+        guestRequestId.current === requestId
+      ) {
+        setBusy(null);
+      }
     }
   }
 
   async function refreshGuests() {
     if (!selected) return;
+    const weddingId = selected.id;
+    const generation = weddingGeneration.current;
+    const mutationVersion = workspaceMutationVersion.current;
     const requestId = ++guestRequestId.current;
     setBusy("refresh-guests");
     setMessage(null);
     try {
-      const page = await api.listGuests(selected.id);
-      if (guestRequestId.current === requestId) {
+      const page = await api.listGuests(weddingId);
+      if (
+        weddingGeneration.current === generation &&
+        guestRequestId.current === requestId &&
+        workspaceMutationVersion.current === mutationVersion
+      ) {
         setGuests(page.items);
         setGuestCursor(page.nextCursor);
       }
     } catch (error) {
-      if (guestRequestId.current === requestId) {
+      if (
+        weddingGeneration.current === generation &&
+        guestRequestId.current === requestId &&
+        workspaceMutationVersion.current === mutationVersion
+      ) {
         setMessage(readableError(error, "We couldn't refresh responses."));
       }
     } finally {
-      if (guestRequestId.current === requestId) setBusy(null);
+      if (
+        weddingGeneration.current === generation &&
+        guestRequestId.current === requestId
+      ) {
+        setBusy(null);
+      }
     }
   }
 
@@ -342,19 +643,45 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
             </div>
 
             {selected ? (
-              <WeddingWorkspace
-                wedding={selected}
-                guests={guests}
-                invitations={invitations}
-                busy={busy}
-                nextCursor={guestCursor}
-                copiedGuestId={copiedGuestId}
-                onAddGuest={addGuest}
-                onCreateInvitation={createInvitation}
-                onCopyInvitation={copyInvitation}
-                onLoadMore={loadMoreGuests}
-                onRefresh={refreshGuests}
-              />
+              <div className="space-y-6">
+                {hasPlanningApi(api) ? (
+                  <PlanningWorkspace
+                    key={selected.id}
+                    wedding={selected}
+                    api={api}
+                  />
+                ) : null}
+                {hasOperationsApi(api) ? (
+                  <OperationsWorkspace
+                    key={`operations:${selected.id}`}
+                    wedding={selected}
+                    api={api}
+                  />
+                ) : null}
+                <WeddingWorkspace
+                  api={api}
+                  wedding={selected}
+                  guests={guests}
+                  affiliations={affiliations}
+                  invitations={invitations}
+                  busy={busy}
+                  nextCursor={guestCursor}
+                  copiedGuestId={copiedGuestId}
+                  onAddGuest={addGuest}
+                  onCreateAffiliation={createGuestAffiliation}
+                  onUpdateAffiliation={updateGuestAffiliation}
+                  onMoveAffiliation={moveGuestAffiliation}
+                  onDeleteAffiliation={deleteGuestAffiliation}
+                  onSetGuestAffiliation={setGuestAffiliation}
+                  onCreateInvitation={createInvitation}
+                  onCopyInvitation={copyInvitation}
+                  onLoadMore={loadMoreGuests}
+                  onRefresh={refreshGuests}
+                  onImportedAffiliation={(affiliation) =>
+                    setAffiliations((current) => [...current, affiliation])
+                  }
+                />
+              </div>
             ) : (
               <Card className="relative overflow-hidden p-8 sm:p-10">
                 <div className="absolute top-0 right-0 size-44 translate-x-16 -translate-y-16 rounded-full bg-[#e7d2cb]/60" />
@@ -372,6 +699,44 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
         )}
       </div>
     </main>
+  );
+}
+
+function hasPlanningApi(
+  api: CoupleWorkspaceApi,
+): api is CoupleWorkspaceApi & PlanningWorkspaceApi {
+  return Boolean(
+    api.listPlanningTasks &&
+    api.getPlanningOverview &&
+    api.createPlanningTask &&
+    api.updatePlanningTask &&
+    api.deletePlanningTask,
+  );
+}
+
+function hasOperationsApi(
+  api: CoupleWorkspaceApi,
+): api is CoupleWorkspaceApi & OperationsWorkspaceApi {
+  return Boolean(
+    api.getBudgetOverview &&
+    api.setBudget &&
+    api.listBudgetCategories &&
+    api.saveBudgetCategory &&
+    api.deleteBudgetCategory &&
+    api.listVendors &&
+    api.saveVendor &&
+    api.deleteVendor &&
+    api.listExpenses &&
+    api.saveExpense &&
+    api.deleteExpense &&
+    api.listRunSheet &&
+    api.saveRunSheetItem &&
+    api.deleteRunSheetItem &&
+    api.listSeatingTables &&
+    api.saveSeatingTable &&
+    api.deleteSeatingTable &&
+    api.listSeatingAssignments &&
+    api.assignSeating,
   );
 }
 
@@ -428,33 +793,227 @@ function WeddingForm({
   );
 }
 
+function GuestAffiliationManager({
+  affiliations,
+  busy,
+  onCreate,
+  onUpdate,
+  onMove,
+  onDelete,
+}: {
+  affiliations: GuestAffiliation[];
+  busy: string | null;
+  onCreate(event: FormEvent<HTMLFormElement>): void;
+  onUpdate(
+    affiliation: GuestAffiliation,
+    event: FormEvent<HTMLFormElement>,
+  ): void;
+  onMove(affiliationId: string, direction: -1 | 1): Promise<void>;
+  onDelete(affiliation: GuestAffiliation): Promise<void>;
+}) {
+  return (
+    <Card className="p-5 sm:p-7">
+      <div className="mb-5">
+        <p className="text-xs font-bold tracking-[0.18em] text-[#925c68] uppercase">
+          Organize your guests
+        </p>
+        <h3 className="font-serif text-2xl font-semibold text-[#432f35]">
+          Guest affiliations
+        </h3>
+        <p className="mt-1 text-sm leading-6 text-[#806d70]">
+          Create the affiliations that fit this wedding. Nothing is predefined,
+          and deleting one keeps its guests as unassigned.
+        </p>
+      </div>
+
+      <form
+        className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end"
+        onSubmit={onCreate}
+      >
+        <Field label="New affiliation name" htmlFor="new-affiliation-name">
+          <Input
+            id="new-affiliation-name"
+            name="name"
+            required
+            maxLength={80}
+          />
+        </Field>
+        <Field label="Color" htmlFor="new-affiliation-color">
+          <Input
+            className="w-20 px-2"
+            id="new-affiliation-color"
+            name="color"
+            type="color"
+            defaultValue="#8c5261"
+            aria-label="New affiliation color"
+          />
+        </Field>
+        <Button type="submit" disabled={busy === "affiliation:create"}>
+          {busy === "affiliation:create" ? "Adding…" : "Add affiliation"}
+        </Button>
+      </form>
+
+      {affiliations.length === 0 ? (
+        <p className="mt-4 rounded-xl bg-[#f8f1ed] px-4 py-3 text-sm text-[#806d70]">
+          No affiliations yet. Guests can still be added without one.
+        </p>
+      ) : (
+        <div className="mt-5 space-y-3">
+          {affiliations.map((affiliation, index) => (
+            <form
+              key={affiliation.id}
+              className="grid gap-3 rounded-2xl border border-[#eadbd3] bg-white/70 p-3 sm:grid-cols-[auto_1fr_auto_auto_auto_auto] sm:items-end"
+              onSubmit={(event) => onUpdate(affiliation, event)}
+            >
+              <Input
+                className="w-14 px-2"
+                name="color"
+                type="color"
+                defaultValue={affiliation.color}
+                aria-label={`${affiliation.name} color`}
+              />
+              <Field
+                label={`${affiliation.name} name`}
+                htmlFor={`affiliation-name-${affiliation.id}`}
+              >
+                <Input
+                  id={`affiliation-name-${affiliation.id}`}
+                  name="name"
+                  defaultValue={affiliation.name}
+                  required
+                  maxLength={80}
+                />
+              </Field>
+              <Button
+                className="px-3"
+                type="submit"
+                variant="secondary"
+                disabled={busy === `affiliation:update:${affiliation.id}`}
+              >
+                Save
+              </Button>
+              <Button
+                className="px-3"
+                type="button"
+                variant="ghost"
+                aria-label={`Move ${affiliation.name} up`}
+                disabled={index === 0 || busy === "affiliation:order"}
+                onClick={() => void onMove(affiliation.id, -1)}
+              >
+                <ChevronUp aria-hidden="true" className="size-4" />
+              </Button>
+              <Button
+                className="px-3"
+                type="button"
+                variant="ghost"
+                aria-label={`Move ${affiliation.name} down`}
+                disabled={
+                  index === affiliations.length - 1 ||
+                  busy === "affiliation:order"
+                }
+                onClick={() => void onMove(affiliation.id, 1)}
+              >
+                <ChevronDown aria-hidden="true" className="size-4" />
+              </Button>
+              <Button
+                className="px-3 text-[#8a3544]"
+                type="button"
+                variant="ghost"
+                aria-label={`Delete ${affiliation.name}`}
+                disabled={busy === `affiliation:delete:${affiliation.id}`}
+                onClick={() => void onDelete(affiliation)}
+              >
+                <Trash2 aria-hidden="true" className="size-4" />
+              </Button>
+            </form>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function WeddingWorkspace({
+  api,
   wedding,
   guests,
+  affiliations,
   invitations,
   busy,
   nextCursor,
   copiedGuestId,
   onAddGuest,
+  onCreateAffiliation,
+  onUpdateAffiliation,
+  onMoveAffiliation,
+  onDeleteAffiliation,
+  onSetGuestAffiliation,
   onCreateInvitation,
   onCopyInvitation,
   onLoadMore,
   onRefresh,
+  onImportedAffiliation,
 }: {
+  api: CoupleWorkspaceApi;
   wedding: WeddingSummary;
   guests: GuestSummary[];
+  affiliations: GuestAffiliation[];
   invitations: Record<string, InvitationCreated>;
   busy: string | null;
   nextCursor: string | null;
   copiedGuestId: string | null;
   onAddGuest(event: FormEvent<HTMLFormElement>): void;
+  onCreateAffiliation(event: FormEvent<HTMLFormElement>): void;
+  onUpdateAffiliation(
+    affiliation: GuestAffiliation,
+    event: FormEvent<HTMLFormElement>,
+  ): void;
+  onMoveAffiliation(affiliationId: string, direction: -1 | 1): Promise<void>;
+  onDeleteAffiliation(affiliation: GuestAffiliation): Promise<void>;
+  onSetGuestAffiliation(
+    guest: GuestSummary,
+    affiliationId: string | null,
+  ): Promise<void>;
   onCreateInvitation(guest: GuestSummary): Promise<void>;
   onCopyInvitation(guest: GuestSummary): Promise<void>;
   onLoadMore(): Promise<void>;
   onRefresh(): Promise<void>;
+  onImportedAffiliation(affiliation: GuestAffiliation): void;
 }) {
+  if (api.getGuest && api.updateGuest && api.archiveGuest && api.restoreGuest) {
+    return (
+      <div className="space-y-6">
+        <GuestAffiliationManager
+          affiliations={affiliations}
+          busy={busy}
+          onCreate={onCreateAffiliation}
+          onUpdate={onUpdateAffiliation}
+          onMove={onMoveAffiliation}
+          onDelete={onDeleteAffiliation}
+        />
+        <GuestWorkspace
+          key={wedding.id}
+          weddingId={wedding.id}
+          weddingName={wedding.name}
+          affiliations={affiliations}
+          initialPage={{ items: guests, nextCursor }}
+          api={api}
+          onAffiliationCreated={onImportedAffiliation}
+        />
+      </div>
+    );
+  }
   return (
     <div className="space-y-6">
+      <GuestAffiliationManager
+        affiliations={affiliations}
+        busy={busy}
+        onCreate={onCreateAffiliation}
+        onUpdate={onUpdateAffiliation}
+        onMove={onMoveAffiliation}
+        onDelete={onDeleteAffiliation}
+      />
+
       <Card className="overflow-hidden">
         <div className="border-b border-[#eadbd3] bg-[linear-gradient(120deg,rgba(113,56,75,0.96),rgba(137,79,88,0.9))] px-6 py-7 text-white sm:px-8">
           <p className="mb-1 text-xs font-bold tracking-[0.2em] text-[#f4dfe0] uppercase">
@@ -483,7 +1042,7 @@ function WeddingWorkspace({
           </div>
           <form
             onSubmit={onAddGuest}
-            className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[1.2fr_1.2fr_0.7fr_auto] xl:items-end"
+            className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[1.2fr_1.2fr_0.9fr_0.7fr_auto] xl:items-end"
           >
             <Field label="Guest name" htmlFor="guest-name">
               <Input
@@ -500,6 +1059,16 @@ function WeddingWorkspace({
                 type="email"
                 maxLength={320}
               />
+            </Field>
+            <Field label="Guest affiliation" htmlFor="guest-affiliation">
+              <Select id="guest-affiliation" name="affiliationId">
+                <option value="">No affiliation</option>
+                {affiliations.map((affiliation) => (
+                  <option key={affiliation.id} value={affiliation.id}>
+                    {affiliation.name}
+                  </option>
+                ))}
+              </Select>
             </Field>
             <Field label="Party allowance" htmlFor="party-allowance">
               <Input
@@ -564,11 +1133,40 @@ function WeddingWorkspace({
                           {guest.name}
                         </p>
                         <ResponseBadge guest={guest} />
+                        {guest.affiliation ? (
+                          <Badge
+                            style={{
+                              borderColor: guest.affiliation.color,
+                              color: guest.affiliation.color,
+                            }}
+                          >
+                            {guest.affiliation.name}
+                          </Badge>
+                        ) : null}
                       </div>
                       <p className="mt-1 text-sm text-[#806d70]">
                         Up to {guest.allowedPartySize} attending
                         {guest.email ? ` · ${guest.email}` : ""}
                       </p>
+                      <Select
+                        className="mt-3 max-w-xs"
+                        aria-label={`${guest.name} affiliation`}
+                        value={guest.affiliation?.id ?? ""}
+                        disabled={busy === `guest:affiliation:${guest.id}`}
+                        onChange={(event) =>
+                          void onSetGuestAffiliation(
+                            guest,
+                            event.currentTarget.value || null,
+                          )
+                        }
+                      >
+                        <option value="">No affiliation</option>
+                        {affiliations.map((affiliation) => (
+                          <option key={affiliation.id} value={affiliation.id}>
+                            {affiliation.name}
+                          </option>
+                        ))}
+                      </Select>
                     </div>
                     <Button
                       variant="secondary"
