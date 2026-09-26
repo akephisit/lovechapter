@@ -104,3 +104,25 @@ distribution. Bounded page sizes, index definitions, PostgreSQL integration
 tests, and live staging CSV/RSVP behavior have been reviewed; repeat the probe
 when real staging data grows rather than adding indexes to eliminate every
 small-table scan.
+
+## Release gate admission review (2026-09-26)
+
+The Worker now issues one parameterized `SELECT ops.admit_release_lease($1)`
+per admitted HTTP or scheduled batch. The owner-run function takes a shared
+lock on the singleton control row, returns null while closed, or inserts one
+UUID lease before returning. Lease release is one parameterized `DELETE` by
+primary key. There is no per-row application loop, unbounded result, or
+network call inside a database transaction. The function replaces the
+previous multi-round-trip application transaction and lets the app role work
+without control-row `UPDATE` or direct lease `INSERT` privileges.
+
+Safe `EXPLAIN (FORMAT JSON)` on the disposable Neon recovery branch showed
+`LockRows → Seq Scan` for the one-row control lookup, a sequential scan for
+the one-row mode read, and tiny sequential scans for the empty lease count,
+bounded oldest-100 status query, and keyed lease delete. The branch had one
+control row and zero leases; these are sparse-branch plans, not latency
+measurements or representative high-concurrency plans. The existing primary
+keys enforce the singleton and lease identity. No secondary index is
+justified by this tiny transient set yet; revisit count/status plans if
+real lease cardinality grows. The mutating admission function was not run
+under `EXPLAIN ANALYZE`.

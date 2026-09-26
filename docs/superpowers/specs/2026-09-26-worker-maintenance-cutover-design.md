@@ -61,6 +61,18 @@ cleanup leaves the lease in place and blocks cutover; leases are not
 automatically treated as safe merely because they are old. An operator must
 investigate an orphaned lease rather than force a timed release.
 
+Staging acceptance exposed a PostgreSQL privilege constraint: direct `SELECT
+... FOR SHARE` requires `UPDATE` privilege on the control table, which the
+Worker must not receive. Admission therefore executes inside the narrowly
+scoped `ops.admit_release_lease(text)` security-definer function. It locks the
+control row and inserts a lease in one statement, returns null when closed,
+and fails closed for missing state. Revoke its default `PUBLIC` execution,
+fix its search path to trusted schemas, and grant `EXECUTE` only to the
+selected backend's application role. The app role retains only control
+`SELECT` and lease `SELECT (id)`/`DELETE`; it cannot update the control row or
+insert a lease directly. Hyperdrive does not support advisory locks, so they
+are not an alternative on the Worker path.
+
 The release controller uses a separate direct PostgreSQL credential outside
 Workers. There is no public HTTP endpoint that can change gate state. The
 control row may reopen only for the expected target SHA after the release

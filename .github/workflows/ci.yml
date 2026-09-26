@@ -90,6 +90,7 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://lovechapter_test:ci_only_disposable@127.0.0.1:5432/lovechapter_test
           TEST_DATABASE_CONFIRM: lovechapter_test
+          TEST_GATE_APP_DATABASE_URL: postgres://lovechapter_gate_test_app:ci_only_disposable@127.0.0.1:5432/lovechapter_test
         run: npm run test:postgres --workspace @lovechapter/database
 
       - name: Run email retry PostgreSQL integration test

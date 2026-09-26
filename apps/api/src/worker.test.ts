@@ -308,8 +308,8 @@ describe("Cloudflare API Worker", () => {
             typeof statement === "string" ? statement : statement.text;
           statements.push(text);
           return {
-            rows: text.includes("ops.release_control")
-              ? [{ mode: "maintenance" }]
+            rows: text.includes("ops.admit_release_lease")
+              ? [{ lease_id: null }]
               : [],
             rowCount: 1,
           };
@@ -324,7 +324,9 @@ describe("Cloudflare API Worker", () => {
       },
     );
     expect(
-      statements.some((statement) => statement.includes("ops.release_control")),
+      statements.some((statement) =>
+        statement.includes("ops.admit_release_lease"),
+      ),
     ).toBe(true);
     expect(
       statements.some((statement) => statement.includes("auth_email_jobs")),

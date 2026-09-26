@@ -112,11 +112,21 @@
 - [ ] **Step 1: Write failing CLI/controller tests.** Name tests `rejects unsafe reopen evidence`, `leaves maintenance on interrupted drain`, and `redacts status`. Pin `expect(await controller.openFor(otherSha)).toBe(false)` and a nonzero CLI exit for invalid SHA, missing direct URL, wrong environment/evidence, false smoke, missing version IDs, or an active lease. Assert output contains mode/SHA/count but not database URL or secrets.
 - [ ] **Step 2: Run red tests.** `npx vitest run packages/database/src/release-gate-cli.test.ts` and the Task 1 PostgreSQL integration test must fail at the new expectations.
 - [ ] **Step 3: Implement CLI.** Use one direct `pg.Client` closed in `finally`; require staging environment and valid SHA/evidence for transitions. `drain` polls until zero leases or operator abort without changing gate state on timeout/interruption; expose no age-based clear command.
-- [ ] **Step 4: Document runbook.** Record prebuild → recoverable point/restore rehearsal → close/drain → migrate → deploy both same SHA → private smoke → evidence → open, plus forward-fix/verified-restore behavior. Document app-role grants: `USAGE` on `ops`, `SELECT` on control, `INSERT`/`DELETE` on leases, and no control-row `UPDATE` for the Worker credential.
+- [ ] **Step 4: Document runbook.** Record prebuild → recoverable point/restore rehearsal → close/drain → migrate → deploy both same SHA → private smoke → evidence → open, plus forward-fix/verified-restore behavior. The original direct `FOR SHARE` grant model is superseded by the Task 6 finding below: use function `EXECUTE`, lease `SELECT (id)`/`DELETE`, and no control-row `UPDATE` or direct lease `INSERT` for the Worker credential.
 - [ ] **Step 5: Run green checks.** Rerun targeted tests, database typecheck and `db:check`; on a disposable branch prove wrong SHA and orphaned lease prevent reopening.
 - [ ] **Step 6: Commit.** Commit only the operator slice after checks pass.
 
 ### Task 6: Exact-SHA Worker staging acceptance and handoff
+
+**Staging finding:** PostgreSQL requires `UPDATE` for direct `FOR SHARE`,
+contradicting the app-role grant in Task 5; Hyperdrive does not support
+advisory locks. Before continuing the closure drill, add a custom admission
+function migration with restricted `SECURITY DEFINER` ownership/search path,
+change the repository to call it, and prove admission/release under a role
+without control `UPDATE` or direct lease `INSERT`. Grant function `EXECUTE`
+and lease `SELECT (id)` before redeploy; revoke the old direct lease `INSERT`
+only after the new API version serves all staging traffic. This is a
+corrective Task 6 regression, not an alternative production runtime.
 
 **Files:** Modify `docs/DEPLOYMENT.md`, `docs/PROGRESS.md`, `docs/QUERY_REVIEW.md` with real evidence only; any newly found regression gets its own failing test and focused code commit before retesting.
 

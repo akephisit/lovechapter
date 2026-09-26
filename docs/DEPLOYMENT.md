@@ -295,19 +295,35 @@ Neon project, branch, database, and role independently before any command:
 `RELEASE_ENVIRONMENT=staging` alone cannot prove that a URL points to staging.
 There is no production CLI command or automatic production release yet.
 
-The API Worker/Hyperdrive application role needs only `USAGE` on `ops`,
-`SELECT` on `ops.release_control`, and `INSERT`/`DELETE` on
-`ops.release_leases` for the gate. Do not grant it control-row `UPDATE`,
-`INSERT`, or `DELETE`; the direct operator role alone changes gate mode. Review
-actual grants before bootstrapping the gate-aware Worker. The SQL below is a
-role-specific example, not a command to run with the placeholder unchanged:
+The API Worker/Hyperdrive application role needs `USAGE` on `ops`, `SELECT`
+on `ops.release_control`, `EXECUTE` on `ops.admit_release_lease(text)`, and
+`SELECT (id)` plus `DELETE` on `ops.release_leases`. The admission function
+locks the control row and inserts a lease atomically as its owner. PostgreSQL
+requires an `UPDATE` privilege for direct `SELECT ... FOR SHARE`, so the
+Worker must call this function instead of locking the row directly. Its
+`SECURITY DEFINER` search path is restricted and `PUBLIC` execution is
+revoked in the migration. Do not grant the app role control-row `UPDATE`,
+`INSERT`, or `DELETE`; only the direct operator changes gate mode. On a new
+installation, do not grant direct lease `INSERT` either. Review actual grants
+before bootstrapping the gate-aware Worker. The SQL below is a role-specific
+example, not a command to run with the placeholder unchanged:
 
 ```sql
 GRANT USAGE ON SCHEMA ops TO STAGING_APP_ROLE;
 GRANT SELECT ON ops.release_control TO STAGING_APP_ROLE;
-GRANT INSERT, DELETE ON ops.release_leases TO STAGING_APP_ROLE;
+GRANT EXECUTE ON FUNCTION ops.admit_release_lease(text) TO STAGING_APP_ROLE;
+GRANT SELECT (id) ON ops.release_leases TO STAGING_APP_ROLE;
+GRANT DELETE ON ops.release_leases TO STAGING_APP_ROLE;
 REVOKE INSERT, UPDATE, DELETE ON ops.release_control FROM STAGING_APP_ROLE;
+REVOKE INSERT ON ops.release_leases FROM STAGING_APP_ROLE;
 ```
+
+For an existing gate-aware deployment, apply the additive function migration,
+grant `EXECUTE` and lease `SELECT (id)`, deploy the function-calling API to
+100% of traffic, and only then revoke direct lease `INSERT`. Do not revoke it
+while an older API version may still be serving. Verify the app role cannot
+update the control row or directly insert a lease, and can admit/release via
+the function. The web Worker does not need database grants.
 
 For a breaking staging revision, use this sequence. Do not apply an
 incompatible migration to active staging until the nonbreaking `ops` migration

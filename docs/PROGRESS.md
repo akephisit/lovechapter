@@ -850,3 +850,30 @@ environment invocation exited nonzero with a generic error. Database
 typecheck and Drizzle snapshot check passed. Active staging and production
 were not closed, migrated, or deployed in this slice.
 The full provider-free suite also passed 78 files / 514 tests before commit.
+
+## Release gate least-privilege correction (2026-09-26)
+
+Active staging exposed a grant mismatch after the first gate-aware deploy:
+PostgreSQL requires `UPDATE` for direct `SELECT ... FOR SHARE`, while the
+Hyperdrive app role intentionally has no control-row mutation privilege.
+Business admission failed closed with HTTP 503 even though the gate mode was
+open. The closure drill stopped; production was not touched. A separate
+disposable recovery branch reproduced SQLSTATE 42501 with the genuinely
+restricted staging app role. A Neon API-created test role on `staging-test`
+unexpectedly inherited `neon_superuser`; with owner approval, it was deleted
+from that branch and never used as privilege evidence.
+
+Custom migration `0010_release_gate_admission.sql` adds an owner-run,
+restricted-search-path `SECURITY DEFINER` function that atomically locks the
+control row and inserts a lease. `PUBLIC` execution is revoked. The API and
+jobs now use one function call per admission; the app role needs only
+`EXECUTE`, lease `SELECT (id)`/`DELETE`, schema usage, and control `SELECT`.
+The restricted-role regression failed before this correction and passed
+after the migration and explicit grants on the disposable branch. Its full
+database integration suite passed 7 files / 39 tests. Local repository CI
+then passed 78 files / 514 tests, format, lint, typechecks, builds, migration
+check, Bun smoke, vinext/Next checks, and Worker dry-runs. Safe sparse-branch
+query plans and the remaining cardinality caveat are recorded in
+`docs/QUERY_REVIEW.md`. Active staging has not yet received migration 0010 or
+the corrected Worker revision; the staging closure and acceptance drill
+remain open.

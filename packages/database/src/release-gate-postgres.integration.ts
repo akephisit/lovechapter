@@ -7,6 +7,7 @@ import * as database from "./index";
 import { createPostgresRuntime, type PostgresRuntime } from "./client";
 
 const connectionString = process.env.TEST_DATABASE_URL;
+const restrictedConnectionString = process.env.TEST_GATE_APP_DATABASE_URL;
 if (
   !connectionString ||
   process.env.TEST_DATABASE_CONFIRM !== "lovechapter_test" ||
@@ -41,6 +42,35 @@ beforeAll(async () => {
     await migrate(drizzle({ client: migrationPool }), {
       migrationsFolder: new URL("../drizzle", import.meta.url).pathname,
     });
+    if (process.env.CI === "true" && restrictedConnectionString) {
+      const target = new URL(connectionString);
+      if (
+        target.hostname !== "127.0.0.1" ||
+        target.pathname !== "/lovechapter_test"
+      ) {
+        throw new Error(
+          "CI restricted role requires local disposable PostgreSQL",
+        );
+      }
+      await migrationPool.query(
+        "CREATE ROLE lovechapter_gate_test_app LOGIN PASSWORD 'ci_only_disposable'",
+      );
+      await migrationPool.query(
+        "GRANT USAGE ON SCHEMA ops TO lovechapter_gate_test_app",
+      );
+      await migrationPool.query(
+        "GRANT SELECT ON ops.release_control TO lovechapter_gate_test_app",
+      );
+      await migrationPool.query(
+        "GRANT SELECT (id) ON ops.release_leases TO lovechapter_gate_test_app",
+      );
+      await migrationPool.query(
+        "GRANT DELETE ON ops.release_leases TO lovechapter_gate_test_app",
+      );
+      await migrationPool.query(
+        "GRANT EXECUTE ON FUNCTION ops.admit_release_lease(text) TO lovechapter_gate_test_app",
+      );
+    }
   } finally {
     await migrationPool.end();
   }
@@ -100,6 +130,35 @@ async function waitForLock(pid: number): Promise<void> {
 }
 
 describe("PostgreSQL release gate", () => {
+  it.skipIf(!restrictedConnectionString)(
+    "admits through a role with no control UPDATE privilege",
+    async () => {
+      const restricted = createPostgresRuntime({
+        databaseUrl: restrictedConnectionString!,
+        databasePoolMax: 1,
+      });
+      try {
+        const privilege = await restricted.pool.query<{
+          can_update: boolean;
+          can_insert_lease: boolean;
+          can_execute: boolean;
+        }>(
+          `select has_table_privilege(current_user, 'ops.release_control', 'UPDATE') as can_update,
+                  has_table_privilege(current_user, 'ops.release_leases', 'INSERT') as can_insert_lease,
+                  has_function_privilege(current_user, 'ops.admit_release_lease(text)', 'EXECUTE') as can_execute`,
+        );
+        expect(privilege.rows[0]?.can_update).toBe(false);
+        expect(privilege.rows[0]?.can_insert_lease).toBe(false);
+        expect(privilege.rows[0]?.can_execute).toBe(true);
+        const lease = await restricted.releaseGateStore.admit("http");
+        expect(lease).toMatch(/^[0-9a-f-]{36}$/);
+        if (lease) await restricted.releaseGateStore.release(lease);
+      } finally {
+        await restricted.close();
+      }
+    },
+  );
+
   it("seeds one open control row", async () => {
     const gate = store();
     expect(gate).toBeDefined();
@@ -227,7 +286,7 @@ describe("PostgreSQL release gate", () => {
         if (admissionSettled) break;
         const waiting = await runtime.pool.query<{ count: string }>(
           `select count(*)::text as count from pg_stat_activity
-           where wait_event_type = 'Lock' and query like '%ops.release_control%for share%'`,
+           where wait_event_type = 'Lock' and query like '%ops.admit_release_lease%'`,
         );
         if (Number(waiting.rows[0]?.count) > 0) {
           admissionWaitingOnLock = true;

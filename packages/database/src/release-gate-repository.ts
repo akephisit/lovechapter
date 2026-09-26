@@ -34,18 +34,14 @@ export class PostgresReleaseGateStore implements ReleaseGateStore {
     return modeFromRows(result.rows);
   }
 
-  admit(kind: GateKind): Promise<string | null> {
-    return this.executor.transaction(async (transaction) => {
-      const result = await transaction.execute<{ mode: string }>(
-        sql`select mode from ops.release_control where id = 1 for share`,
-      );
-      if (modeFromRows(result.rows) === "maintenance") return null;
-      const id = crypto.randomUUID();
-      await transaction.execute(
-        sql`insert into ops.release_leases (id, kind) values (${id}, ${kind})`,
-      );
-      return id;
-    });
+  async admit(kind: GateKind): Promise<string | null> {
+    const result = await this.executor.execute<{ lease_id: string | null }>(
+      sql`select ops.admit_release_lease(${kind}) as lease_id`,
+    );
+    if (result.rows.length !== 1 || !result.rows[0]) {
+      throw new Error("Release admission result is unavailable");
+    }
+    return result.rows[0].lease_id;
   }
 
   async release(id: string): Promise<void> {
