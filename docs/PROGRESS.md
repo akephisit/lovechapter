@@ -1195,3 +1195,9 @@ checks, and `inboxDelivery: waived`; production will reject a missing,
 different-SHA, or incomplete report. The workflow exposes that output but the
 disabled CLI has not yet been wired to write or consume it, so it cannot
 promote production from this code alone.
+
+After these Task 7 slices, full local `npm run ci` passed with 102 test files
+and 644 tests, format/lint/typechecks, Drizzle check, Bun/Worker/Next/vinext
+builds, and Worker dry-runs. The default production Worker dry-run still uses
+its intentional placeholder Hyperdrive ID, so this is not a valid production
+target check. No staging/production deployment or migration was performed.
