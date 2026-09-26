@@ -184,9 +184,21 @@ only reviewed migrations while drained. Privately verify the closed-gate
 pair, reopen atomically only with exact-SHA/version evidence, then run public
 and staging acceptance. A failure after reopen must reclose the gate; never
 automatically roll back a migrated schema. Production automation stays off
-until protected-source review, same-SHA staging acceptance, and a rehearsed
+until protected `main`, same-SHA staging acceptance, and a rehearsed
 production bootstrap/recovery path are proven. The temporary real-inbox email
 waiver must be recorded as `waived`, never `passed`.
+
+For this first Worker installation, the owner may work in an isolated branch
+or worktree, commit, and push the candidate directly to protected `main` by a
+verified fast-forward update. No PR, independent reviewer, or hosted branch CI
+is required. Do not force-push or delete `main`; do not require pre-push status
+checks that would block this flow. The single push-to-`main` release workflow
+runs exact-SHA CI and disposable PostgreSQL checks before staging or production
+can enter maintenance. A failed CI leaves its commit on `main` but must not
+deploy; fix with a forward commit. Keep environment secrets restricted to
+protected `main` and both release-enabled flags off until their live gates are
+proven. A migration that intentionally discards customer data still requires
+separate explicit owner approval and a recovery plan.
 
 Authentication:
 

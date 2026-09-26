@@ -1268,3 +1268,13 @@ latest applied migration hash is `0010_release_gate_admission`, while this
 worktree requires `0011_release_versions`. Thus the new preflight would
 currently reject the test branch before maintenance. No migration, reset,
 branch deletion, or deployment was performed during this check.
+
+ADR-028 now selects owner-only direct fast-forward pushes to protected `main`
+without a PR, reviewer, or hosted branch CI. The implementation branch has
+removed duplicate `.github/workflows/ci.yml`, leaving the guarded release
+workflow as the single main-push CI/PostgreSQL path, and changed the read-only
+bootstrap preflight to require direct-push-compatible protection instead of
+review approval. Both release-enabled flags remain off; no GitHub branch
+protection has yet been changed and no commit has been pushed to `main` by this
+work. The stale `staging-test` schema and missing production resources still
+block live release acceptance.

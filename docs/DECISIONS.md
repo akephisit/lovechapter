@@ -445,8 +445,30 @@ exact version/schema evidence, then verify public behavior. A failed
 post-open check recloses maintenance rather than silently continuing.
 
 Exact-main-SHA staging acceptance precedes automatic production promotion.
-Production remains disabled until protected source review, environment-scoped
+Production remains disabled until protected source, environment-scoped
 secrets, a production gate/Hyperdrive bootstrap, and an isolated recovery
 rehearsal are verified. Real inbox delivery is temporarily `waived` as an
 acceptance gate, not reported as passed; other auth/outbox/provider, RSVP,
 CSV, cron, and query-plan checks remain mandatory.
+
+## ADR-028 — Direct-main source promotion with one post-push CI gate
+
+**Status:** Accepted (2026-09-26); refines ADR-027 release-source policy
+
+The owner may edit and commit in an isolated branch/worktree, then push the
+candidate directly to protected `main` as a fast-forward update. A PR,
+independent reviewer, and hosted branch CI are not required. Protect `main`
+against force-push and deletion, but do not require PR approval or status
+checks before the push. The sole hosted push-to-`main` release workflow runs
+CI and disposable PostgreSQL validation for the exact pushed SHA before it
+may enter maintenance or deploy staging. A failed CI leaves the commit on
+`main`, stops deployment, and is repaired by a later forward commit. The
+existing `CODEOWNERS` file is informative, not an approval gate.
+
+This source-policy change does not remove whole-site maintenance, selective
+Worker deployment, mandatory staging acceptance, or recovery checks. Both
+release-enabled flags remain off until their separate live readiness gates
+are proven. A migration that intentionally discards customer data remains
+outside automatic promotion and needs explicit owner approval plus a
+recovery plan. Revisit direct-push authority before granting another person
+write access.

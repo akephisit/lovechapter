@@ -10,6 +10,12 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-26-automatic-worker-release-design.md`
 
+**Source-policy supersession:** The PR/reviewer/required-pre-push-CI steps in
+Tasks 7–9 are superseded by
+`docs/superpowers/plans/2026-09-26-direct-main-single-ci-release.md` and
+ADR-028. Preserve the remaining staging, maintenance, migration, and
+production-bootstrap safety gates; do not treat this note as a live acceptance.
+
 ## Global Constraints
 
 - The first production installation selects the Cloudflare API Worker, not Bun/VPS; CI still verifies the Bun alternative.

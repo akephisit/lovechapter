@@ -345,6 +345,16 @@ privately smoke-test the paired versions, reopen atomically, and verify public
 behavior. Documentation-only changes skip deployment and maintenance. This
 deliberate maintenance policy does not add old/new schema compatibility.
 
+The first Worker installation uses owner-directed, fast-forward pushes to
+protected `main` from an isolated branch/worktree. It does not require a PR,
+independent reviewer, or hosted CI on the working branch. One hosted release
+workflow validates the pushed `main` SHA with CI and disposable PostgreSQL
+tests before any staging or production cutover. Protect `main` from force-push
+and deletion without pre-push status checks; keep deployment secrets main-only.
+If CI fails, the commit remains on `main` but nothing deploys, and the fix is
+a later forward commit. Automatic production promotion still requires exact-SHA
+staging acceptance and a verified production bootstrap/recovery path.
+
 Do not default to:
 
 - Docker-based production runtime;

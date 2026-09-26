@@ -250,25 +250,46 @@ and staging acceptance of the maintenance/cutover subsystem, not a rerun of
 the merged PR's CI.
 
 `.github/workflows/release.yml` is a serial, non-canceling push-to-`main`
-coordinator. It repeats CI and disposable PostgreSQL integration on the exact
-merged SHA. Its staging and production jobs are both **disabled by default**:
+coordinator and the sole hosted CI path. It runs CI and disposable PostgreSQL
+integration once on the exact pushed SHA before either release job. There is
+no required PR, independent reviewer, or hosted branch CI. Its staging and
+production jobs are both **disabled by default**:
 `STAGING_RELEASE_ENABLED` and `PRODUCTION_RELEASE_ENABLED` must each be set to
 `true` only after their independent bootstrap/acceptance checklists pass.
 The workflow keeps up to 100 pending releases in one queue; a queued SHA is
 rechecked against the live `main` ref before preparation and after build, so
 a superseded run cannot close the site. Release impact is calculated from an
 accepted baseline to the checked-out SHA, not the immediately previous push.
-The release CLI currently rejects even an enabled job until the live adapter
-and evidence handoff are installed and validated. Never enable either flag
-merely because the workflow file exists. The existing PR CI remains separate
-and receives no release secrets. GitHub staging and production environments
-must restrict deployment to protected `main`; the CLI also requires a
-protected push-to-`main` context and exact commit SHA. No Cloudflare Git
-autodeploy may bypass the coordinator.
+The staging adapter still needs a live acceptance rehearsal, and the
+production adapter deliberately rejects release until bootstrap is complete.
+Never enable either flag merely because the workflow file exists. GitHub
+staging and production environments must restrict deployment to protected
+`main`; the CLI also requires a protected push-to-`main` context and exact
+commit SHA. The existing `CODEOWNERS` file is informational, not an approval
+gate. No Cloudflare Git autodeploy may bypass the coordinator.
+
+Work in an isolated branch/worktree and commit locally. Before sending that
+commit to `main`, fetch its latest remote tip, require a clean worktree and
+verify that the remote tip is an ancestor of the candidate:
+
+```bash
+git fetch origin main
+git merge-base --is-ancestor origin/main HEAD
+git status --porcelain
+git push origin HEAD:main
+```
+
+The ancestry command must exit successfully and the status output must be
+empty before the push. Do not use `--force`; if `main` advanced, reconcile and
+create a new forward commit. `main` is protected from force-push and deletion,
+but has no PR or required pre-push status checks. Applicable local checks are
+still expected while developing. A failed post-push CI leaves the commit on
+`main` but does not enter maintenance or deploy; fix it with a later forward
+commit. A docs-only push still runs CI, then skips maintenance and deployment.
 
 Production credentials, protected environment, and enforced acceptance gate
 are not in place, so automatic production deployment remains disabled. In
-particular, merging must not silently deploy production before the approved
+particular, pushing `main` must not deploy production before the approved
 release controls and separate resources exist.
 
 For a release, classify changed paths with `scripts/release-impact.mjs` using
@@ -295,7 +316,9 @@ compatible with a rolling release.
 The planner fails closed if `packages/database/src/schema.ts` changes without
 an added or modified SQL migration under `packages/database/drizzle/`. A
 deleted SQL migration does not satisfy this guard. Even a valid changed SQL
-file still requires human review of the generated migration and cutover plan.
+file still requires a checked-in risk/cutover record and validated generated
+SQL. An intentionally destructive data migration needs separate owner approval
+and a recovery plan; ordinary changes do not require a PR reviewer.
 
 A **breaking** schema or API change requires a coordinated cutover, not the
 ordinary sequential deploy. Before migration, an enforced maintenance/routing
