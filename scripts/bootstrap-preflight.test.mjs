@@ -15,6 +15,20 @@ const stagingSecrets = [
   "RELEASE_TEST_DATABASE_URL",
 ];
 const productionSecrets = stagingSecrets.slice(0, 6);
+const webSecrets = [
+  "API_UPSTREAM_ORIGIN",
+  "WEB_PROXY_SHARED_SECRET",
+  "RELEASE_PROBE_SECRET",
+];
+const apiSecrets = [
+  "AUTH_TOKEN_ACTIVE_KEY_VERSION",
+  "AUTH_TOKEN_HMAC_KEYS",
+  "PUBLIC_WEB_ORIGIN",
+  "RATE_LIMIT_HMAC_KEY",
+  "RESEND_API_KEY",
+  "RESEND_FROM_EMAIL",
+  "WEB_PROXY_SHARED_SECRET",
+];
 
 function ready() {
   return {
@@ -48,8 +62,8 @@ function ready() {
         hyperdriveHost: "ep-staging.neon.tech",
         cacheDisabled: true,
         previewUrlsDisabled: true,
-        webSecretNames: ["WEB_PROXY_SHARED_SECRET", "RELEASE_PROBE_SECRET"],
-        apiSecretNames: ["WEB_PROXY_SHARED_SECRET", "RELEASE_PROBE_SECRET"],
+        webSecretNames: webSecrets,
+        apiSecretNames: apiSecrets,
       },
       production: {
         webName: "lovechapter-web",
@@ -58,8 +72,8 @@ function ready() {
         hyperdriveHost: "ep-production.neon.tech",
         cacheDisabled: true,
         previewUrlsDisabled: true,
-        webSecretNames: ["WEB_PROXY_SHARED_SECRET", "RELEASE_PROBE_SECRET"],
-        apiSecretNames: ["WEB_PROXY_SHARED_SECRET", "RELEASE_PROBE_SECRET"],
+        webSecretNames: webSecrets,
+        apiSecretNames: apiSecrets,
       },
     },
     secretsMetadata: { staging: stagingSecrets, production: productionSecrets },
@@ -118,6 +132,11 @@ describe("read-only production bootstrap preflight", () => {
   it("fails on missing secret names, recovery, or a premature open production gate", () => {
     for (const change of [
       (input) => (input.secretsMetadata.staging = []),
+      (input) =>
+        (input.cloudflare.staging.webSecretNames = [
+          "WEB_PROXY_SHARED_SECRET",
+          "RELEASE_PROBE_SECRET",
+        ]),
       (input) => (input.cloudflare.production.apiSecretNames = []),
       (input) => (input.recoveryEvidence.retainedDataVerified = false),
       (input) => (input.productionGate.mode = "open"),

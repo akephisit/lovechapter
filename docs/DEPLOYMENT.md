@@ -377,6 +377,12 @@ tenant wedding ID and test branch ID as staging environment variables. The
 workflow receives `GITHUB_TOKEN` and the same-SHA PostgreSQL job result from
 GitHub automatically. Keep both release-enabled flags false until the guarded
 CLI, protected `main`, scoped secrets, and live staging rehearsal are complete.
+
+The web Worker needs `API_UPSTREAM_ORIGIN`, `WEB_PROXY_SHARED_SECRET`, and
+`RELEASE_PROBE_SECRET`; the API Worker does not use the probe secret and instead
+needs its ingress, auth-token, rate-limit, public-web-origin, and Resend
+settings. Verify secret **names** per Worker without exposing values.
+
 The staging test URL must target a separate Neon branch with the current
 schema; the CLI verifies its branch endpoint before creating HTTP fixtures,
 and the query-plan transaction rolls its synthetic rows back. A missing or

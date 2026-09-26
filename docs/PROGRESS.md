@@ -1245,3 +1245,12 @@ unprotected `main`, zero environments and repository release
 secrets/variables, and only the owner account as a write-capable collaborator.
 Protected auto-promotion therefore remains blocked pending an independent
 reviewer and environment setup; neither release flag was enabled.
+
+Further read-only provider inventory confirmed the selected Neon project has
+distinct `staging`, `staging-test`, and `production` branches. Cloudflare has
+the staging Hyperdrive and deployed staging web/API Workers, but no production
+Hyperdrive or production web/API Worker. Staging Worker secret-name inspection
+also corrected the preflight contract: `RELEASE_PROBE_SECRET` belongs to the
+web Worker, not the API Worker; the API requires its own auth, ingress, and
+Resend secret names. No secret value was read or changed. Existing rehearsal
+branches were left untouched.

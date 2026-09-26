@@ -14,7 +14,20 @@ const stagingSecrets = [
   "RELEASE_VERIFICATION_EMAIL",
   "RELEASE_TEST_DATABASE_URL",
 ];
-const workerSecrets = ["WEB_PROXY_SHARED_SECRET", "RELEASE_PROBE_SECRET"];
+const webWorkerSecrets = [
+  "API_UPSTREAM_ORIGIN",
+  "WEB_PROXY_SHARED_SECRET",
+  "RELEASE_PROBE_SECRET",
+];
+const apiWorkerSecrets = [
+  "AUTH_TOKEN_ACTIVE_KEY_VERSION",
+  "AUTH_TOKEN_HMAC_KEYS",
+  "PUBLIC_WEB_ORIGIN",
+  "RATE_LIMIT_HMAC_KEY",
+  "RESEND_API_KEY",
+  "RESEND_FROM_EMAIL",
+  "WEB_PROXY_SHARED_SECRET",
+];
 
 function configured(value) {
   return (
@@ -108,8 +121,8 @@ export function checkBootstrapReadiness(input) {
       target.hyperdriveHost !== neon?.[`${name}Host`] ||
       target.cacheDisabled !== true ||
       target.previewUrlsDisabled !== true ||
-      !namesContain(target.webSecretNames, workerSecrets) ||
-      !namesContain(target.apiSecretNames, workerSecrets)
+      !namesContain(target.webSecretNames, webWorkerSecrets) ||
+      !namesContain(target.apiSecretNames, apiWorkerSecrets)
     ) {
       issues.push(`${name}_worker_target_incomplete`);
     }
