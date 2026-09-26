@@ -154,6 +154,25 @@ describe("PostgreSQL release gate", () => {
     }
   });
 
+  it("keeps maintenance closed for an orphaned active lease", async () => {
+    const gate = store();
+    const instance = await controller();
+    try {
+      expect(gate).toBeDefined();
+      expect(instance.value).toBeDefined();
+      if (!gate || !instance.value) return;
+      const lease = await gate.admit("cleanup");
+      expect(lease).not.toBeNull();
+      await instance.value.closeFor("e".repeat(40));
+      expect(await instance.value.openFor("e".repeat(40))).toBe(false);
+      expect(await instance.value.activeCount()).toBe(1);
+      if (lease) await gate.release(lease);
+      expect(await instance.value.openFor("e".repeat(40))).toBe(true);
+    } finally {
+      await instance.close();
+    }
+  });
+
   it("orders admission before closure", async () => {
     const gate = store();
     expect(gate).toBeDefined();

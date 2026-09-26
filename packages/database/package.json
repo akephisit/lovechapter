@@ -11,6 +11,7 @@
     "db:check": "drizzle-kit check",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "release:gate": "bun src/release-gate-cli.ts",
     "test:postgres": "vitest run --config vitest.postgres.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

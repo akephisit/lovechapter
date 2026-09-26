@@ -276,13 +276,99 @@ includes Cron Triggers, not just HTTP traffic. Verify a recoverable Neon
 backup/PITR point, then transform and validate existing data, deploy the
 selected backend and web from the same tested revision, smoke-test the new
 system, and only then reopen traffic and jobs. Never run an old Worker or Bun
-process against the new incompatible schema. The current repository has no
-tested maintenance/job gate, so a breaking production migration is blocked
-until that capability and a staging cutover/recovery drill exist. The proposed
-Worker design is in
-`docs/superpowers/specs/2026-09-26-worker-maintenance-cutover-design.md`;
-it is not yet implemented. This deliberately permits a maintenance window;
-it does not promise zero downtime.
+process against the new incompatible schema. The gate-aware code and staging
+operator command have not yet passed the active staging cutover/recovery drill,
+so a breaking production migration remains blocked. The Worker design is in
+`docs/superpowers/specs/2026-09-26-worker-maintenance-cutover-design.md`.
+This deliberately permits a maintenance window; it does not promise zero
+downtime.
+
+### Staging Worker maintenance cutover (gate-aware revisions only)
+
+The `release:gate` command is enabled for `RELEASE_ENVIRONMENT=staging` only.
+Run it on a trusted operator machine with Bun 1.4.2 and a separate
+`RELEASE_DATABASE_URL` direct, non-pooled TLS credential. Load the credential
+from a restricted secret store or mode-`0600` local file; do not paste it into
+Git, chat, command arguments, or logs. The command rejects pooled-looking
+hosts and does not fall back to the application `DATABASE_URL`. Verify the
+Neon project, branch, database, and role independently before any command:
+`RELEASE_ENVIRONMENT=staging` alone cannot prove that a URL points to staging.
+There is no production CLI command or automatic production release yet.
+
+The API Worker/Hyperdrive application role needs only `USAGE` on `ops`,
+`SELECT` on `ops.release_control`, and `INSERT`/`DELETE` on
+`ops.release_leases` for the gate. Do not grant it control-row `UPDATE`,
+`INSERT`, or `DELETE`; the direct operator role alone changes gate mode. Review
+actual grants before bootstrapping the gate-aware Worker. The SQL below is a
+role-specific example, not a command to run with the placeholder unchanged:
+
+```sql
+GRANT USAGE ON SCHEMA ops TO STAGING_APP_ROLE;
+GRANT SELECT ON ops.release_control TO STAGING_APP_ROLE;
+GRANT INSERT, DELETE ON ops.release_leases TO STAGING_APP_ROLE;
+REVOKE INSERT, UPDATE, DELETE ON ops.release_control FROM STAGING_APP_ROLE;
+```
+
+For a breaking staging revision, use this sequence. Do not apply an
+incompatible migration to active staging until the nonbreaking `ops` migration
+is seeded and 100% of both serving Workers are gate-aware. Use one reviewed,
+immutable 40-character commit SHA throughout:
+
+1. Build API and web artifacts from that SHA and run CI, disposable-database
+   migration/query tests, and the auth/email, RSVP, CSV, and cron acceptance
+   checks. Record the currently deployed SHA and the target SHA.
+2. Confirm an active-staging Neon recoverable point and rehearse restore on a
+   disposable branch, validating retained data. Never rehearse a destructive
+   restore on active staging.
+3. Close and then drain using the commands below. `drain` waits for zero
+   HTTP/email/cleanup leases; a timeout, interrupted command, or
+   stuck lease leaves maintenance closed. Investigate the owning operation;
+   there is no time-based lease-clear command.
+4. Apply the reviewed migration using the separate direct migration role,
+   not Hyperdrive or the application role. Validate the resulting business
+   schema and retained data while the gate stays closed.
+5. Deploy the new API and web Worker versions from that same SHA to all
+   staging traffic, without a gradual split with ungated or old-schema code.
+   Record both Cloudflare version IDs. Confirm protected readiness and the
+   exact API/schema combination, then perform private GET/HEAD web smoke with
+   the independent `RELEASE_PROBE_SECRET`. Confirm business API ingress and
+   cron remain blocked while closed. The probe does not authorize mutations.
+6. Write an operator-controlled JSON evidence file with the exact fields
+   below only after the migration and private smoke actually pass. Then run
+   the `open` command below. The CLI
+   verifies the matching SHA, populated version IDs, true checks, and zero
+   active leases; PostgreSQL atomically refuses reopening if a lease appears.
+   Confirm public pages, API mutations, and queued email processing resume.
+
+```json
+{
+  "commitSha": "FULL_40_CHARACTER_LOWERCASE_SHA",
+  "apiWorkerVersion": "RECORDED_API_VERSION_ID",
+  "webWorkerVersion": "RECORDED_WEB_VERSION_ID",
+  "migrationChecked": true,
+  "privateSmokePassed": true,
+  "acceptedAt": "ACTUAL_ISO_8601_ACCEPTANCE_TIMESTAMP"
+}
+```
+
+After loading the trusted staging environment securely, run the commands
+from the repository root; substitute one real full SHA and evidence path:
+
+```bash
+npm run release:gate --workspace @lovechapter/database -- status
+npm run release:gate --workspace @lovechapter/database -- close --sha FULL_TARGET_SHA
+npm run release:gate --workspace @lovechapter/database -- drain --sha FULL_TARGET_SHA
+npm run release:gate --workspace @lovechapter/database -- open --sha FULL_TARGET_SHA --evidence /restricted/path/acceptance.json
+```
+
+`status` prints only mode, target SHA, and active lease count. `close`,
+`drain`, and `open` never output a database URL, token, or invitation. A failed
+post-migration smoke stays closed. An old Worker binary alone is not a
+rollback for a changed schema: choose a reviewed forward fix or a verified
+database restore, validate data and the matching Worker pair, repeat smoke,
+and only then reopen. Do not delete a lease solely because it is old. The
+evidence file records operator checks; the CLI does not claim inbox receipt
+or fabricate staging acceptance.
 
 The first staging installation selects the Worker backend. Provision a
 disposable Neon branch, a cache-disabled Hyperdrive binding, Cloudflare API

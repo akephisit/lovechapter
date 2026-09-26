@@ -831,3 +831,22 @@ With a loopback mock of the protected release-state API returning `open`, the
 same built Worker rendered sign-in and invitation pages normally and forwarded
 `/api` to the mock upstream; the mock's 403 was expected for that unimplemented
 business route. This also exercised the state fetch in the local Worker runtime.
+
+## Release gate operator slice (2026-09-26)
+
+The direct PostgreSQL staging CLI now supports `status`, `close`, `drain`, and
+evidence-gated `open`; it rejects pooled-looking URLs, wrong environments,
+malformed or nonmatching SHAs, incomplete evidence, and active leases. A
+timeout/interruption never reopens maintenance. Status exposes only mode,
+target SHA, and lease count. The runbook records least-privilege app grants,
+the exact-SHA cutover order, private smoke, and forward-fix/verified-restore
+behavior. No production command is enabled.
+
+Seven CLI unit tests passed. The disposable staging-test PostgreSQL suite
+passed 7 files / 38 tests, including wrong-SHA and orphaned-lease reopen
+rejection. A real Bun 1.4.2 CLI `status` call against that disposable branch
+returned open/zero leases without exposing the connection URL; a production
+environment invocation exited nonzero with a generic error. Database
+typecheck and Drizzle snapshot check passed. Active staging and production
+were not closed, migrated, or deployed in this slice.
+The full provider-free suite also passed 78 files / 514 tests before commit.
