@@ -33,6 +33,17 @@ has tests for preparation-before-maintenance, same-SHA closure, drain, selective
 deployment, post-open reclosure, and exact-SHA production preflight. None of
 this is a live staging or production release.
 
+The next implementation slice added live-`main` SHA readback, repeated
+supersession checks around preparation, a baseline-to-candidate Git planner,
+and a subprocess adapter for the target-verified release gate. Gate `status`
+now includes its closure timestamp so reopen evidence can be tied to the
+current closure. These adapters have local tests only and are not yet
+connected to the disabled release CLI; no remote target was mutated.
+Local CI passed for this slice with 93 test files / 600 tests, migration
+snapshot check, Bun API/jobs builds and smoke, Next/vinext builds/check, and
+Worker dry-runs. This does not substitute for a disposable PostgreSQL run or
+live staging acceptance of the final coordinator.
+
 ## Implemented
 
 - Main-branch verification and PostgreSQL integration gates, with no automatic

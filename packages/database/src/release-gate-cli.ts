@@ -66,9 +66,11 @@ export async function runReleaseGateCli(
     const controller = new PostgresReleaseGateController(client);
     const write = options.write ?? console.log;
     if (command.name === "status") {
-      const { mode, targetSha, activeCount, web, api } =
+      const { mode, targetSha, changedAt, activeCount, web, api } =
         await controller.status();
-      write(JSON.stringify({ mode, targetSha, activeCount, web, api }));
+      write(
+        JSON.stringify({ mode, targetSha, changedAt, activeCount, web, api }),
+      );
       return;
     }
     if (command.name === "close") {

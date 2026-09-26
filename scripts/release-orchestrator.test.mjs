@@ -32,6 +32,7 @@ function fixture(overrides = {}) {
     api: { versionId: "api-version", sourceSha: sha },
   };
   const driver = {
+    readMainHead: method("readMainHead", sha),
     verifyStaging: method("verifyStaging", { targetVerified: true }),
     verifyProduction: method("verifyProduction", {
       releaseEnabled: true,
@@ -98,8 +99,10 @@ describe("serial Worker cutover", () => {
       environment: "staging",
     });
     expect(events.map(([name]) => name)).toEqual([
+      "readMainHead",
       "verifyStaging",
       "prepare",
+      "readMainHead",
       "close",
       "drain",
       "deploy",
@@ -123,6 +126,21 @@ describe("serial Worker cutover", () => {
       ),
     ).resolves.toEqual({ status: "skipped", reason: "docs_only", sha });
     expect(events).toEqual([]);
+  });
+
+  it("rejects a superseded queued run before preparing or closing", async () => {
+    const { driver } = fixture({ values: { readMainHead: prior } });
+    await expect(runCutover(input, driver)).rejects.toThrow(/superseded/iu);
+    expect(driver.prepare).not.toHaveBeenCalled();
+    expect(driver.close).not.toHaveBeenCalled();
+  });
+
+  it("rechecks main after building and refuses closure if a newer commit arrived", async () => {
+    const { driver } = fixture();
+    driver.readMainHead.mockResolvedValueOnce(sha).mockResolvedValueOnce(prior);
+    await expect(runCutover(input, driver)).rejects.toThrow(/superseded/iu);
+    expect(driver.prepare).toHaveBeenCalledOnce();
+    expect(driver.close).not.toHaveBeenCalled();
   });
 
   it("never closes when preparation fails, and leaves closed on pre-open failure", async () => {
@@ -235,7 +253,10 @@ describe("serial Worker cutover", () => {
       await expect(
         runCutover({ ...input, environment: "production" }, driver),
       ).rejects.toThrow();
-      expect(events.map(([name]) => name)).toEqual(["verifyProduction"]);
+      expect(events.map(([name]) => name)).toEqual([
+        "readMainHead",
+        "verifyProduction",
+      ]);
     }
   });
 

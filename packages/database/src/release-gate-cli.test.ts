@@ -302,6 +302,7 @@ describe("release gate CLI", () => {
       JSON.stringify({
         mode: "maintenance",
         targetSha: sha,
+        changedAt: "2026-09-26T06:00:00.000Z",
         activeCount: 2,
         web: null,
         api: null,

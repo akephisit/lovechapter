@@ -73,6 +73,12 @@ function assertOpenedVersions(opened, deployed) {
   }
 }
 
+async function assertCurrentMain(sha, driver) {
+  if ((await driver.readMainHead(sha)) !== sha) {
+    throw new Error("Release SHA was superseded on main");
+  }
+}
+
 /** The only normal route from prepared Worker versions to an opened site. */
 export async function runCutover(input, driver) {
   assertInput(input);
@@ -80,6 +86,8 @@ export async function runCutover(input, driver) {
   if (!impact.web && !impact.backend) {
     return { status: "skipped", reason: "docs_only", sha };
   }
+
+  await assertCurrentMain(sha, driver);
 
   if (environment === "production") {
     assertProductionPreflight(await driver.verifyProduction(sha, input), sha);
@@ -95,6 +103,8 @@ export async function runCutover(input, driver) {
     migration,
   });
   if (prepared?.sha !== sha) throw new Error("Prepared artifact SHA differs");
+
+  await assertCurrentMain(sha, driver);
 
   const closure = await driver.close(sha, prepared);
   assertGate(closure, "maintenance", sha);

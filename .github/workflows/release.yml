@@ -10,6 +10,7 @@ permissions:
 concurrency:
   group: lovechapter-worker-release
   cancel-in-progress: false
+  queue: max
 
 jobs:
   ci:

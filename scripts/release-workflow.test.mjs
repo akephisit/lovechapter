@@ -18,6 +18,7 @@ describe("automatic Worker release workflow policy", () => {
     );
     expect(source).toMatch(/group:\s*lovechapter-worker-release/u);
     expect(source).toMatch(/cancel-in-progress:\s*false/u);
+    expect(source).toMatch(/queue:\s*max/u);
     expect(source.match(/ref:\s*\$\{\{ github\.sha \}\}/gu)).toHaveLength(4);
     expect(source).toMatch(/github\.ref == 'refs\/heads\/main'/u);
     expect(source).toMatch(/vars\.STAGING_RELEASE_ENABLED == 'true'/u);

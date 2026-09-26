@@ -254,6 +254,10 @@ coordinator. It repeats CI and disposable PostgreSQL integration on the exact
 merged SHA. Its staging and production jobs are both **disabled by default**:
 `STAGING_RELEASE_ENABLED` and `PRODUCTION_RELEASE_ENABLED` must each be set to
 `true` only after their independent bootstrap/acceptance checklists pass.
+The workflow keeps up to 100 pending releases in one queue; a queued SHA is
+rechecked against the live `main` ref before preparation and after build, so
+a superseded run cannot close the site. Release impact is calculated from an
+accepted baseline to the checked-out SHA, not the immediately previous push.
 The release CLI currently rejects even an enabled job until the live adapter
 and evidence handoff are installed and validated. Never enable either flag
 merely because the workflow file exists. The existing PR CI remains separate
