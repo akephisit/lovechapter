@@ -256,6 +256,9 @@ no required PR, independent reviewer, or hosted branch CI. Its staging and
 production jobs are both **disabled by default**:
 `STAGING_RELEASE_ENABLED` and `PRODUCTION_RELEASE_ENABLED` must each be set to
 `true` only after their independent bootstrap/acceptance checklists pass.
+Set these switches as **repository-level** GitHub variables when approved:
+the workflow checks them in job-level `if` expressions before an environment
+job starts, so environment-level variables cannot enable those jobs.
 The workflow keeps up to 100 pending releases in one queue; a queued SHA is
 rechecked against the live `main` ref before preparation and after build, so
 a superseded run cannot close the site. Release impact is calculated from an
@@ -403,6 +406,10 @@ test branch ID, and the migration URL's PostgreSQL username
 workflow receives `GITHUB_TOKEN` and the same-SHA PostgreSQL job result from
 GitHub automatically. Keep both release-enabled flags false until the guarded
 CLI, protected `main`, scoped secrets, and live staging rehearsal are complete.
+Do not store a staging direct URL in GitHub while its PostgreSQL password also
+authenticates to production. Give release automation a staging-branch-only
+credential (or rotate the staging owner password separately) and verify it
+cannot connect to production before populating the staging URL secrets.
 
 The web Worker needs `API_UPSTREAM_ORIGIN`, `WEB_PROXY_SHARED_SECRET`, and
 `RELEASE_PROBE_SECRET`; the API Worker does not use the probe secret and instead

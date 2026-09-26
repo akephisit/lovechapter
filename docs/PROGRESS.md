@@ -1340,3 +1340,54 @@ the secret/variable names and branch-only probe role. The migration ledger on
 production still has no Drizzle ledger. No schema migration, maintenance
 transition, Worker deployment, or release-flag change occurred. The remaining
 staging release environment values and a live rehearsal are still pending.
+
+The next staging environment pass independently verified that Neon branch
+`staging` has the expected `neondb` database, its endpoint matches the
+cache-disabled staging Hyperdrive origin, and that Hyperdrive connects as the
+distinct `lovechapter_staging_app` role. The two staging `workers.dev`
+origins resolve, and both Workers expose the required secret names. Ten
+non-secret GitHub staging target variables were set and read back: Neon
+project/branch/database and release/app/migration role names, Cloudflare
+account/Hyperdrive IDs, and web/API origins. The existing local proxy secret
+returned HTTP 200 from the private staging API readiness endpoint; that same
+value was stored as a GitHub staging environment secret without rotation.
+The verified, onboarded staging account email and the separate unregistered
+verification-fixture email were also stored as staging environment secrets,
+without printing their values. These changes did not enable a release flag,
+deploy a Worker, enter maintenance, or run a migration.
+
+The current `staging` and `production` `neondb_owner` passwords are still
+shared, so their direct URLs were **not** copied into GitHub staging secrets.
+A branch-only release/migration credential is needed first. The verified
+staging account's password is not available to the coordinator, and both
+existing weddings belong to that account; therefore a separate foreign-tenant
+wedding fixture is also missing. `RELEASE_PROBE_SECRET` cannot be read back
+from the web Worker, and dedicated Neon/Cloudflare automation tokens have not
+been provisioned. The repository-level release switches remain unset. GitHub
+environment-only variables would not satisfy these switches' job-level
+conditions; see the deployment guide. Live staging rehearsal and production
+bootstrap remain blocked on their respective prerequisites.
+
+With owner approval, a SQL-created `lovechapter_staging_gate` login was added
+only to the active `staging` branch. It has `CONNECT` on `neondb`, `USAGE` on
+`ops`, `SELECT`/`UPDATE` on `ops.release_control`, and `SELECT` on
+`ops.release_leases`. A direct-login audit proved those gate reads work while
+the role cannot read `public.users`, create in `public`, or inherit
+`neon_superuser`. The branch-specific direct URL is in the GitHub staging
+`RELEASE_DATABASE_URL` secret, and `RELEASE_DATABASE_ROLE` now names this
+role. Neon readback confirms the role is absent on production. No gate mode
+change was made.
+
+A transactional attempt to grant existing `neondb_owner` privileges to a
+separate staging migrator returned PostgreSQL `42501` and was rolled back;
+no migrator role or migration secret was created. Existing tables and the
+Drizzle ledger are owned by `neondb_owner`, so a new SQL login cannot run
+arbitrary checked-in DDL without an owner-equivalent grant. The owner then
+approved resetting `neondb_owner` only on branch `staging`. Neon generated a
+new branch-local password; the new direct URL connects, the old staging URL
+is rejected, and the original production and separate `staging-test` owner
+URLs still connect. The new URL was stored as GitHub staging
+`RELEASE_MIGRATION_DATABASE_URL`, and `RELEASE_MIGRATION_DATABASE_ROLE`
+remains `neondb_owner`. Existing machine-local staging owner URLs using the
+old password are now stale; Hyperdrive uses its separate app role and was not
+changed. No migration was applied and the release switches remain off.
