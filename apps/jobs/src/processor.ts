@@ -4,6 +4,7 @@ import type {
   Clock,
   EmailJobStore,
 } from "@lovechapter/auth";
+import type { ReleaseGateStore } from "@lovechapter/database";
 
 import {
   EmailDeliveryError,
@@ -24,6 +25,31 @@ type SafeLog = (
   event: string,
   fields?: Readonly<Record<string, string | number>>,
 ) => void;
+
+export async function runAdmittedBatch(
+  gate: ReleaseGateStore,
+  kind: "email" | "cleanup",
+  work: () => Promise<void>,
+  log: SafeLog = (event) => console.info(event),
+): Promise<boolean> {
+  let lease: string | null;
+  try {
+    lease = await gate.admit(kind);
+  } catch {
+    log("release_gate_admission_unavailable", { kind });
+    return false;
+  }
+  if (!lease) {
+    log("release_gate_closed", { kind });
+    return false;
+  }
+  try {
+    await work();
+  } finally {
+    await gate.release(lease);
+  }
+  return true;
+}
 
 export type EmailProcessorOptions = {
   store: EmailJobStore;
@@ -69,6 +95,7 @@ export async function processEmailBatch(
 
 export async function runJobLoop(
   options: EmailProcessorOptions & {
+    releaseGate: ReleaseGateStore;
     signal: AbortSignal;
     sleep?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
   },
@@ -84,31 +111,46 @@ export async function runJobLoop(
       lastCleanupAt === null ||
       now.getTime() - lastCleanupAt >= CLEANUP_INTERVAL_MS
     ) {
-      const result = await options.store.cleanupExpired({
-        now,
-        limit: CLEANUP_BATCH_SIZE,
-      });
-      lastCleanupAt = now.getTime();
-      options.log?.("auth_email_cleanup", {
-        removed:
-          result.rateLimits +
-          result.tokens +
-          result.sessions +
-          result.emailJobs,
-      });
-      if (options.signal.aborted) return;
-      if (options.guestImportCleanup) {
-        const removed =
-          await options.guestImportCleanup.cleanupExpiredGuestImports({
-            now: now.toISOString(),
+      const ranCleanup = await runAdmittedBatch(
+        options.releaseGate,
+        "cleanup",
+        async () => {
+          const result = await options.store.cleanupExpired({
+            now,
             limit: CLEANUP_BATCH_SIZE,
           });
-        options.log?.("guest_import_cleanup", { removed });
-      }
+          options.log?.("auth_email_cleanup", {
+            removed:
+              result.rateLimits +
+              result.tokens +
+              result.sessions +
+              result.emailJobs,
+          });
+          if (options.signal.aborted) return;
+          if (options.guestImportCleanup) {
+            const removed =
+              await options.guestImportCleanup.cleanupExpiredGuestImports({
+                now: now.toISOString(),
+                limit: CLEANUP_BATCH_SIZE,
+              });
+            options.log?.("guest_import_cleanup", { removed });
+          }
+        },
+        options.log,
+      );
+      if (ranCleanup) lastCleanupAt = now.getTime();
     }
 
     if (options.signal.aborted) return;
-    const processed = await processEmailBatch(options);
+    let processed = 0;
+    await runAdmittedBatch(
+      options.releaseGate,
+      "email",
+      async () => {
+        processed = await processEmailBatch(options);
+      },
+      options.log,
+    );
     if (options.signal.aborted) return;
     if (processed > 0) {
       idleDelay = MIN_IDLE_DELAY_MS;

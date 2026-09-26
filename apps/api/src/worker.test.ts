@@ -297,6 +297,40 @@ describe("Cloudflare API Worker", () => {
     await expect(state.json()).resolves.toEqual({ mode: "maintenance" });
   });
 
+  it("does not claim scheduled email jobs when maintenance is active", async () => {
+    const statements: string[] = [];
+    const createClient = () =>
+      ({
+        connect: async () => undefined,
+        end: async () => undefined,
+        query: async (statement: string | { text: string }) => {
+          const text =
+            typeof statement === "string" ? statement : statement.text;
+          statements.push(text);
+          return {
+            rows: text.includes("ops.release_control")
+              ? [{ mode: "maintenance" }]
+              : [],
+            rowCount: 1,
+          };
+        },
+      }) as unknown as Client;
+    await createWorkerHandlers(createClient).scheduled(
+      { cron: "* * * * *" },
+      {
+        ...environment,
+        RESEND_API_KEY: "staging-key",
+        RESEND_FROM_EMAIL: "hello@example.test",
+      },
+    );
+    expect(
+      statements.some((statement) => statement.includes("ops.release_control")),
+    ).toBe(true);
+    expect(
+      statements.some((statement) => statement.includes("auth_email_jobs")),
+    ).toBe(false);
+  });
+
   it("fails closed when Hyperdrive binding or a required secret is missing", async () => {
     const worker = createWorkerHandlers();
     const request = new Request("https://api.example.workers.dev/health/live");

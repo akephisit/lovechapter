@@ -119,17 +119,21 @@ export function createWorkerHandlers(createClient?: PostgresClientFactory) {
       await withPostgresRuntime(
         connectionString,
         async (postgres) =>
-          runScheduledBatch(event.cron, {
-            store: postgres.emailJobStore,
-            guestImportCleanup: postgres.guestImportRepository,
-            sender: createResendEmailSender({ apiKey: config.resendApiKey }),
-            tokenCodec: createActionTokenCodec({
-              activeVersion: config.authTokenActiveKeyVersion,
-              keys: config.authTokenHmacKeys,
-            }),
-            publicWebOrigin: config.publicWebOrigin,
-            fromEmail: config.resendFromEmail,
-          }),
+          runScheduledBatch(
+            event.cron,
+            {
+              store: postgres.emailJobStore,
+              guestImportCleanup: postgres.guestImportRepository,
+              sender: createResendEmailSender({ apiKey: config.resendApiKey }),
+              tokenCodec: createActionTokenCodec({
+                activeVersion: config.authTokenActiveKeyVersion,
+                keys: config.authTokenHmacKeys,
+              }),
+              publicWebOrigin: config.publicWebOrigin,
+              fromEmail: config.resendFromEmail,
+            },
+            postgres.releaseGateStore,
+          ),
         createClient,
       );
     },

@@ -23,6 +23,7 @@ export async function runEmailWorker(): Promise<void> {
   process.once("SIGINT", shutdown);
   try {
     await runJobLoop({
+      releaseGate: postgres.releaseGateStore,
       store: postgres.emailJobStore,
       guestImportCleanup: postgres.guestImportRepository,
       sender: createResendEmailSender({ apiKey: config.resendApiKey }),

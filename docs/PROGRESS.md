@@ -794,3 +794,18 @@ first full-suite run had two unrelated 5-second test timeouts; those files
 and then the entire suite passed when rerun without competing checks. The
 default Worker dry-run still shows the intentional top-level placeholder;
 the staging dry-run selected the distinct staging Hyperdrive binding.
+
+## Release gate scheduled-work slice (2026-09-26)
+
+The Worker minute email batch and quarter-hour retention batch now acquire
+separate release leases before any claim or cleanup. The Bun jobs loop uses
+the same rule for each bounded email and combined cleanup pass, sleeps while
+closed, and retries cleanup after reopening rather than treating a skipped
+pass as completed. Admission errors produce only a fixed safe event; lease
+release failures propagate so a cutover cannot silently report a clean drain.
+The existing 10-email and 500-row cleanup caps are unchanged.
+
+Focused Worker/jobs tests passed 30 cases, and the full provider-free suite
+passed 74 files / 494 tests. API and jobs typechecks, Bun 1.4.2 API/jobs
+builds, staging API Worker dry-run, lint, and formatting passed. This is still
+code-only; no active staging or production cron/deployment was changed.
