@@ -4,6 +4,7 @@ export type ReleaseTargetInput = {
   neonBranchId: string;
   database: string;
   role: string;
+  appRole: string;
   directUrl: string;
   cloudflareAccountId: string;
   hyperdriveId: string;
@@ -87,6 +88,7 @@ export function verifyReleaseTarget(
     ["Neon branch ID", input.neonBranchId],
     ["database", input.database],
     ["role", input.role],
+    ["application role", input.appRole],
     ["Cloudflare account ID", input.cloudflareAccountId],
     ["Hyperdrive ID", input.hyperdriveId],
   ] as const) {
@@ -97,6 +99,9 @@ export function verifyReleaseTarget(
     decodeURIComponent(url.pathname.slice(1)) !== input.database
   ) {
     throw new Error("Release database role or name does not match inventory");
+  }
+  if (input.role === input.appRole) {
+    throw new Error("Release and application database roles must differ");
   }
   const matchingEndpoints = inventory.neonEndpoints.filter(
     (endpoint) =>
@@ -112,7 +117,7 @@ export function verifyReleaseTarget(
     hyperdrive.id !== input.hyperdriveId ||
     hyperdrive.origin.host !== url.hostname ||
     hyperdrive.origin.database !== input.database ||
-    hyperdrive.origin.user !== input.role ||
+    hyperdrive.origin.user !== input.appRole ||
     hyperdrive.caching.disabled !== true
   ) {
     throw new Error("Hyperdrive does not match the selected release target");

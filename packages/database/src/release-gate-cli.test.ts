@@ -83,6 +83,7 @@ function fixture(
     RELEASE_NEON_BRANCH_ID: "br-staging-123",
     RELEASE_DATABASE_NAME: "lovechapter",
     RELEASE_DATABASE_ROLE: "release",
+    RELEASE_APP_DATABASE_ROLE: "app",
     RELEASE_CLOUDFLARE_ACCOUNT_ID: "cf-account-123",
     RELEASE_HYPERDRIVE_ID: "staging-hyperdrive-123",
     RELEASE_NEON_API_KEY: "neon-test-secret",
@@ -111,7 +112,7 @@ function fixture(
           origin: {
             host: "ep-example.ap-southeast-1.aws.neon.tech",
             database: "lovechapter",
-            user: "release",
+            user: "app",
           },
           caching: { disabled: true },
         },
@@ -185,6 +186,7 @@ describe("release gate CLI", () => {
       RELEASE_NEON_BRANCH_ID: "br-production-456",
       RELEASE_DATABASE_NAME: "lovechapter",
       RELEASE_DATABASE_ROLE: "release",
+      RELEASE_APP_DATABASE_ROLE: "app",
       RELEASE_CLOUDFLARE_ACCOUNT_ID: "cf-account-123",
       RELEASE_HYPERDRIVE_ID: "production-hyperdrive-456",
       RELEASE_NEON_API_KEY: "neon-test-secret",
@@ -213,7 +215,7 @@ describe("release gate CLI", () => {
             origin: {
               host: productionHost,
               database: "lovechapter",
-              user: "release",
+              user: "app",
             },
             caching: { disabled: true },
           },
@@ -344,6 +346,9 @@ describe("release gate CLI", () => {
     const context = fixture();
     for (const environment of [
       { ...context.environment, RELEASE_DATABASE_URL: "" },
+      { ...context.environment, RELEASE_APP_DATABASE_ROLE: "" },
+      { ...context.environment, RELEASE_APP_DATABASE_ROLE: "release" },
+      { ...context.environment, RELEASE_APP_DATABASE_ROLE: "other_app" },
       {
         ...context.environment,
         RELEASE_ENVIRONMENT: "production",

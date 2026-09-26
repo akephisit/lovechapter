@@ -12,6 +12,7 @@ export const stagingTarget: ReleaseTargetInput = {
   neonBranchId: "br-staging-123",
   database: "lovechapter",
   role: "staging_release",
+  appRole: "staging_app",
   directUrl:
     "postgresql://staging_release:private-password@ep-staging.ap-southeast-1.aws.neon.tech/lovechapter?sslmode=require",
   cloudflareAccountId: "cf-account-123",
@@ -23,6 +24,7 @@ export const productionTarget: ReleaseTargetInput = {
   environment: "production",
   neonBranchId: "br-production-456",
   role: "production_release",
+  appRole: "production_app",
   directUrl:
     "postgresql://production_release:private-password@ep-production.ap-southeast-1.aws.neon.tech/lovechapter?sslmode=require",
   hyperdriveId: "production-hyperdrive-456",
@@ -36,7 +38,7 @@ export function inventoryFor(target: ReleaseTargetInput) {
     ],
     hyperdrive: {
       id: target.hyperdriveId,
-      origin: { host, database: target.database, user: target.role },
+      origin: { host, database: target.database, user: target.appRole },
       caching: { disabled: true },
     },
   };
@@ -87,10 +89,12 @@ describe("release target identity", () => {
     ).toThrow();
   });
 
-  it("rejects mismatched roles, databases, Hyperdrive IDs, origins, and caching", () => {
+  it("rejects mismatched release/app roles, databases, Hyperdrive IDs, origins, and caching", () => {
     const inventory = inventoryFor(productionTarget);
     for (const target of [
       { ...productionTarget, role: "another_role" },
+      { ...productionTarget, appRole: "another_app_role" },
+      { ...productionTarget, appRole: productionTarget.role },
       { ...productionTarget, database: "another_database" },
       { ...productionTarget, hyperdriveId: stagingTarget.hyperdriveId },
     ]) {

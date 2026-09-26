@@ -327,11 +327,18 @@ hosts and does not fall back to the application `DATABASE_URL`. Verify the
 Neon project, branch, database, and role independently before any command.
 The CLI requires environment-scoped `RELEASE_NEON_PROJECT_ID`,
 `RELEASE_NEON_BRANCH_ID`, `RELEASE_DATABASE_NAME`, `RELEASE_DATABASE_ROLE`,
+`RELEASE_APP_DATABASE_ROLE`,
 `RELEASE_CLOUDFLARE_ACCOUNT_ID`, `RELEASE_HYPERDRIVE_ID`,
 `RELEASE_NEON_API_KEY`, and `RELEASE_CLOUDFLARE_API_TOKEN`; production reopen
 also requires the exact accepted `RELEASE_STAGING_SHA`. It fetches Neon
 branch-endpoint and Hyperdrive configuration metadata and rejects any mismatch,
 including enabled Hyperdrive query caching, before connecting to PostgreSQL.
+`RELEASE_DATABASE_ROLE` must match the direct release URL user and have the
+operator privileges needed to change `ops.release_control`.
+`RELEASE_APP_DATABASE_ROLE` must match the Hyperdrive origin user, be distinct
+from the release role, and retain only the application grants below. The two
+roles deliberately share the verified branch endpoint and database, not the
+same PostgreSQL privileges.
 The read tokens and direct URL belong in restricted environment secrets, never
 in arguments or output. `RELEASE_ENVIRONMENT` alone does not prove identity.
 The CLI accepts only one `sslmode=require` or `sslmode=verify-full` query

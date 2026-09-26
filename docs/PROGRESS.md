@@ -1150,3 +1150,13 @@ Local CI passed 97 files / 622 tests plus format, lint, typechecks, builds,
 migration check, and Worker dry-runs. Migration execution, live staging
 acceptance inputs, protected GitHub setup, and the real CLI entrypoint remain
 unwired; both release flags stay disabled. No live release was attempted.
+
+A Task 7 integration review found that the release-target guard previously
+required the direct gate credential and Hyperdrive to use the same database
+role. That conflicts with the existing least-privilege staging application
+role, which must not update `ops.release_control`. The guard and CLI now
+require a distinct `RELEASE_APP_DATABASE_ROLE` for Hyperdrive while
+`RELEASE_DATABASE_ROLE` identifies the direct gate URL user; both still need
+the exact selected Neon branch host/database. Focused release-target and gate
+CLI tests passed (20 tests), as did the database typecheck. Live staging and
+production were not touched; the default release entrypoint remains disabled.

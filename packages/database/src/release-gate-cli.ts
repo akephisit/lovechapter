@@ -180,6 +180,7 @@ function releaseTargetFromEnvironment(
     neonBranchId: requiredEnvironment(environment, "RELEASE_NEON_BRANCH_ID"),
     database: requiredEnvironment(environment, "RELEASE_DATABASE_NAME"),
     role: requiredEnvironment(environment, "RELEASE_DATABASE_ROLE"),
+    appRole: requiredEnvironment(environment, "RELEASE_APP_DATABASE_ROLE"),
     directUrl: requiredEnvironment(environment, "RELEASE_DATABASE_URL"),
     cloudflareAccountId: requiredEnvironment(
       environment,
