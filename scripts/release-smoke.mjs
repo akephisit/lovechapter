@@ -149,3 +149,76 @@ export async function runPrivateReleaseSmoke(
     throw new Error("Private release smoke failed");
   }
 }
+
+/** Verify public ingress after reopen; staging's mutation checks run separately. */
+export async function runPublicReleaseCheck(
+  input,
+  { fetcher = globalThis.fetch } = {},
+) {
+  const webOrigin = workerOrigin(input?.webOrigin);
+  const apiOrigin = workerOrigin(input?.apiOrigin);
+  if (
+    !shaPattern.test(input?.sha ?? "") ||
+    !webOrigin ||
+    !apiOrigin ||
+    webOrigin === apiOrigin ||
+    !canonicalSecret(input.proxySecret) ||
+    input.opened?.mode !== "open" ||
+    input.opened.targetSha !== input.sha ||
+    !["web", "api"].every(
+      (component) =>
+        validVersion(input.deployed?.[component]) &&
+        input.opened[component]?.versionId ===
+          input.deployed[component].versionId &&
+        input.opened[component]?.sourceSha ===
+          input.deployed[component].sourceSha,
+    ) ||
+    typeof fetcher !== "function"
+  ) {
+    throw new Error("Public release check inputs are incomplete");
+  }
+  const proxyHeaders = { "x-lovechapter-proxy-secret": input.proxySecret };
+  async function request(origin, path, options = {}) {
+    return fetcher(`${origin}${path}`, {
+      redirect: "manual",
+      cache: "no-store",
+      signal: globalThis.AbortSignal.timeout(20_000),
+      ...options,
+    });
+  }
+  async function requireStatus(origin, path, expected, options) {
+    const response = await request(origin, path, options);
+    if (response.status !== expected) throw new Error("status mismatch");
+    return response;
+  }
+  async function requireOpenState() {
+    const response = await requireStatus(
+      apiOrigin,
+      "/health/release-state",
+      200,
+      {
+        headers: proxyHeaders,
+      },
+    );
+    const state = await response.json();
+    if (!state || Object.keys(state).length !== 1 || state.mode !== "open") {
+      throw new Error("gate closed unexpectedly");
+    }
+  }
+  try {
+    await requireOpenState();
+    await requireStatus(apiOrigin, "/health/ready", 200, {
+      headers: proxyHeaders,
+    });
+    await requireStatus(apiOrigin, "/v1/auth/session", 403);
+    const page = await requireStatus(webOrigin, "/sign-in", 200);
+    if (!page.headers.get("content-type")?.startsWith("text/html")) {
+      throw new Error("public presentation is missing");
+    }
+    await requireStatus(webOrigin, "/api/v1/auth/session", 401);
+    await requireOpenState();
+    return { passed: true };
+  } catch {
+    throw new Error("Public release check failed");
+  }
+}

@@ -3,7 +3,10 @@ import { URL } from "node:url";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { runPrivateReleaseSmoke } from "./release-smoke.mjs";
+import {
+  runPrivateReleaseSmoke,
+  runPublicReleaseCheck,
+} from "./release-smoke.mjs";
 
 const sha = "a".repeat(40);
 const closure = {
@@ -200,5 +203,115 @@ describe("closed-gate private release smoke", () => {
     expect(error?.message).toMatch(/private release smoke failed/iu);
     expect(error?.message).not.toContain(input.proxySecret);
     expect(error?.message).not.toContain(input.probeSecret);
+  });
+});
+
+describe("post-open public release check", () => {
+  const opened = {
+    mode: "open",
+    targetSha: sha,
+    web: input.deployed.web,
+    api: input.deployed.api,
+  };
+
+  function publicFetcher(overrides = {}) {
+    const calls = [];
+    const fetcher = vi.fn(async (url, options = {}) => {
+      const { hostname, pathname } = new URL(url);
+      const component = hostname.includes("-web-") ? "web" : "api";
+      const key = `${component}:${pathname}`;
+      calls.push({ component, pathname, options });
+      if (overrides[key]) return overrides[key];
+      if (component === "api" && pathname === "/health/release-state") {
+        return globalThis.Response.json({ mode: "open" });
+      }
+      if (component === "api" && pathname === "/health/ready") {
+        return globalThis.Response.json({ status: "ok" });
+      }
+      if (component === "api") {
+        return globalThis.Response.json(
+          { error: { code: "request_ingress_rejected" } },
+          { status: 403 },
+        );
+      }
+      if (pathname === "/sign-in") {
+        return new globalThis.Response("<html>Sign in</html>", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        });
+      }
+      return globalThis.Response.json(
+        { error: { code: "unauthorized" } },
+        { status: 401 },
+      );
+    });
+    return { fetcher, calls };
+  }
+
+  it("confirms opened control, public web and proxied API without mutating data", async () => {
+    const { fetcher, calls } = publicFetcher();
+    await expect(
+      runPublicReleaseCheck({ ...input, opened }, { fetcher }),
+    ).resolves.toEqual({ passed: true });
+    expect(
+      calls.map(({ component, pathname }) => `${component}:${pathname}`),
+    ).toEqual([
+      "api:/health/release-state",
+      "api:/health/ready",
+      "api:/v1/auth/session",
+      "web:/sign-in",
+      "web:/api/v1/auth/session",
+      "api:/health/release-state",
+    ]);
+    expect(
+      calls.every(({ options }) => !options.method || options.method === "GET"),
+    ).toBe(true);
+    expect(
+      calls.every(
+        ({ options }) =>
+          !new globalThis.Headers(options.headers).has(
+            "x-lovechapter-release-probe",
+          ),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects a version mismatch or stale gate before sending", async () => {
+    const { fetcher } = publicFetcher();
+    for (const badOpened of [
+      { ...opened, mode: "maintenance" },
+      { ...opened, targetSha: "b".repeat(40) },
+      { ...opened, web: { ...opened.web, versionId: "wrong" } },
+      { ...opened, api: { ...opened.api, sourceSha: "b".repeat(40) } },
+    ]) {
+      await expect(
+        runPublicReleaseCheck({ ...input, opened: badOpened }, { fetcher }),
+      ).rejects.toThrow();
+    }
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("fails on maintenance, missing public page, or broken API proxy without exposing response details", async () => {
+    for (const overrides of [
+      {
+        "api:/health/release-state": globalThis.Response.json({
+          mode: "maintenance",
+        }),
+      },
+      {
+        "web:/sign-in": new globalThis.Response("maintenance", { status: 503 }),
+      },
+      {
+        "web:/api/v1/auth/session": globalThis.Response.json(
+          { error: { code: input.proxySecret } },
+          { status: 503 },
+        ),
+      },
+    ]) {
+      const { fetcher } = publicFetcher(overrides);
+      await expect(
+        runPublicReleaseCheck({ ...input, opened }, { fetcher }),
+      ).rejects.toThrow("Public release check failed");
+    }
   });
 });

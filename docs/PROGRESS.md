@@ -1120,8 +1120,12 @@ reopen evidence, and a closed-gate private smoke module. The smoke verifies
 protected API readiness, whole-site maintenance, private web presentation,
 and blocked API reads/writes with harmless invalid-body requests. Its response
 and provider errors are intentionally generic so credentials cannot reach
-release logs. Local CI passed format, lint, all workspace typechecks, 95 files
-/ 609 tests, migrations check, Bun and Worker builds, Next/vinext builds and
-checks, and Worker dry-runs. The CLI still has no live release driver; both
-release flags remain disabled. No staging/production deploy or database
-mutation occurred in this slice.
+release logs. A subsequent post-open checker verifies the recorded Worker pair,
+public web presentation, protected API readiness, proxy path, and direct API
+ingress, without mutating data; staging's real feature acceptance remains a
+separate requirement. The closed-gate slice passed local CI (95 files / 609
+tests, format/lint/typecheck, migration check, Bun/Worker/Next/vinext builds,
+and Worker dry-runs). After the post-open checker was added, the same local CI
+passed 95 files / 612 tests and the same build/dry-run checks. The CLI still
+has no live release driver; both release flags remain disabled. No
+staging/production deploy or database mutation occurred in these local slices.
