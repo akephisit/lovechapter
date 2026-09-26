@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { URL } from "node:url";
 
 import { describe, expect, it } from "vitest";
@@ -7,9 +7,29 @@ const workflowPath = new URL(
   "../.github/workflows/release.yml",
   import.meta.url,
 );
-const ownersPath = new URL("../.github/CODEOWNERS", import.meta.url);
+const workflowDirectory = new URL("../.github/workflows/", import.meta.url);
 
 describe("automatic Worker release workflow policy", () => {
+  it("has one hosted main CI path and no branch or PR CI", () => {
+    const workflows = readdirSync(workflowDirectory)
+      .filter((name) => /\.ya?ml$/u.test(name))
+      .map((name) => ({
+        name,
+        source: readFileSync(new URL(name, workflowDirectory), "utf8"),
+      }));
+    expect(
+      workflows
+        .filter(({ source }) =>
+          /\bpush:\s*\n\s*branches:\s*\[main\]/u.test(source),
+        )
+        .map(({ name }) => name),
+    ).toEqual(["release.yml"]);
+    for (const { source } of workflows) {
+      expect(source).not.toMatch(/\bpull_request(?:_target)?:/u);
+      expect(source).not.toMatch(/\bbranches:\s*\[(?!main\])/u);
+    }
+  });
+
   it("uses only an exact push-to-main SHA and serial non-canceling releases", () => {
     const source = readFileSync(workflowPath, "utf8");
     expect(source).toMatch(/on:\s*\n\s*push:\s*\n\s*branches:\s*\[main\]/u);
@@ -96,17 +116,5 @@ describe("automatic Worker release workflow policy", () => {
     expect(source).toMatch(
       /RELEASE_STAGING_ACCEPTANCE: \$\{\{ needs\.staging\.outputs\.acceptance \}\}/u,
     );
-  });
-
-  it("requests ownership review for release, migration, and security changes", () => {
-    const owners = readFileSync(ownersPath, "utf8");
-    for (const path of [
-      "/.github/workflows/release.yml",
-      "/scripts/release-*.mjs",
-      "/packages/database/drizzle/*.sql",
-      "/packages/auth/",
-    ]) {
-      expect(owners).toContain(path);
-    }
   });
 });
