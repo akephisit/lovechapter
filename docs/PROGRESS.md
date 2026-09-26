@@ -1063,3 +1063,11 @@ request/outbox, verified session, tenant isolation, account-free RSVP with
 readback, CSV round trip, and strictly scoped synthetic fixture cleanup. It
 reports inbox delivery as waived, not passed. The module has not yet run
 against live staging and is not wired to production promotion.
+
+The jobs/query-plan acceptance code now has local unit coverage for real-tick
+observation, provider-error and deadline rejection, disposable-branch identity,
+critical plan names, and mandatory transaction rollback. The previous
+machine-local `.env.staging-*` query-plan inputs were removed in favor of
+environment-scoped values. The new disposable-Neon probe has not been run
+live, and the disposable PostgreSQL retry integration was not rerun in this
+worktree; production remains disabled.

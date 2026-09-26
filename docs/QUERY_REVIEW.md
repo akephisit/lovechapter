@@ -11,17 +11,17 @@ database work.
 
 ## Domain access paths
 
-| Operation              |            Expected cardinality | Predicate/order/bound                                                                     | Index or constraint                                      | Statements / transaction   |
-| ---------------------- | ------------------------------: | ----------------------------------------------------------------------------------------- | -------------------------------------------------------- | -------------------------- |
-| Sync user              |                       exactly 1 | upsert `(auth_provider, auth_subject)`                                                    | `users_auth_identity_unique`                             | 1                          |
-| Update profile         |                       exactly 1 | `users.id`                                                                                | users PK                                                 | 1                          |
-| List weddings          |   0–101 fetched, 0–100 returned | member `user_id`; keyset `(created_at,wedding_id) DESC`; `limit + 1`                      | `wedding_members_user_created_idx`, wedding PK           | 1                          |
-| Create wedding         |  1 wedding + 1 owner membership | resolved user                                                                             | PK/FKs, membership composite PK                          | 2 in one short transaction |
-| List guests            | unauthorized 0; otherwise 0–101 | membership CTE; wedding scope; keyset `(created_at,id) DESC`; `limit + 1`; left-join RSVP | membership PK, `guests_wedding_created_idx`, RSVP unique | 1                          |
-| Create guest           |                          0 or 1 | `INSERT … SELECT` from matching membership                                                | membership PK, guest PK/FK                               | 1                          |
-| Create invitation      |                          0 or 1 | wedding + guest + member; one active invitation                                           | membership/guest keys, partial invitation unique         | 1                          |
-| Read public invitation |                          0 or 1 | token hash, not revoked, not expired; `LIMIT 1`                                           | invitation token-hash unique, guest/wedding/RSVP keys    | 1                          |
-| Upsert RSVP            |               exactly 1 outcome | token-scoped CTE validates invitation and party allowance                                 | token unique, guest composite PK, RSVP unique/check      | 1                          |
+| Operation              |            Expected cardinality | Predicate/order/bound                                                                     | Index or constraint                                                              | Statements / transaction   |
+| ---------------------- | ------------------------------: | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | -------------------------- |
+| Sync user              |                       exactly 1 | upsert `(auth_provider, auth_subject)`                                                    | `users_auth_identity_unique`                                                     | 1                          |
+| Update profile         |                       exactly 1 | `users.id`                                                                                | users PK                                                                         | 1                          |
+| List weddings          |   0–101 fetched, 0–100 returned | member `user_id`; keyset `(created_at,wedding_id) DESC`; `limit + 1`                      | `wedding_members_user_created_idx`, wedding PK                                   | 1                          |
+| Create wedding         |  1 wedding + 1 owner membership | resolved user                                                                             | PK/FKs, membership composite PK                                                  | 2 in one short transaction |
+| List guests            | unauthorized 0; otherwise 0–101 | membership CTE; wedding scope; keyset `(created_at,id) DESC`; `limit + 1`; left-join RSVP | membership PK, `guests_pkey` or `guests_wedding_active_created_idx`, RSVP unique | 1                          |
+| Create guest           |                          0 or 1 | `INSERT … SELECT` from matching membership                                                | membership PK, guest PK/FK                                                       | 1                          |
+| Create invitation      |                          0 or 1 | wedding + guest + member; one active invitation                                           | membership/guest keys, partial invitation unique                                 | 1                          |
+| Read public invitation |                          0 or 1 | token hash, not revoked, not expired; `LIMIT 1`                                           | invitation token-hash unique, guest/wedding/RSVP keys                            | 1                          |
+| Upsert RSVP            |               exactly 1 outcome | token-scoped CTE validates invitation and party allowance                                 | token unique, guest composite PK, RSVP unique/check                              | 1                          |
 
 Protected domain requests first synchronize the local principal, then run the
 operation on the same lazy client. This gives two statements for ordinary
@@ -168,3 +168,26 @@ round trip and one lease-release round trip per business request. The
 earlier seven representative SELECT plans were rerun on `staging-test` with
 synthetic data rolled back; no new business-query shape was introduced by
 `5718cdc`.
+
+## Automated release-plan gate (implementation pending live evidence)
+
+The new `runQueryPlanProbe` takes its direct test URL and confirmation from
+environment-scoped secrets, then asks Neon for the expected disposable branch's
+read/write endpoint. It rejects a matching active-staging host, and also a
+matching production host once that resource exists. A missing production host
+is permitted only for the staging-only bootstrap phase; production activation
+must supply the verified production host. The probe seeds the representative
+fixture inside one transaction, runs only the seven SELECT-shaped
+`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` statements, checks the reviewed
+critical index names, and requires a successful rollback. It does not run
+mutating statements under `EXPLAIN ANALYZE` and never connects to production.
+The local unit tests prove rejection/rollback behavior; this new gate has not
+yet been executed on the live disposable Neon branch.
+
+The companion staging jobs check waits for the actual scheduled Worker to
+mark a test-account reset-mail job sent and remove one exact expired
+`auth_rate_limits` marker. It does not invoke cron manually. Provider
+rejection, a missed deadline, or marker-cleanup failure rejects acceptance.
+The separate PostgreSQL fake-provider 429→success test remains the durable
+retry evidence; the live probe does not claim to have induced a Resend failure
+or observed delivery to a real inbox.
