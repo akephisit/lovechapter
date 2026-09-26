@@ -377,6 +377,10 @@ tenant wedding ID and test branch ID as staging environment variables. The
 workflow receives `GITHUB_TOKEN` and the same-SHA PostgreSQL job result from
 GitHub automatically. Keep both release-enabled flags false until the guarded
 CLI, protected `main`, scoped secrets, and live staging rehearsal are complete.
+The staging test URL must target a separate Neon branch with the current
+schema; the CLI verifies its branch endpoint before creating HTTP fixtures,
+and the query-plan transaction rolls its synthetic rows back. A missing or
+stale test branch fails acceptance rather than becoming a skipped check.
 
 The API Worker/Hyperdrive application role needs `USAGE` on `ops`, `SELECT`
 on `ops.release_control`, `EXECUTE` on `ops.admit_release_lease(text)`, and

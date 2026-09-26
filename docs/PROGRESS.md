@@ -1201,3 +1201,17 @@ and 644 tests, format/lint/typechecks, Drizzle check, Bun/Worker/Next/vinext
 builds, and Worker dry-runs. The default production Worker dry-run still uses
 its intentional placeholder Hyperdrive ID, so this is not a valid production
 target check. No staging/production deployment or migration was performed.
+
+The staging acceptance CLI now verifies the same-run PostgreSQL job result,
+exact SHA, staging Neon/Hyperdrive identity, and a separate Neon test-branch
+ID/host/database before opening the staging connection. It checks the live
+gate is open for that SHA before and after running the existing HTTP,
+scheduled-job, and query-plan probes, then emits only the named acceptance
+report. A Bun subprocess adapter bounds runtime and redacts errors. Local
+focused tests passed; the CLI has not run against live staging. Its isolated
+test branch must be provisioned with the current schema, and the default
+release entrypoint still does not call this adapter.
+
+Full local CI after the staging CLI slice passed 104 test files / 649 tests,
+format/lint/typechecks, Drizzle check, Bun/Worker/Next/vinext builds, and
+dry-runs. It did not exercise a live Neon branch or Worker endpoint.
