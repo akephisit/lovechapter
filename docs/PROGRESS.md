@@ -1288,3 +1288,16 @@ production were skipped because both release flags remain unset. No live Worker
 deployment or Neon migration occurred. The isolated `staging-test` schema,
 production resources, environment-scoped credentials, and live acceptance remain
 separate prerequisites before enabling automated deployment.
+
+The owner then approved continuing the staging-readiness work. GitHub
+`staging` and `production` environments were created with one custom deployment
+branch policy each, matching only the `main` branch. Readback found no
+environment variables or secrets and no repository release-enabled variable;
+neither environment can deploy from this configuration alone. A read-only Neon
+check confirmed that both active `staging` and disposable `staging-test` still
+end at migration `0010_release_gate_admission` (`a6fd9862...`), while the
+checked-in latest migration is `0011_release_versions` (`7cdad964...`). No
+Neon migration, Worker deployment, maintenance transition, or release flag
+change occurred in this readiness step. The test-branch schema lifecycle must
+be resolved before staging certification can run automatically for schema
+changes.
