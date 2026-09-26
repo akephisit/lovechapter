@@ -14,6 +14,7 @@ import { PostgresGuestImportRepository } from "./guest-import-repository";
 import { PostgresEnvelopeRepository } from "./envelope-repository";
 import { PostgresPlanningRepository } from "./planning-repository";
 import { PostgresWeddingOperationsRepository } from "./wedding-operations-repository";
+import { PostgresReleaseGateStore } from "./release-gate-repository";
 
 class DrizzleQueryExecutor implements QueryExecutor {
   constructor(private readonly database: NodePgDatabase) {}
@@ -50,6 +51,7 @@ export type PostgresRuntime = {
   operationsRepository: PostgresWeddingOperationsRepository;
   authRepository: PostgresAuthRepository;
   emailJobStore: PostgresEmailJobStore;
+  releaseGateStore: PostgresReleaseGateStore;
   close(): Promise<void>;
 };
 
@@ -66,6 +68,7 @@ function repositoriesFor(executor: QueryExecutor) {
     operationsRepository: new PostgresWeddingOperationsRepository(executor),
     authRepository: new PostgresAuthRepository(executor),
     emailJobStore: new PostgresEmailJobStore(executor),
+    releaseGateStore: new PostgresReleaseGateStore(executor),
   };
 }
 

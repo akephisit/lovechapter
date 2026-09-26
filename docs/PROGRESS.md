@@ -755,3 +755,23 @@ database admission, API/streaming, cron/Bun job parity, web maintenance,
 direct operator control, and exact-SHA staging acceptance into testable
 slices. No gate implementation, staging migration/deploy, production resource,
 or promotion automation has been performed in this planning step.
+
+## Release gate database slice (2026-09-26)
+
+The first implementation slice adds a separate `ops` schema with one seeded
+release-control row and bounded active-work leases. Application admissions
+hold a short shared row lock through lease insert; the direct controller's
+closure update conflicts with admissions and reopening requires the expected
+SHA plus zero leases. No lease is automatically expired or cleared. The schema
+migration changes no business tables and has only the table primary keys, not
+speculative secondary indexes.
+
+The disposable staging-test PostgreSQL branch accepted the migration and
+passed seven new release-gate integration tests, including a lock-order race,
+plus the existing 30 database integration tests. A temporary no-lock mutation
+made the race test fail, and restoring `FOR SHARE` made it pass. The local unit
+suite passed 73 files / 474 tests; database typecheck, lint, format, and
+`drizzle-kit check` passed. Safe SELECT plans showed a primary-key scan for
+control-row admission and tiny sequential scans for the empty lease table;
+these plans are not production-cardinality evidence. Neither active staging
+nor production was migrated or deployed in this slice.

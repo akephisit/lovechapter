@@ -11,3 +11,4 @@ export * from "./planning-repository";
 export * from "./wedding-operations-repository";
 export * from "./repository";
 export * from "./schema";
+export * from "./release-gate-repository";

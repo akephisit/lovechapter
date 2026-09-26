@@ -1,6 +1,7 @@
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
+import * as operationalSchema from "./schema";
 import {
   authAccounts,
   authEmailJobs,
@@ -338,6 +339,54 @@ describe("MVP PostgreSQL schema", () => {
     expect(
       invitationReference?.foreignColumns.map((column) => column.name),
     ).toEqual(["wedding_id", "guest_id", "id"]);
+  });
+});
+
+describe("release gate schema", () => {
+  it("defines only operational state and lease metadata", () => {
+    const control = Reflect.get(operationalSchema, "releaseControl") as
+      Parameters<typeof getTableConfig>[0] | undefined;
+    const leases = Reflect.get(operationalSchema, "releaseLeases") as
+      Parameters<typeof getTableConfig>[0] | undefined;
+
+    expect(control).toBeDefined();
+    expect(leases).toBeDefined();
+    if (!control || !leases) return;
+
+    expect(getTableConfig(control).schema).toBe("ops");
+    expect(getTableConfig(control).name).toBe("release_control");
+    expect(columnNames(control)).toEqual([
+      "id",
+      "mode",
+      "target_sha",
+      "changed_at",
+    ]);
+    expect(getTableConfig(leases).schema).toBe("ops");
+    expect(getTableConfig(leases).name).toBe("release_leases");
+    expect(columnNames(leases)).toEqual(["id", "kind", "started_at"]);
+  });
+
+  it("constrains the singleton, mode, target SHA, and lease identity", () => {
+    const control = Reflect.get(operationalSchema, "releaseControl") as
+      Parameters<typeof getTableConfig>[0] | undefined;
+    const leases = Reflect.get(operationalSchema, "releaseLeases") as
+      Parameters<typeof getTableConfig>[0] | undefined;
+    expect(control).toBeDefined();
+    expect(leases).toBeDefined();
+    if (!control || !leases) return;
+
+    expect(getTableConfig(control).checks.map((item) => item.name)).toEqual(
+      expect.arrayContaining([
+        "release_control_singleton_chk",
+        "release_control_mode_chk",
+        "release_control_target_sha_chk",
+      ]),
+    );
+    expect(getTableConfig(leases).primaryKeys).toHaveLength(0);
+    expect(
+      getTableConfig(leases).columns.find((item) => item.name === "id")
+        ?.primary,
+    ).toBe(true);
   });
 });
 
