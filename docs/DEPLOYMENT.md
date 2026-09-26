@@ -227,10 +227,11 @@ CI verifies both supported backend builds but does not deploy either backend.
 An installation must explicitly select exactly one backend runtime, `worker` or
 `bun-vps`, and configure one frontend `API_UPSTREAM_ORIGIN` for it. Do not run
 the other API/job processor against that installation's database. The first
-Worker staging installation has local, Git-ignored credentials and partial live
+Worker staging installation has local, Git-ignored credentials and live
 acceptance evidence recorded in `docs/PROGRESS.md`. ADR-025 defines the
-approved split evidence for email retry; acceptance still needs to be tied to
-a committed release revision.
+approved split evidence for email retry. The deployable application source
+is unchanged by the subsequent planner/documentation correction; remote PR
+CI is the next gate.
 Production credentials, protected environment, and enforced acceptance gate
 are not in place, so automatic production deployment remains disabled. In
 particular, merging must not silently deploy a Worker when the installation

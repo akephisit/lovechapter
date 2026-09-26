@@ -16,8 +16,10 @@ proxy reaches the API Worker; liveness and database readiness pass. Local
 identity and both cron schedules are enabled on Worker staging. Auth/email,
 RSVP, CSV, cleanup, and representative query-plan checks have run, but a live
 retryable email-provider failure was not induced by design. ADR-025 accepts
-real scheduled sends plus disposable PostgreSQL retry evidence; acceptance
-tied to a committed revision remains open. There is no VPS, custom domain, or Neon production database
+real scheduled sends plus disposable PostgreSQL retry evidence. The owner
+confirmed receipt of both verification and reset email on the test inbox;
+the staging code acceptance is recorded below, while remote PR CI remains
+pending. There is no VPS, custom domain, or Neon production database
 provisioned or claimed.
 
 ## Implemented
@@ -684,11 +686,32 @@ native Next and vinext builds/check, and Worker dry-runs. A first invocation
 without Bun on this shell's PATH stopped at the build; it was rerun with the
 pinned version and passed.
 
-The owner has not yet confirmed receipt of the latest reset email or the
-earlier verification email in the test inbox. Remote PR CI has not run for
-this revision. Read-only code review also found that the release planner
+Read-only code review found that the release planner
 classified a lone `schema.ts` change as backend-only. A failing regression
 test reproduced the issue; the planner now rejects schema-source changes
 without a changed SQL migration, and 73 files / 468 tests passed locally
 after that fix. The planner/doc correction does not alter Worker runtime
-code. Inbox confirmation, remote PR CI, and merge are still pending.
+code. Remote PR CI and merge are still pending.
+
+## Inbox confirmation and final staging gate (2026-09-26)
+
+After the owner requested another message, the deployed Worker accepted a
+fresh reset request through the web proxy (202), and the real minute cron
+marked its new email job sent on the first attempt. The owner confirmed this
+new reset message arrived. The owner also found the earlier single
+verification message in the test inbox, displayed there at 09:36. A verified
+account does not queue another verification message through the normal flow;
+the existing verified account and received original message are the evidence
+for that part of the gate. No reset link was used in this confirmation round,
+and no password was changed.
+
+The five Worker staging categories in `docs/DEPLOYMENT.md` now have evidence:
+auth/email, public RSVP, CSV including rejection/idempotency, real email and
+cleanup cron plus the controlled disposable-database retry, and PostgreSQL
+integration/query plans. Neither the active Resend credential nor production
+resources were disrupted; a live provider 429 was not claimed. The current
+release-planner/documentation follow-up changes no deployable application or
+package source from the live-tested revision. The next gate is remote CI on
+the PR head, followed by a separate merge decision; production release
+automation remains disabled pending real production provisioning and its
+enforced acceptance gate.
