@@ -427,3 +427,26 @@ only after success. Auth and guest RSVP pages also show maintenance. Production
 promotion should be automatic only after exact-SHA staging acceptance. These
 are release requirements, not a claim that the gate, production resources, or
 promotion workflow are already implemented.
+
+## ADR-027 — Every first-installation Worker deploy uses whole-site maintenance
+
+**Status:** Accepted (2026-09-26); refines ADR-024 and ADR-026
+
+For the selected Worker installation, all application changes—not only
+breaking schema changes—enter whole-site maintenance. Build every affected
+component before closure, then close admission for the web, direct API, and
+scheduled handlers and drain active leases. A web-only change deploys only the
+web Worker; an API-only change deploys only the API Worker; shared, migration,
+or uncertain impact deploys both. An unchanged component retains its actual
+previous Worker version ID and source SHA. Documentation-only changes do not
+deploy or close the gate. If both components change, both builds finish before
+either Worker is switched. Reopen only after a private closed-gate smoke and
+exact version/schema evidence, then verify public behavior. A failed
+post-open check recloses maintenance rather than silently continuing.
+
+Exact-main-SHA staging acceptance precedes automatic production promotion.
+Production remains disabled until protected source review, environment-scoped
+secrets, a production gate/Hyperdrive bootstrap, and an isolated recovery
+rehearsal are verified. Real inbox delivery is temporarily `waived` as an
+acceptance gate, not reported as passed; other auth/outbox/provider, RSVP,
+CSV, cron, and query-plan checks remain mandatory.

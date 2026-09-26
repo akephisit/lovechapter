@@ -1233,3 +1233,15 @@ Full local CI after installing the staging default CLI passed 105 test files /
 656 tests, format/lint/typechecks, Drizzle check, Bun/Worker/Next/vinext
 builds, and Worker dry-runs. This does not replace a real staging acceptance
 run or production bootstrap.
+
+Task 8 has begun with a metadata-only bootstrap preflight. It rejects missing
+required CI checks, independent/code-owner review, main-only GitHub
+environments, disabled independent Cloudflare Git deployment, distinct Neon
+branches/hosts, exact Worker/Hyperdrive identities and cache settings,
+required secret **names**, isolated recovery evidence, or a production gate
+that is already open before first publication. It does not read secret values
+or modify a provider. A fresh read-only GitHub audit found zero rulesets,
+unprotected `main`, zero environments and repository release
+secrets/variables, and only the owner account as a write-capable collaborator.
+Protected auto-promotion therefore remains blocked pending an independent
+reviewer and environment setup; neither release flag was enabled.

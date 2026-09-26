@@ -63,6 +63,14 @@ weaken the approved security gates to answer the remaining questions.
 The first production installation selects the Worker backend (ADR-026). Bun/VPS
 questions below apply only if a different installation chooses that option.
 
+- Which trusted GitHub collaborator will provide an independent review for
+  protected `main` release changes? The current repository has only its owner
+  as a write-capable collaborator; do not bypass owner review to enable auto
+  promotion.
+- Who owns automatic creation/expiration of the isolated Neon query-plan
+  branch on releases with schema changes? A fixed test branch must be kept on
+  the exact current schema until that lifecycle is implemented.
+
 - For a future VPS installation: provider, region, sizing, backup, and recovery
   ownership; scrypt benchmark on that VPS class; stable HTTPS backend hostname,
   DNS, certificate, and reverse-proxy ownership; a separate Bun/VPS staging

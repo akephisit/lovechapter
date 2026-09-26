@@ -338,6 +338,12 @@ from the same revision, smoke-test, then reopen. If a reliable write/job gate
 and recovery plan are not available, the breaking release remains blocked.
 Never silently discard existing customer data or run mixed incompatible
 versions. Nonbreaking component-only releases may still deploy selectively.
+For the selected first Worker installation, even selective web-only or API-only
+deployments enter whole-site maintenance. Build affected artifacts before
+closure, close and drain all admission, switch only affected Worker versions,
+privately smoke-test the paired versions, reopen atomically, and verify public
+behavior. Documentation-only changes skip deployment and maintenance. This
+deliberate maintenance policy does not add old/new schema compatibility.
 
 Do not default to:
 

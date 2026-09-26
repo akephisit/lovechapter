@@ -172,6 +172,22 @@ separately designed and approved atomic-switch mechanism; they are not a reason
 to accumulate permanent compatibility scaffolding. Record downtime, data
 transformation, validation, and recovery steps for each breaking release.
 
+For the first, Worker-backed production installation, **every application
+deployment** enters whole-site maintenance, including web-only and API-only
+changes. Build the affected Worker artifacts before closure; if both change,
+finish both builds before switching either. Close admission for all pages,
+API traffic, and scheduled work, then drain leases. Deploy only the affected
+Worker version(s), retaining the exact unchanged version ID/source SHA for
+the other component. Shared code, migrations, or uncertain impact select both
+Workers; documentation-only changes neither deploy nor close the gate. Apply
+only reviewed migrations while drained. Privately verify the closed-gate
+pair, reopen atomically only with exact-SHA/version evidence, then run public
+and staging acceptance. A failure after reopen must reclose the gate; never
+automatically roll back a migrated schema. Production automation stays off
+until protected-source review, same-SHA staging acceptance, and a rehearsed
+production bootstrap/recovery path are proven. The temporary real-inbox email
+waiver must be recorded as `waived`, never `passed`.
+
 Authentication:
 
 - first-party verified-email/password accounts;
