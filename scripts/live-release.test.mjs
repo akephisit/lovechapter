@@ -39,6 +39,9 @@ function environment() {
     RELEASE_FOREIGN_WEDDING_ID: "22222222-2222-4222-8222-222222222222",
     RELEASE_TEST_DATABASE_URL:
       "postgresql://tester:test-password@ep-test.neon.tech/lovechapter?sslmode=require",
+    RELEASE_TEST_MIGRATION_DATABASE_URL:
+      "postgresql://migrator:migration-password@ep-test.neon.tech/lovechapter?sslmode=require",
+    RELEASE_TEST_MIGRATION_DATABASE_ROLE: "migrator",
     RELEASE_TEST_BRANCH_ID: "br-test-456",
     RELEASE_TEST_DATABASE_CONFIRM: "lovechapter_test",
   };
@@ -133,6 +136,8 @@ describe("default live release composition", () => {
       { GITHUB_OUTPUT: "" },
       { RELEASE_POSTGRES_JOB_RESULT: "skipped" },
       { RELEASE_TEST_DATABASE_URL: "" },
+      { RELEASE_TEST_MIGRATION_DATABASE_URL: "" },
+      { RELEASE_TEST_MIGRATION_DATABASE_ROLE: "" },
       { RELEASE_APP_DATABASE_ROLE: "" },
       { RELEASE_PROBE_SECRET: "" },
     ]) {

@@ -52,7 +52,7 @@ export function createStagingAcceptancePreflightCommand({
       const result = await runFile("bun", [cliPath, sha, "--preflight"], {
         cwd: root,
         env,
-        timeout: 60_000,
+        timeout: 5 * 60_000,
         maxBuffer: 64 * 1024,
       });
       const parsed = JSON.parse(String(result.stdout).trim());

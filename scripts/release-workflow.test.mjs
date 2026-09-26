@@ -105,6 +105,12 @@ describe("automatic Worker release workflow policy", () => {
       /RELEASE_TEST_DATABASE_URL: \$\{\{ secrets\.RELEASE_TEST_DATABASE_URL \}\}/u,
     );
     expect(source).toMatch(
+      /RELEASE_TEST_MIGRATION_DATABASE_URL: \$\{\{ secrets\.RELEASE_TEST_MIGRATION_DATABASE_URL \}\}/u,
+    );
+    expect(source).toMatch(
+      /RELEASE_TEST_MIGRATION_DATABASE_ROLE: \$\{\{ vars\.RELEASE_TEST_MIGRATION_DATABASE_ROLE \}\}/u,
+    );
+    expect(source).toMatch(
       /RELEASE_TEST_PASSWORD: \$\{\{ secrets\.RELEASE_TEST_PASSWORD \}\}/u,
     );
     expect(source).toMatch(

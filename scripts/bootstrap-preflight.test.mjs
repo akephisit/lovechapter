@@ -16,6 +16,7 @@ const stagingSecrets = [
   "RELEASE_TEST_PASSWORD",
   "RELEASE_VERIFICATION_EMAIL",
   "RELEASE_TEST_DATABASE_URL",
+  "RELEASE_TEST_MIGRATION_DATABASE_URL",
 ];
 const productionSecrets = stagingSecrets.slice(0, 6);
 const webSecrets = [

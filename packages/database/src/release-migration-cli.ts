@@ -1,11 +1,8 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { readMigrationFiles } from "drizzle-orm/migrator";
 import { Client } from "pg";
 
+import { migrationFolder, pendingMigrations } from "./migration-history";
 import { releaseTargetFromEnvironment } from "./release-gate-cli";
 import { PostgresReleaseGateController } from "./release-gate-repository";
 import {
@@ -24,8 +21,6 @@ type Options = {
 };
 
 const shaPattern = /^[0-9a-f]{40}$/;
-const migrationFolder = fileURLToPath(new URL("../drizzle/", import.meta.url));
-const pathPrefix = "packages/database/drizzle/";
 
 function required(environment: Environment, name: string): string {
   const value = environment[name];
@@ -62,64 +57,8 @@ function parseArgs(args: string[]) {
   return { sha: args[1]!, closedAt: args[3]!, reviewed };
 }
 
-function checkedInMigrations() {
-  const journal = JSON.parse(
-    readFileSync(
-      new URL("../drizzle/meta/_journal.json", import.meta.url),
-      "utf8",
-    ),
-  ) as { entries?: Array<{ tag: string; when: number }> };
-  const files = readMigrationFiles({ migrationsFolder: migrationFolder });
-  if (
-    !Array.isArray(journal.entries) ||
-    journal.entries.length !== files.length ||
-    journal.entries.length > 1000
-  ) {
-    throw new Error("Migration journal is invalid");
-  }
-  return journal.entries.map((entry, index) => {
-    if (
-      !/^[A-Za-z0-9_-]+$/u.test(entry.tag) ||
-      !Number.isSafeInteger(entry.when) ||
-      files[index]?.folderMillis !== entry.when ||
-      (index > 0 && entry.when <= journal.entries![index - 1]!.when)
-    ) {
-      throw new Error("Migration journal is invalid");
-    }
-    return {
-      path: `${pathPrefix}${entry.tag}.sql`,
-      hash: files[index]!.hash,
-      when: entry.when,
-    };
-  });
-}
-
 async function assertExactPending(client: Client, reviewed: string[]) {
-  const checkedIn = checkedInMigrations();
-  if (checkedIn.at(-1)?.hash !== expectedSchemaMigrationHash) {
-    throw new Error("Expected schema revision differs from checked-in history");
-  }
-  const ledger = await client.query<{ hash: string; created_at: string }>(
-    `select hash, created_at::text from drizzle.__drizzle_migrations
-     order by created_at, id limit 1001`,
-  );
-  if (
-    ledger.rows.length === 0 ||
-    ledger.rows.length > 1000 ||
-    ledger.rows.length >= checkedIn.length ||
-    ledger.rows.some(
-      (row, index) =>
-        row.hash !== checkedIn[index]?.hash ||
-        Number(row.created_at) !== checkedIn[index]?.when,
-    )
-  ) {
-    throw new Error(
-      "Deployed migration ledger differs from checked-in history",
-    );
-  }
-  const pending = checkedIn
-    .slice(ledger.rows.length)
-    .map((entry) => entry.path);
+  const pending = await pendingMigrations(client);
   if (
     pending.length !== reviewed.length ||
     pending.some((path) => !reviewed.includes(path))

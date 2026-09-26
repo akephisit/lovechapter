@@ -38,25 +38,34 @@ function fixture() {
     RELEASE_FOREIGN_WEDDING_ID: "22222222-2222-4222-8222-222222222222",
     RELEASE_TEST_DATABASE_URL:
       "postgresql://tester:test-password@ep-test.ap-southeast-1.aws.neon.tech/lovechapter?sslmode=require",
+    RELEASE_TEST_MIGRATION_DATABASE_URL:
+      "postgresql://migrator:migration-password@ep-test.ap-southeast-1.aws.neon.tech/lovechapter?sslmode=require",
+    RELEASE_TEST_MIGRATION_DATABASE_ROLE: "migrator",
     RELEASE_TEST_BRANCH_ID: "br-test-456",
     RELEASE_TEST_DATABASE_CONFIRM: "lovechapter_test",
   };
   const fetcher = vi.fn(async (input) =>
     String(input).startsWith("https://console.neon.tech/")
       ? new globalThis.Response(
-          JSON.stringify({
-            endpoints: [
-              {
-                branch_id: String(input).includes("/branches/br-test-456/")
-                  ? "br-test-456"
-                  : env.RELEASE_NEON_BRANCH_ID,
-                host: String(input).includes("/branches/br-test-456/")
-                  ? "ep-test.ap-southeast-1.aws.neon.tech"
-                  : host,
-                type: "read_write",
-              },
-            ],
-          }),
+          JSON.stringify(
+            String(input).endsWith("/branches/br-test-456")
+              ? { branch: { id: "br-test-456", name: "staging-test" } }
+              : {
+                  endpoints: [
+                    {
+                      branch_id: String(input).includes(
+                        "/branches/br-test-456/",
+                      )
+                        ? "br-test-456"
+                        : env.RELEASE_NEON_BRANCH_ID,
+                      host: String(input).includes("/branches/br-test-456/")
+                        ? "ep-test.ap-southeast-1.aws.neon.tech"
+                        : host,
+                      type: "read_write",
+                    },
+                  ],
+                },
+          ),
           { status: 200 },
         )
       : new globalThis.Response(
@@ -80,6 +89,7 @@ function fixture() {
     rows: [{ hash: expectedSchemaMigrationHash }],
   }));
   const testClient = { connect: testConnect, end: testEnd, query: testQuery };
+  const syncTestSchema = vi.fn(async () => ({ applied: 1 }));
   const createClient = vi.fn((url) =>
     url === env.RELEASE_TEST_DATABASE_URL ? testClient : client,
   );
@@ -124,6 +134,7 @@ function fixture() {
     testConnect,
     testEnd,
     testQuery,
+    syncTestSchema,
     readGateStatus,
     http,
     jobs,
@@ -142,7 +153,14 @@ describe("live staging acceptance CLI boundary", () => {
         preflightOnly: true,
       }),
     ).resolves.toEqual({ targetVerified: true });
-    expect(context.fetcher).toHaveBeenCalledTimes(3);
+    expect(context.fetcher).toHaveBeenCalledTimes(4);
+    expect(context.syncTestSchema).toHaveBeenCalledExactlyOnceWith({
+      readUrl: context.env.RELEASE_TEST_DATABASE_URL,
+      migrationUrl: context.env.RELEASE_TEST_MIGRATION_DATABASE_URL,
+      migrationRole: context.env.RELEASE_TEST_MIGRATION_DATABASE_ROLE,
+      database: "lovechapter",
+      activeHost: host,
+    });
     expect(context.createClient).toHaveBeenCalledExactlyOnceWith(
       context.env.RELEASE_TEST_DATABASE_URL,
     );
@@ -167,6 +185,7 @@ describe("live staging acceptance CLI boundary", () => {
     expect(context.readGateStatus).toHaveBeenCalledTimes(2);
     expect(context.end).toHaveBeenCalledOnce();
     expect(context.testEnd).toHaveBeenCalledOnce();
+    expect(context.syncTestSchema).not.toHaveBeenCalled();
     expect(result.commitSha).toBe(sha);
     expect(context.output).toEqual([JSON.stringify(result)]);
     expect(context.output.join(" ")).not.toMatch(
@@ -197,6 +216,8 @@ describe("live staging acceptance CLI boundary", () => {
       { RELEASE_NEON_BRANCH_ID: "br-other" },
       { RELEASE_APP_DATABASE_ROLE: "release" },
       { RELEASE_TEST_BRANCH_ID: "br-other" },
+      { RELEASE_TEST_MIGRATION_DATABASE_ROLE: "" },
+      { RELEASE_TEST_MIGRATION_DATABASE_URL: "" },
       {
         RELEASE_TEST_DATABASE_URL:
           "postgresql://tester:test-password@ep-wrong.ap-southeast-1.aws.neon.tech/lovechapter?sslmode=require",
@@ -207,8 +228,46 @@ describe("live staging acceptance CLI boundary", () => {
         runStagingAcceptanceCli(sha, { ...context.env, ...edit }, context),
       ).rejects.toThrow();
       expect(context.createClient).not.toHaveBeenCalled();
+      expect(context.syncTestSchema).not.toHaveBeenCalled();
       expect(context.output).toEqual([]);
     }
+  });
+
+  it("fails before maintenance when isolated schema sync fails", async () => {
+    const context = fixture();
+    context.syncTestSchema.mockRejectedValueOnce(
+      new Error("private migration detail"),
+    );
+    await expect(
+      runStagingAcceptanceCli(sha, context.env, {
+        ...context,
+        preflightOnly: true,
+      }),
+    ).rejects.toThrow("Staging acceptance failed");
+    expect(context.createClient).not.toHaveBeenCalled();
+    expect(context.output).toEqual([]);
+  });
+
+  it("refuses a provider branch not named staging-test before any database connection", async () => {
+    const context = fixture();
+    context.fetcher.mockImplementation(async (input) =>
+      String(input).endsWith("/branches/br-test-456")
+        ? new globalThis.Response(
+            JSON.stringify({
+              branch: { id: "br-test-456", name: "production" },
+            }),
+            { status: 200 },
+          )
+        : fixture().fetcher(input),
+    );
+    await expect(
+      runStagingAcceptanceCli(sha, context.env, {
+        ...context,
+        preflightOnly: true,
+      }),
+    ).rejects.toThrow();
+    expect(context.syncTestSchema).not.toHaveBeenCalled();
+    expect(context.createClient).not.toHaveBeenCalled();
   });
 
   it("rejects a gate that changed before or during acceptance", async () => {

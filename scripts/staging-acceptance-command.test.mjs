@@ -28,7 +28,7 @@ describe("staging acceptance subprocess", () => {
         sha,
         "--preflight",
       ],
-      expect.any(Object),
+      expect.objectContaining({ timeout: 5 * 60_000 }),
     );
   });
 

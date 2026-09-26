@@ -66,9 +66,9 @@ ADR-028 replaces the independent-review requirement with owner-only direct
 pushes to protected `main`. If write access later expands, revisit that source
 authority before enabling automatic production release for additional writers.
 
-- Who owns automatic creation/expiration of the isolated Neon query-plan
-  branch on releases with schema changes? A fixed test branch must be kept on
-  the exact current schema until that lifecycle is implemented.
+- Who owns creation and expiration of the fixed, disposable Neon query-plan
+  branch? Release preflight now syncs its reviewed migrations automatically,
+  but intentionally does not reset, delete, or recreate the branch.
 - For a future VPS installation: provider, region, sizing, backup, and recovery
   ownership; scrypt benchmark on that VPS class; stable HTTPS backend hostname,
   DNS, certificate, and reverse-proxy ownership; a separate Bun/VPS staging

@@ -1301,3 +1301,18 @@ Neon migration, Worker deployment, maintenance transition, or release flag
 change occurred in this readiness step. The test-branch schema lifecycle must
 be resolved before staging certification can run automatically for schema
 changes.
+
+The isolated `staging-test` schema lifecycle now has a code-only, fail-closed
+sync step in the staging preflight. After verifying the provider branch ID,
+exact `staging-test` name, and endpoint, and before any Worker build or
+maintenance, it compares the full Drizzle ledger to
+checked-in history, requires migration reviews, applies the pending suffix
+through a separate direct role, and verifies convergence. A current ledger is
+a no-op; drift, missing review, or a failed migration stops the release. The
+staging environment now needs `RELEASE_TEST_MIGRATION_DATABASE_URL` (secret)
+and `RELEASE_TEST_MIGRATION_DATABASE_ROLE` (variable). No live Neon migration,
+Worker deployment, release flag change, or production modification was made
+by this implementation. Local `npm run ci` passed with Bun 1.4.2 (107 test
+files / 669 tests, migration snapshot check, Bun smoke, Worker dry-run,
+Next/vinext builds and checks, and web deploy dry-run). It does not replace
+the hosted PostgreSQL job or a live staging acceptance run.

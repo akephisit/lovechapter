@@ -395,8 +395,11 @@ Hyperdrive ID, and Worker `workers.dev` origins from each environment's
 tokens, `WEB_PROXY_SHARED_SECRET`, and `RELEASE_PROBE_SECRET` as environment
 secrets, never repository variables. Staging additionally needs environment
 secrets for its verified test account email/password, separate unverified
-verification email, and isolated test-branch database URL; set the foreign
-tenant wedding ID and test branch ID as staging environment variables. The
+verification email, isolated test-branch read URL
+(`RELEASE_TEST_DATABASE_URL`), and separate direct migration URL
+(`RELEASE_TEST_MIGRATION_DATABASE_URL`). Set the foreign tenant wedding ID,
+test branch ID, and the migration URL's PostgreSQL username
+(`RELEASE_TEST_MIGRATION_DATABASE_ROLE`) as staging environment variables. The
 workflow receives `GITHUB_TOKEN` and the same-SHA PostgreSQL job result from
 GitHub automatically. Keep both release-enabled flags false until the guarded
 CLI, protected `main`, scoped secrets, and live staging rehearsal are complete.
@@ -406,13 +409,18 @@ The web Worker needs `API_UPSTREAM_ORIGIN`, `WEB_PROXY_SHARED_SECRET`, and
 needs its ingress, auth-token, rate-limit, public-web-origin, and Resend
 settings. Verify secret **names** per Worker without exposing values.
 
-The staging test URL must target a separate Neon branch with the current
-schema; the CLI verifies its branch endpoint and reads the latest Drizzle
-migration hash before build or maintenance. The query-plan transaction later
-rolls its synthetic rows back. A missing or stale test branch stops the
-release before closure rather than becoming a skipped check. Schema-changing
-releases still require the isolated branch to be brought to the reviewed
-schema; its automatic lifecycle remains unresolved.
+The staging test URL must target the fixed, disposable `staging-test` Neon
+branch. Before build or maintenance, preflight verifies the provider-reported
+branch ID, exact `staging-test` name, and branch endpoint. It then connects
+through the separate direct migration role. It compares the
+entire Drizzle ledger to the exact checked-in prefix, requires a complete
+review for every pending migration, applies only that reviewed suffix, and
+checks the full ledger again. The read role then checks the latest migration
+hash. Drift, missing review/credentials, or failed migration stops the release
+before closure. This never resets or deletes the branch, migrates active
+staging/production, or assumes backward compatibility. The query-plan
+transaction later rolls its synthetic rows back. Creation and expiration of
+the fixed test branch remain manual until separately designed.
 
 The API Worker/Hyperdrive application role needs `USAGE` on `ops`, `SELECT`
 on `ops.release_control`, `EXECUTE` on `ops.admit_release_lease(text)`, and

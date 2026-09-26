@@ -22,6 +22,7 @@ import {
 } from "./acceptance/staging-jobs.mjs";
 import { runStagingAcceptance } from "./staging-acceptance.mjs";
 import { runQueryPlanProbe } from "./staging-query-plan-probe.mjs";
+import { syncStagingTestSchema } from "./staging-test-schema.mjs";
 
 const shaPattern = /^[0-9a-f]{40}$/u;
 
@@ -35,16 +36,29 @@ function required(env, name) {
 
 async function testBranchInventory(branchId, projectId, apiKey, fetcher) {
   try {
-    const response = await fetcher(
-      `https://console.neon.tech/api/v2/projects/${encodeURIComponent(projectId)}/branches/${encodeURIComponent(branchId)}/endpoints`,
-      {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          Accept: "application/json",
-        },
-        signal: globalThis.AbortSignal.timeout(20_000),
+    const base = `https://console.neon.tech/api/v2/projects/${encodeURIComponent(projectId)}/branches/${encodeURIComponent(branchId)}`;
+    const branchResponse = await fetcher(base, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: "application/json",
       },
-    );
+      signal: globalThis.AbortSignal.timeout(20_000),
+    });
+    if (!branchResponse.ok) throw new Error("provider status");
+    const branchBody = await branchResponse.json();
+    if (
+      branchBody?.branch?.id !== branchId ||
+      branchBody.branch.name !== "staging-test"
+    ) {
+      throw new Error("isolated branch identity");
+    }
+    const response = await fetcher(`${base}/endpoints`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: "application/json",
+      },
+      signal: globalThis.AbortSignal.timeout(20_000),
+    });
     if (!response.ok) throw new Error("provider status");
     const body = await response.json();
     if (!Array.isArray(body?.endpoints)) throw new Error("provider response");
@@ -95,6 +109,7 @@ export async function runStagingAcceptanceCli(
     http = runStagingHttpAcceptance,
     jobs = runStagingJobsAcceptance,
     plans = runQueryPlanProbe,
+    syncTestSchema = syncStagingTestSchema,
     write = console.log,
     preflightOnly = false,
   } = {},
@@ -116,6 +131,14 @@ export async function runStagingAcceptanceCli(
     const verificationEmail = required(env, "RELEASE_VERIFICATION_EMAIL");
     const foreignWeddingId = required(env, "RELEASE_FOREIGN_WEDDING_ID");
     const testDatabaseUrl = required(env, "RELEASE_TEST_DATABASE_URL");
+    const testMigrationUrl = required(
+      env,
+      "RELEASE_TEST_MIGRATION_DATABASE_URL",
+    );
+    const testMigrationRole = required(
+      env,
+      "RELEASE_TEST_MIGRATION_DATABASE_ROLE",
+    );
     const testBranchId = required(env, "RELEASE_TEST_BRANCH_ID");
     if (required(env, "RELEASE_TEST_DATABASE_CONFIRM") !== "lovechapter_test") {
       throw new Error("Isolated query-plan database confirmation is absent");
@@ -153,6 +176,15 @@ export async function runStagingAcceptanceCli(
       ).length !== 1
     ) {
       throw new Error("Query-plan URL is not the isolated Neon branch");
+    }
+    if (preflightOnly === true) {
+      await syncTestSchema({
+        readUrl: testDatabaseUrl,
+        migrationUrl: testMigrationUrl,
+        migrationRole: testMigrationRole,
+        database: target.database,
+        activeHost: verified.host,
+      });
     }
     await assertCurrentTestSchema(testDatabaseUrl, createClient);
     if (preflightOnly === true) {
