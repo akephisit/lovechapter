@@ -443,6 +443,32 @@ Hyperdrive, Worker, and secret resources. A future Bun/VPS production release
 needs its own Bun/VPS staging acceptance; a passing Worker staging run does not
 validate a different runtime.
 
+### Automated staging HTTP fixture
+
+The release coordinator will call `runStagingHttpAcceptance` through the
+staging web Worker's `workers.dev` origin. Before enabling it, create one
+**staging-only**, email-verified local account and complete onboarding. Store
+its email and password as restricted GitHub **staging environment secrets**;
+do not put them in workflow arguments, logs, commits, or this document. Do not
+reuse a production account. Reserve `delivered@resend.dev` for the separate
+unverified verification-request fixture, and verify that it has no existing
+staging account. The coordinator also needs a direct staging database
+credential scoped for the test fixture, and the ID of an existing staging
+wedding owned by a different test account. Neither may point to production.
+
+Each run checks verification and password-reset HTTP acceptance and the
+corresponding database outbox records; it signs into the verified account,
+checks session and sign-out revocation, proves cross-wedding guest access is
+denied, submits and reads back an account-free RSVP, and imports/exports one
+Unicode CSV row. It creates a disposable wedding under the verified account
+and deletes only its recorded ID and the separate unverified account after
+the checks. A failed or incomplete cleanup fails acceptance; an operator
+must inspect exact fixture IDs before any manual cleanup. Auth rate limits
+still apply, so repeated releases within one window may be rejected rather
+than bypassing the limit. The report marks `inboxDelivery: "waived"`:
+neither real inbox receipt nor deployed verification/reset link redemption is
+certified by this automated check.
+
 For a future release requiring full Worker staging acceptance, record on its
 exact commit before the final CI and merge decision:
 

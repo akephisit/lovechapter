@@ -1057,3 +1057,9 @@ web `--skip-build` promotion path still need a protected staging rehearsal.
 The plan keeps production promotion disabled until
 protected `main`, automated staging acceptance, exact-target preflight, a
 closed-gate production bootstrap, and an isolated recovery rehearsal pass.
+
+The next local task adds a bounded staging HTTP acceptance module for auth
+request/outbox, verified session, tenant isolation, account-free RSVP with
+readback, CSV round trip, and strictly scoped synthetic fixture cleanup. It
+reports inbox delivery as waived, not passed. The module has not yet run
+against live staging and is not wired to production promotion.
