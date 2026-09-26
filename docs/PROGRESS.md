@@ -1276,5 +1276,15 @@ workflow as the single main-push CI/PostgreSQL path, and changed the read-only
 bootstrap preflight to require direct-push-compatible protection instead of
 review approval. Both release-enabled flags remain off; no GitHub branch
 protection has yet been changed and no commit has been pushed to `main` by this
-work. The stale `staging-test` schema and missing production resources still
-block live release acceptance.
+work at that checkpoint. The stale `staging-test` schema and missing production
+resources still block live release acceptance.
+
+The direct-main source-policy update was then fast-forward pushed to protected
+`main` at `809ac1ca765b430d0dd0332588efeec0a070158f`. GitHub branch
+protection now enforces admin protection and blocks force pushes/deletion without
+requiring a PR or pre-push checks. The sole hosted `Worker release` run
+`36254616914` passed its CI and PostgreSQL jobs for that exact SHA; staging and
+production were skipped because both release flags remain unset. No live Worker
+deployment or Neon migration occurred. The isolated `staging-test` schema,
+production resources, environment-scoped credentials, and live acceptance remain
+separate prerequisites before enabling automated deployment.
