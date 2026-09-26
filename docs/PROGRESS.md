@@ -1175,3 +1175,10 @@ cron, query-plan, or same-SHA PostgreSQL retry evidence and projects only the
 named checks plus the explicit inbox waiver. It does not run those probes or
 claim real staging acceptance by itself. The release CLI still lacks live
 inputs and neither release flag has been enabled.
+
+The release execution layer now reads the open gate's exact SHA/Worker pair,
+requires GitHub's durable deployment ledger to agree for production, and
+derives component impact from that accepted baseline rather than the push
+event's before-SHA. It skips a validated docs-only plan without creating a
+deploy-capable driver. This layer has local tests only; the live CLI factory,
+environment preflight, and real acceptance credentials are still unwired.
