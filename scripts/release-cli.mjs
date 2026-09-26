@@ -2,13 +2,15 @@ import console from "node:console";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
+import { runLiveRelease } from "./live-release.mjs";
+
 const shaPattern = /^[0-9a-f]{40}$/u;
 
 /** Check workflow context before any credential or release adapter is loaded. */
 export async function runReleaseCli(
   args,
   env,
-  { driverFactory = unavailableDriver } = {},
+  { driverFactory = runLiveRelease } = {},
 ) {
   const environment = args[0];
   const sha = env.GITHUB_SHA;
@@ -39,11 +41,6 @@ export async function runReleaseCli(
     }
   }
   return driverFactory({ environment, sha }, env);
-}
-
-async function unavailableDriver() {
-  // The live adapter must be installed and validated before a release flag is enabled.
-  throw new Error("Automatic Worker release adapter is not provisioned");
 }
 
 if (

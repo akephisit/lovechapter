@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { REQUIRED_STAGING_CHECKS } from "./release-orchestrator.mjs";
-import { createStagingAcceptanceCommand } from "./staging-acceptance-command.mjs";
+import {
+  createStagingAcceptanceCommand,
+  createStagingAcceptancePreflightCommand,
+} from "./staging-acceptance-command.mjs";
 
 const sha = "a".repeat(40);
 const report = {
@@ -11,6 +14,24 @@ const report = {
 };
 
 describe("staging acceptance subprocess", () => {
+  it("preflights provider targets before any Worker preparation", async () => {
+    const runFile = vi.fn(async () => ({ stdout: '{"targetVerified":true}' }));
+    const preflight = createStagingAcceptancePreflightCommand({
+      env: { RELEASE_ENVIRONMENT: "staging" },
+      runFile,
+    });
+    await expect(preflight(sha)).resolves.toEqual({ targetVerified: true });
+    expect(runFile).toHaveBeenCalledWith(
+      "bun",
+      [
+        expect.stringMatching(/staging-acceptance-cli\.mjs$/u),
+        sha,
+        "--preflight",
+      ],
+      expect.any(Object),
+    );
+  });
+
   it("runs the Bun CLI and accepts only its exact projected report", async () => {
     const runFile = vi.fn(async () => ({ stdout: JSON.stringify(report) }));
     const accept = createStagingAcceptanceCommand({

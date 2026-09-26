@@ -1215,3 +1215,21 @@ release entrypoint still does not call this adapter.
 Full local CI after the staging CLI slice passed 104 test files / 649 tests,
 format/lint/typechecks, Drizzle check, Bun/Worker/Next/vinext builds, and
 dry-runs. It did not exercise a live Neon branch or Worker endpoint.
+
+The default release entrypoint now composes the guarded staging path: it
+requires the protected-main workflow context and complete environment-scoped
+configuration, verifies staging/test-branch identities before preparation,
+derives impact from the accepted gate baseline, builds before closure,
+migrates only reviewed SQL while drained, deploys selected Workers, runs
+private/public probes and the live staging acceptance CLI, then writes a
+secret-free same-run output. Missing inputs fail before creating a gate or
+Worker runner. The production default deliberately still throws until its
+protected-source preflight and one-time bootstrap are implemented. Both
+release flags remain disabled, and this staging path has only simulated
+adapter tests—not a live staging rehearsal. The test branch must also be kept
+on the current schema for automatic query-plan acceptance.
+
+Full local CI after installing the staging default CLI passed 105 test files /
+656 tests, format/lint/typechecks, Drizzle check, Bun/Worker/Next/vinext
+builds, and Worker dry-runs. This does not replace a real staging acceptance
+run or production bootstrap.

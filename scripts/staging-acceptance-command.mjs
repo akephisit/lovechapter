@@ -35,3 +35,33 @@ export function createStagingAcceptanceCommand({
     }
   };
 }
+
+/** Provider/branch preflight runs before build, closure, or staging fixtures. */
+export function createStagingAcceptancePreflightCommand({
+  env,
+  runFile = execFileAsync,
+}) {
+  if (env?.RELEASE_ENVIRONMENT !== "staging" || typeof runFile !== "function") {
+    throw new Error("Staging acceptance environment is invalid");
+  }
+  return async (sha) => {
+    if (!shaPattern.test(sha ?? "")) {
+      throw new Error("Staging acceptance SHA is invalid");
+    }
+    try {
+      const result = await runFile("bun", [cliPath, sha, "--preflight"], {
+        cwd: root,
+        env,
+        timeout: 60_000,
+        maxBuffer: 64 * 1024,
+      });
+      const parsed = JSON.parse(String(result.stdout).trim());
+      if (parsed?.targetVerified !== true || Object.keys(parsed).length !== 1) {
+        throw new Error("Staging acceptance preflight is invalid");
+      }
+      return { targetVerified: true };
+    } catch {
+      throw new Error("Staging acceptance preflight failed");
+    }
+  };
+}

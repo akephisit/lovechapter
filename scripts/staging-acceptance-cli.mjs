@@ -73,6 +73,7 @@ export async function runStagingAcceptanceCli(
     jobs = runStagingJobsAcceptance,
     plans = runQueryPlanProbe,
     write = console.log,
+    preflightOnly = false,
   } = {},
 ) {
   try {
@@ -129,6 +130,11 @@ export async function runStagingAcceptanceCli(
       ).length !== 1
     ) {
       throw new Error("Query-plan URL is not the isolated Neon branch");
+    }
+    if (preflightOnly === true) {
+      const report = { targetVerified: true };
+      write(JSON.stringify(report));
+      return report;
     }
     const client = createClient(target.directUrl);
     let result;
@@ -197,7 +203,16 @@ export async function runStagingAcceptanceCli(
 
 if (import.meta.main) {
   try {
-    await runStagingAcceptanceCli(process.argv[2], process.env);
+    const args = process.argv.slice(2);
+    if (
+      ![1, 2].includes(args.length) ||
+      (args.length === 2 && args[1] !== "--preflight")
+    ) {
+      throw new Error("Invalid staging acceptance command");
+    }
+    await runStagingAcceptanceCli(args[0], process.env, {
+      preflightOnly: args[1] === "--preflight",
+    });
   } catch {
     console.error("staging_acceptance_failed");
     process.exitCode = 1;

@@ -64,4 +64,8 @@ describe("release CLI admission", () => {
       expect.any(Object),
     );
   });
+
+  it("keeps the default staging path closed without complete environment setup", async () => {
+    await expect(runReleaseCli(["staging"], environment())).rejects.toThrow();
+  });
 });

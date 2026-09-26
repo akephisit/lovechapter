@@ -122,6 +122,20 @@ function fixture() {
 }
 
 describe("live staging acceptance CLI boundary", () => {
+  it("preflights staging and test-branch identity without opening a database connection", async () => {
+    const context = fixture();
+    await expect(
+      runStagingAcceptanceCli(sha, context.env, {
+        ...context,
+        preflightOnly: true,
+      }),
+    ).resolves.toEqual({ targetVerified: true });
+    expect(context.fetcher).toHaveBeenCalledTimes(3);
+    expect(context.createClient).not.toHaveBeenCalled();
+    expect(context.http).not.toHaveBeenCalled();
+    expect(context.output).toEqual([JSON.stringify({ targetVerified: true })]);
+  });
+
   it("verifies target and open SHA before probes, then rechecks before output", async () => {
     const context = fixture();
     const result = await runStagingAcceptanceCli(sha, context.env, context);
