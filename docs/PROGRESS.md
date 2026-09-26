@@ -1112,3 +1112,16 @@ uses the separate `lovechapter_staging_app` role. The owner explicitly chose
 to keep the existing shared `neondb_owner` password. Its exposure therefore
 remains an accepted security risk; no rotation or migration URL update will be
 performed in this task.
+
+Task 7 is still in progress in the isolated worktree. The disabled-by-default
+release workflow now has a serial cutover runner, exact-main-SHA checks,
+accepted-baseline planning, an authenticated gate command wrapper, selective
+reopen evidence, and a closed-gate private smoke module. The smoke verifies
+protected API readiness, whole-site maintenance, private web presentation,
+and blocked API reads/writes with harmless invalid-body requests. Its response
+and provider errors are intentionally generic so credentials cannot reach
+release logs. Local CI passed format, lint, all workspace typechecks, 95 files
+/ 609 tests, migrations check, Bun and Worker builds, Next/vinext builds and
+checks, and Worker dry-runs. The CLI still has no live release driver; both
+release flags remain disabled. No staging/production deploy or database
+mutation occurred in this slice.
