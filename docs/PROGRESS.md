@@ -729,3 +729,19 @@ passed with 73 files / 472 tests, format, lint, workspace typechecks, Bun
 builds and smoke, migration snapshot check, Next/vinext builds and check,
 and Worker dry-runs. The final staging revision check and remote PR CI on
 this correction remain before a separate merge decision.
+
+## PR #2 merge and Worker production direction (2026-09-26)
+
+The final planner correction passed PR CI and PR #2 was merged to `main` as
+`63054888056389743c7e078b795bfff1dd61ecf9`. Post-merge GitHub CI passed.
+The staging evidence above belongs to PR #2; production has not been
+provisioned or deployed. The owner selected the Worker backend for the first
+production installation, confirmed full user-facing maintenance for breaking
+releases, and requested automatic production promotion only after exact-SHA
+staging acceptance. ADR-026 records those decisions.
+
+The Worker maintenance-gate/cutover design is in
+`docs/superpowers/specs/2026-09-26-worker-maintenance-cutover-design.md` for
+owner review. It has not been implemented. The existing linked worktree for
+the new design branch passed the local baseline unit suite (73 files, 472
+tests) before documentation edits; that is not a new staging acceptance run.

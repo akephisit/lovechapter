@@ -5,12 +5,13 @@
 Choose one backend path for each installation: **Cloudflare API Worker** or
 **Bun/VPS**. Never run both APIs or both job processors against the same
 deployment. Both paths use the same Elysia API, Neon schema and frontend
-same-origin proxy. No infrastructure is provisioned or claimed by this
-repository itself: a separate Worker staging installation exists, with local
-Git-ignored credentials and partial live acceptance recorded in
-`docs/PROGRESS.md`. Production resources and the remaining acceptance gates
-are external. Neither a VPS nor a custom domain is required for the Worker
-path.
+same-origin proxy. The first production installation selects the Worker
+backend (ADR-026); the Bun/VPS option remains available for a different
+installation. No infrastructure is provisioned or claimed by this repository
+itself: a separate Worker staging installation exists, with local Git-ignored
+credentials and PR #2 acceptance recorded in `docs/PROGRESS.md`. Production
+resources, the maintenance gate, and production promotion are not in place.
+Neither a VPS nor a custom domain is required for the Worker path.
 
 ```text
 Browser -> Cloudflare frontend Worker -> same-origin /api proxy
@@ -229,14 +230,15 @@ An installation must explicitly select exactly one backend runtime, `worker` or
 the other API/job processor against that installation's database. The first
 Worker staging installation has local, Git-ignored credentials and live
 acceptance evidence recorded in `docs/PROGRESS.md`. ADR-025 defines the
-approved split evidence for email retry. The deployable application source
-is unchanged by the subsequent planner/documentation corrections. PR CI passed
-on the earlier `f795fad` revision; CI on the final planner correction is the
-next gate.
+approved split evidence for email retry. PR #2's final CI and post-merge CI
+passed; it was merged to `main` as `6305488`. The next gate is implementation
+and staging acceptance of the maintenance/cutover subsystem, not a rerun of
+the merged PR's CI.
+
 Production credentials, protected environment, and enforced acceptance gate
 are not in place, so automatic production deployment remains disabled. In
-particular, merging must not silently deploy a Worker when the installation
-might select Bun/VPS.
+particular, merging must not silently deploy production before the approved
+release controls and separate resources exist.
 
 For a release, classify changed paths with `scripts/release-impact.mjs` using
 full base and head commit SHAs:
@@ -272,8 +274,11 @@ selected backend and web from the same tested revision, smoke-test the new
 system, and only then reopen traffic and jobs. Never run an old Worker or Bun
 process against the new incompatible schema. The current repository has no
 tested maintenance/job gate, so a breaking production migration is blocked
-until that capability and a staging cutover/recovery drill exist. This
-deliberately permits a maintenance window; it does not promise zero downtime.
+until that capability and a staging cutover/recovery drill exist. The proposed
+Worker design is in
+`docs/superpowers/specs/2026-09-26-worker-maintenance-cutover-design.md`;
+it is not yet implemented. This deliberately permits a maintenance window;
+it does not promise zero downtime.
 
 The first staging installation selects the Worker backend. Provision a
 disposable Neon branch, a cache-disabled Hyperdrive binding, Cloudflare API
@@ -285,7 +290,8 @@ Hyperdrive, Worker, and secret resources. A future Bun/VPS production release
 needs its own Bun/VPS staging acceptance; a passing Worker staging run does not
 validate a different runtime.
 
-Before rerunning CI or approving the PR, record on the exact staging commit:
+For a future release requiring full Worker staging acceptance, record on its
+exact commit before the final CI and merge decision:
 
 1. Auth and email: registration, received verification mail, verification,
    sign-in/session, reset mail and session revocation through the web proxy.
