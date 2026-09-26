@@ -4,6 +4,8 @@
   "main": "src/worker.ts",
   "compatibility_date": "2026-09-21",
   "compatibility_flags": ["nodejs_compat"],
+  // Never expose pre-cutover or historical versions on public Version URLs.
+  "preview_urls": false,
   // Replace this ID with Neon Hyperdrive; disable query caching on that config.
   // Account and membership reads must always reflect revocations.
   "hyperdrive": [
@@ -14,6 +16,7 @@
   "env": {
     "staging": {
       "workers_dev": true,
+      "preview_urls": false,
       // Use a separate, cache-disabled Hyperdrive configuration for staging.
       "hyperdrive": [
         { "binding": "HYPERDRIVE", "id": "e55ad44368d04224aa7ba4af95173e23" },

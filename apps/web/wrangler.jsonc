@@ -5,8 +5,9 @@
   "compatibility_date": "2026-09-21",
   // Allow the frontend proxy's global fetch to call the selected API Worker URL.
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "preview_urls": false,
   "env": {
-    "staging": { "workers_dev": true },
+    "staging": { "workers_dev": true, "preview_urls": false },
   },
   // Preserve dashboard-managed API origin and proxy secret bindings on deploy.
   "keep_vars": true,

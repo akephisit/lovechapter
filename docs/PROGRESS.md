@@ -1048,6 +1048,11 @@ lint, database typecheck/migration check, and 83 files / 548 tests passed;
 disposable PostgreSQL integration for the new migration is still pending
 because no confirmed `TEST_DATABASE_URL` is configured in this worktree.
 Nothing from this worktree has been deployed to staging or production.
+The next task added a selective Worker prepare/promote adapter and explicitly
+disabled Version URLs in both Wrangler configurations. Local staging builds,
+dry-runs, and a scan for synthetic secret inlining passed; no Worker version
+was uploaded or promoted. Cloudflare's **remote** Version URL settings and the
+web `--skip-build` promotion path still need a protected staging rehearsal.
 
 The plan keeps production promotion disabled until
 protected `main`, automated staging acceptance, exact-target preflight, a

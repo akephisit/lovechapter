@@ -164,6 +164,14 @@ Cloudflare/Neon/Resend credentials and no automated staging deployment job.
 Do not configure production secrets, migration, or promotion based on a
 successful bootstrap alone.
 
+Before using pre-cutover `wrangler versions upload`, disable public Version
+URLs for **both** Workers. `preview_urls: false` is checked into both Wrangler
+configs, but the release preflight also reads Cloudflare's current
+`previews_enabled` setting and fails if it is still enabled. A version upload
+must not expose a new API revision through a public Version URL while the
+ordinary site remains open. The existing staging Workers have not yet been
+verified or changed to this setting as part of the automatic-release work.
+
 ### Later selected-Worker installation (not the staging bootstrap)
 
 The steps below apply only after selecting the Worker backend for that
