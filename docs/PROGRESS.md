@@ -1028,10 +1028,17 @@ automatic production promotion. The owner temporarily waived real-inbox email
 receipt as a production gate while keeping other auth/outbox checks; this is a
 known public sign-up/reset limitation, not a passing email test.
 
-The written proposal is
-`docs/superpowers/specs/2026-09-26-automatic-worker-release-design.md` and
-awaits the owner's review before an implementation plan. No production
+The written proposal
+`docs/superpowers/specs/2026-09-26-automatic-worker-release-design.md` was
+submitted for the owner's review before an implementation plan. No production
 resource or deployment workflow has been created. Read-only GitHub checks
 found no branch ruleset or legacy protection on `main` and no GitHub
 environments; those are prerequisites before automatic promotion can be
 enabled.
+
+The owner subsequently approved the written design. The task-by-task
+implementation plan is
+`docs/superpowers/plans/2026-09-26-automatic-worker-release.md` and awaits
+review before execution. The plan keeps production promotion disabled until
+protected `main`, automated staging acceptance, exact-target preflight, a
+closed-gate production bootstrap, and an isolated recovery rehearsal pass.
