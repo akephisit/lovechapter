@@ -1565,3 +1565,12 @@ chat, or this progress log. Any previously held production connection URL for
 that role is invalid and must be refreshed before future use. No staging role,
 production schema, Worker, Hyperdrive, release gate, or release flag was
 changed by this rotation.
+
+A later read-only feasibility check for the plan confirmed that active Neon
+`staging` is still root branch `br-dark-cloud-aziaawmu` and that a direct,
+read-only PostgreSQL query can return `pg_current_wal_flush_lsn()` there.
+Neon's current branch-create API describes explicit `parent_id`, `parent_lsn`,
+and `init_source=parent-data`; an existing isolated child branch readback
+exposed `parent_id` and `parent_lsn` metadata. The plan now names those exact
+checkpoint operations and requires provider readback. No branch was created,
+no staging data/schema or gate changed, and no Worker version was uploaded.
