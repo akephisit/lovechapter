@@ -36,7 +36,14 @@ Their configuration remains only to avoid changing that live installation
 incidentally; no staging acceptance job runs. Do not delete those external
 resources through this runbook.
 
-## One-time first production publication — in progress
+## One-time first production publication — completed 2026-09-27
+
+This is a historical operator record, not a procedure to rerun. The
+temporary workflow has been retired after a successful two-Worker
+publication at `0d4140888ed45ecbe91b8d706341e2470b50ad22` (GitHub run
+`36323408754`). The current release gate and deployment record now establish
+the baseline for `.github/workflows/release.yml`. The numbered steps below
+document the original first-installation checks for incident review only.
 
 Normal selective releases require an open PostgreSQL gate and a matching
 successful GitHub production deployment record. Neither exists for the first
@@ -141,10 +148,10 @@ retention check, or recovery method is unknown:
    actual version IDs. Verify that `readProductionBaseline` matches the open
    PostgreSQL gate. If this final record fails, do not enable automation.
 10. Observe public page, same-origin API readiness, denied direct API
-    ingress, and scheduled job behavior. Then set the GitHub production
-    variable `PRODUCTION_RELEASE_ENABLED=true`. A later owner push should
-    prove one normal selective release. Real inbox receipt is temporarily
-    waived, not claimed to have passed.
+    ingress, and scheduled job behavior. The automatic release flag is set
+    only after removal of the temporary workflow passes CI. A later owner
+    push should prove one normal selective release. Real inbox receipt was
+    waived for this first publication, not claimed to have passed.
 
 This first-publication sequence requires operator review of real provider
 metadata; the repository cannot declare it complete merely because local CI

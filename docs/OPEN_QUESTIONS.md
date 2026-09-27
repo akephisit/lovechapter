@@ -13,7 +13,8 @@ cannot supply by itself.
   this does not prove the web route.
 - If the VPS option is selected, which stable HTTPS hostname will expose its
   API to the frontend Worker? On the Worker option, use the generated API
-  `workers.dev` HTTPS origin until a domain is registered.
+  `workers.dev` HTTPS origin until an API custom-domain route and TLS are
+  verified.
 - Final logo/visual identity
 
 Until web routing and TLS are verified, keep every origin and hostname

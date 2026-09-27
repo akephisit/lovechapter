@@ -2,46 +2,30 @@
 
 ## Current release status (2026-09-27)
 
-The owner has registered `lovechapter.net` and confirmed Resend Sending
-verification. The initial public site still uses generated Worker URLs; a
-custom-domain web route/TLS is not yet verified. Both production Workers now
-exist with Preview URLs disabled, production origins/secrets have been
-configured, and the release gate remains in maintenance with no accepted
-Worker-version baseline or active leases. The automatic release flag remains
-`false`. A one-time, manually dispatched protected-main workflow reruns CI
-and disposable PostgreSQL tests, builds both Workers, retargets only the
-unpublished drained gate to its exact SHA, privately smokes, opens, checks
-public behavior, and records the first deployment. Four manual runs passed
-CI and PostgreSQL integration but stopped before gate retarget. The latter
-two passed target/Preview URL checks and both Worker builds and dry-runs,
-then stopped at API version upload. A local exact Wrangler upload reproduced
-the conflict: production had a dashboard-managed `RESEND_FROM_EMAIL` var that
-was absent from checked-in Wrangler config; `--strict` refused to override
-the remote configuration. This non-secret sender is now declared in the
-production config. A local inactive version upload then succeeded with strict
-mode. The fifth hosted run uploaded its API version, retargeted the gate to
-`a62cc796`, and drained leases. The web deploy command exited nonzero after
-Cloudflare had already activated web version `ae1a0065`; the workflow
-reclosed maintenance and did not deploy the API version. A sixth hosted run
-repeated that partial web promotion at `c9f0b7c`, activating web version
-`4a146e32`, then reported an authorization failure. Readback confirmed the
-gate remains in maintenance at `c9f0b7c` with null version baseline; public
-web returns 503 and the active API Worker version is unchanged. The next
-retry must expect this closed gate target and active web version. The web
-release path now uploads an inactive version before closure and promotes that
-exact version under maintenance, avoiding route-setting operations during
-`wrangler deploy`. A first local web upload was correctly rejected because
-`API_UPSTREAM_ORIGIN` is a Cloudflare Secret, not a plain var; declaring it
-in Wrangler would replace that secret. The config now leaves it
-dashboard-managed. A second inactive web upload with `--strict --keep-vars`
-succeeded; readback of its version showed `API_UPSTREAM_ORIGIN`,
-`RELEASE_PROBE_SECRET`, and `WEB_PROXY_SHARED_SECRET` retained as secret-text
-bindings. No route or active deployment was changed by that diagnostic
-upload. Command output and arguments are not logged.
-No release guard was relaxed. The gate role
-cannot read the migration ledger, so the one-time schema check uses the
-configured migration credential after checking it targets the same endpoint.
-No public release is claimed.
+The first public Cloudflare Worker installation is live on the generated
+`*.workers.dev` web URL. The one-time publication workflow run
+`36323408754` passed CI, disposable PostgreSQL integration, both Worker
+version uploads/promotions, private smoke, public check, and GitHub
+deployment recording at SHA `0d4140888ed45ecbe91b8d706341e2470b50ad22`.
+Readback confirmed the production gate is open at that SHA, web version
+`a810c016-14ff-4038-9491-c05a18ee2d26` and API version
+`4fbb75d9-fda8-42dd-8157-74fbcbd887e2` each serve 100%, and the GitHub
+production deployment record is successful. Public sign-in returns 200,
+same-origin unauthenticated session returns 401, and direct API ingress
+returns 403. Preview URLs remain disabled. The temporary first-publication
+workflow and scripts are being removed; keep
+`PRODUCTION_RELEASE_ENABLED=false` until cleanup CI passes, then enable it.
+
+`lovechapter.net` is registered and Resend Sending is verified, but the web
+custom-domain route/TLS has not yet been verified; the generated Worker URL
+is the current public address. Production `AUTH_MODE` remains `disabled`.
+Inbox delivery and live sign-up/sign-in/RSVP were not asserted as production
+checks. The original upload blockers were remote configuration drift for the
+API's non-secret `RESEND_FROM_EMAIL` var and a web `wrangler deploy` route
+authorization error. The final release path uploads inactive versions and
+promotes exact IDs under maintenance. The web's `API_UPSTREAM_ORIGIN` remains
+a dashboard-managed Secret, and inactive upload readback confirmed the
+origin, proxy, and probe bindings stayed secret-text.
 
 The direct-production Worker release implementation was fast-forwarded from
 the isolated `codex/automatic-worker-release-implementation` worktree to

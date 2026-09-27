@@ -351,9 +351,10 @@ tests before any production cutover. Protect `main` from force-push
 and deletion without pre-push status checks; keep deployment secrets main-only.
 If CI fails, the commit remains on `main` but nothing deploys, and the fix is
 a later forward commit. Automatic production release does not depend on staging;
-it requires one verified first-publication bootstrap. Only breaking migrations
-create a new Neon recovery point after closure and drain, before SQL. A returning
-browser tab reloads when the open production publication SHA changes.
+its verified first-publication baseline was established on 2026-09-27. Only
+breaking migrations create a new Neon recovery point after closure and drain,
+before SQL. A returning browser tab reloads when the open production
+publication SHA changes.
 
 Do not default to:
 
