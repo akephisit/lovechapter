@@ -169,8 +169,10 @@ URLs for **both** Workers. `preview_urls: false` is checked into both Wrangler
 configs, but the release preflight also reads Cloudflare's current
 `previews_enabled` setting and fails if it is still enabled. A version upload
 must not expose a new API revision through a public Version URL while the
-ordinary site remains open. The existing staging Workers have not yet been
-verified or changed to this setting as part of the automatic-release work.
+ordinary site remains open. Both existing staging Workers had Preview URLs
+disabled on 2026-09-27 while their ordinary `workers.dev` URLs stayed enabled;
+recheck the live settings before each release rather than relying on this
+historical result.
 
 ### Later selected-Worker installation (not the staging bootstrap)
 

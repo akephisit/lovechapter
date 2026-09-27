@@ -1457,3 +1457,21 @@ GitHub Actions. The repository-level staging and production release switches
 remain unset; no Worker deploy, maintenance transition, or migration was
 run. Hosted CI for documentation commit `3d57901` passed CI/PostgreSQL and
 skipped both release jobs.
+
+With owner approval, a manual, protected-`main`, read-only staging Cloudflare
+credential probe was added. Its first live runs authenticated and read the
+staging Hyperdrive configuration and API Worker deployment inventory, but
+stopped because Cloudflare still had Preview URLs enabled for the API Worker
+despite `preview_urls: false` in the checked-in Wrangler configuration. A
+separate readback showed `enabled=true` and `previews_enabled=true` for both
+staging Workers. With explicit owner approval, only the two staging Worker
+subdomain settings were updated to `enabled=true` and
+`previews_enabled=false`; immediate API readback confirmed both results. The
+ordinary `workers.dev` URLs remained enabled. The subsequent manually
+dispatched GitHub Actions probe on commit `32b5a33` passed (run
+`36285178736`), verifying read access to the selected Hyperdrive and both
+staging Worker deployment inventories and Preview URL settings. This does
+not prove the token can upload or deploy Worker versions. Hosted Worker
+release CI for `32b5a33` passed with staging and production release jobs
+skipped. No Worker version, database, maintenance gate, production setting,
+or release switch was changed.
