@@ -1499,7 +1499,14 @@ that isolated branch. The preflight boundary was changed test-first to avoid
 requiring staging account, email, RSVP, or public-web credentials when no
 post-deployment acceptance is running. The focused test first failed and then
 passed; local `npm run ci` passed 108 files / 675 tests plus format, lint,
-typecheck, builds, migration check, Bun smoke, and Worker dry-runs. This
-workflow has not yet been dispatched; no live branch was migrated by this
-change. Active staging still lacks migration `0011` and a Worker-version
-baseline; both automatic release flags remain off.
+typecheck, builds, migration check, Bun smoke, and Worker dry-runs. Commit
+`529e175` was fast-forwarded to protected `main`; hosted Worker release CI
+run `36287262687` passed CI/PostgreSQL and skipped both disabled release jobs.
+The manually dispatched preflight run `36287280538` passed its own CI,
+PostgreSQL integration, and target/schema preflight, reporting only
+`{"targetVerified":true}`. Direct read-only Neon readback confirmed that
+`staging-test` now has all four `0011` version columns and the exact latest
+migration hash, while active `staging` still has none of those columns and
+its gate remains open. No Worker deployment or maintenance transition took
+place. Active staging still needs migration `0011`, a guarded Worker-version
+baseline, and full live acceptance; both automatic release flags remain off.
