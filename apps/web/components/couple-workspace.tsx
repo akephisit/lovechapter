@@ -21,7 +21,14 @@ import {
   Heart,
   Trash2,
 } from "lucide-react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type FormEvent,
+  type SetStateAction,
+} from "react";
 
 import { safeUiError } from "../lib/ui-error";
 import {
@@ -50,6 +57,8 @@ import {
 } from "./workspace/workspace-navigation";
 import { OverviewPanel } from "./workspace/overview-panel";
 import { WeddingSettingsForm } from "./workspace/wedding-settings-form";
+import { formatWeddingDate } from "../lib/format-wedding-date";
+import { formDataEqual } from "../lib/form-data-equal";
 
 export interface CoupleWorkspaceApi
   extends
@@ -96,12 +105,12 @@ type Props = {
 
 export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
   const copy = useUiCopy();
-  const language = useUiLanguage();
   const copyRef = useRef(copy);
   copyRef.current = copy;
   const [weddings, setWeddings] = useState<WeddingSummary[]>([]);
   const [weddingCursor, setWeddingCursor] = useState<string | null>(null);
   const [selected, setSelected] = useState<WeddingSummary | null>(null);
+  const [weddingScopeGeneration, setWeddingScopeGeneration] = useState(0);
   const [activeSection, setActiveSection] =
     useState<WorkspaceSection>("overview");
   const [showCreate, setShowCreate] = useState(false);
@@ -114,12 +123,17 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
   const [guestLoadMessage, setGuestLoadMessage] = useState<string | null>(null);
   const [guestRetry, setGuestRetry] = useState(0);
   const [guests, setGuests] = useState<GuestSummary[]>([]);
+  const [invitations, setInvitations] = useState<
+    Record<string, InvitationCreated>
+  >({});
   const [affiliations, setAffiliations] = useState<GuestAffiliation[]>([]);
   const [guestCursor, setGuestCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [weddingListError, setWeddingListError] = useState(false);
   const [weddingListRetry, setWeddingListRetry] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
+  const [creatingWedding, setCreatingWedding] = useState(false);
+  const creatingWeddingRef = useRef(false);
   const [message, setMessage] = useState<string | null>(null);
   const guestRequestId = useRef(0);
   const weddingGeneration = useRef(0);
@@ -139,6 +153,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
         setWeddingCursor(weddingPage.nextCursor);
         const first = weddingPage.items[0];
         if (!first) return;
+        setWeddingScopeGeneration(weddingGeneration.current);
         setSelected(first);
       })
       .catch(() => {
@@ -209,11 +224,15 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
     };
   }, [api, selected?.id, activeSection, guestRetry]);
 
-  function confirmDiscard(): boolean {
+  function confirmDiscard(excluding?: HTMLFormElement): boolean {
     for (const form of dirtyForms.current) {
       if (!form.isConnected) dirtyForms.current.delete(form);
     }
-    if (!settingsDirty && dirtyForms.current.size === 0) return true;
+    if (
+      !settingsDirty &&
+      ![...dirtyForms.current].some((form) => form !== excluding)
+    )
+      return true;
     if (!window.confirm(copy.weddingSettings.discardConfirm)) return false;
     setSettingsDirty(false);
     dirtyForms.current.clear();
@@ -233,9 +252,12 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
 
   async function createWedding(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (creatingWeddingRef.current) return;
     const form = event.currentTarget;
+    if (!confirmDiscard(form)) return;
     const data = new FormData(form);
-    setBusy("wedding");
+    creatingWeddingRef.current = true;
+    setCreatingWedding(true);
     setMessage(null);
     try {
       const weddingDate = stringValue(data, "weddingDate");
@@ -247,6 +269,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
       });
       setWeddings((current) => [created, ...current]);
       weddingGeneration.current += 1;
+      setWeddingScopeGeneration(weddingGeneration.current);
       guestRequestId.current += 1;
       setSelected(created);
       setActiveSection("overview");
@@ -254,19 +277,22 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
       setPickerOpen(false);
       setGuestsLoaded(false);
       setGuests([]);
+      setInvitations({});
       setAffiliations([]);
       setGuestCursor(null);
       form.reset();
     } catch (error) {
       setMessage(safeUiError(error, copy, copy.workspace.createError));
     } finally {
-      setBusy(null);
+      creatingWeddingRef.current = false;
+      setCreatingWedding(false);
     }
   }
 
   function chooseWedding(wedding: WeddingSummary) {
     if (!confirmDiscard()) return;
     weddingGeneration.current += 1;
+    setWeddingScopeGeneration(weddingGeneration.current);
     guestRequestId.current += 1;
     setSelected(wedding);
     setActiveSection("overview");
@@ -275,6 +301,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
     setPickerOpen(false);
     setGuestsLoaded(false);
     setGuests([]);
+    setInvitations({});
     setAffiliations([]);
     setGuestCursor(null);
     setBusy(null);
@@ -317,7 +344,8 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
   ) {
     event.preventDefault();
     if (!selected) return;
-    const data = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const data = new FormData(form);
     const weddingId = selected.id;
     const generation = weddingGeneration.current;
     setBusy(`affiliation:update:${affiliation.id}`);
@@ -336,6 +364,8 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
         setAffiliations((current) =>
           current.map((item) => (item.id === updated.id ? updated : item)),
         );
+        if (form.isConnected && formDataEqual(new FormData(form), data))
+          dirtyForms.current.delete(form);
         setGuests((current) =>
           current.map((guest) =>
             guest.affiliation?.id === updated.id
@@ -470,8 +500,14 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
             </span>
             <Button
               variant="ghost"
+              disabled={creatingWedding}
               onClick={() => {
-                if (confirmDiscard()) onSignOut();
+                if (confirmDiscard()) {
+                  weddingGeneration.current += 1;
+                  setWeddingScopeGeneration(weddingGeneration.current);
+                  setInvitations({});
+                  onSignOut();
+                }
               }}
             >
               {copy.workspace.signOut}
@@ -518,27 +554,30 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
                 {copy.workspace.beginDescription}
               </p>
             </div>
-            <WeddingForm busy={busy === "wedding"} onSubmit={createWedding} />
+            <fieldset
+              disabled={creatingWedding}
+              className="min-w-0 border-0 p-0"
+            >
+              <WeddingForm busy={creatingWedding} onSubmit={createWedding} />
+            </fieldset>
           </section>
         ) : (
-          <>
+          <fieldset
+            disabled={creatingWedding}
+            className="m-0 w-full min-w-0 border-0 p-0"
+          >
             <section className="mb-6 rounded-[1.75rem] border border-[var(--rose-border)] bg-white/85 p-5 shadow-sm sm:p-6">
               <p className="text-xs font-bold tracking-[0.17em] text-[var(--rose-plum)] uppercase">
                 {copy.workspace.current}
               </p>
               <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <h1 className="font-serif text-3xl font-semibold text-[var(--rose-ink)] sm:text-4xl">
+                  <h1 className="font-serif text-3xl font-semibold break-words text-[var(--rose-ink)] sm:text-4xl">
                     {selected.name}
                   </h1>
                   <p className="mt-1 text-sm text-[var(--rose-ink)]">
                     {selected.weddingDate
-                      ? new Intl.DateTimeFormat(language, {
-                          dateStyle: "long",
-                          timeZone: "UTC",
-                        }).format(
-                          new Date(`${selected.weddingDate}T12:00:00.000Z`),
-                        )
+                      ? formatWeddingDate(selected.weddingDate, selected.locale)
                       : copy.workspace.datePending}{" "}
                     · {selected.timeZone}
                   </p>
@@ -640,10 +679,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
                   dirtyForms.current.delete(event.target as HTMLFormElement)
                 }
               >
-                <WeddingForm
-                  busy={busy === "wedding"}
-                  onSubmit={createWedding}
-                />
+                <WeddingForm busy={creatingWedding} onSubmit={createWedding} />
               </div>
             ) : null}
 
@@ -704,6 +740,22 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
                       onImportedAffiliation={(affiliation) =>
                         setAffiliations((current) => [...current, affiliation])
                       }
+                      invitations={invitations}
+                      onInvitationsChange={(update) => {
+                        if (
+                          weddingGeneration.current !== weddingScopeGeneration
+                        )
+                          return;
+                        setInvitations((current) => {
+                          if (
+                            weddingGeneration.current !== weddingScopeGeneration
+                          )
+                            return current;
+                          return typeof update === "function"
+                            ? update(current)
+                            : update;
+                        });
+                      }}
                     />
                   ) : (
                     <Card
@@ -722,11 +774,12 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
                     wedding={selected}
                     api={api}
                     section={activeSection as "budget" | "schedule" | "seating"}
+                    onSaved={(form) => dirtyForms.current.delete(form)}
                   />
                 ) : null}
               </section>
             </div>
-          </>
+          </fieldset>
         )}
       </div>
     </main>
@@ -1012,6 +1065,8 @@ function WeddingWorkspace({
   onMoveAffiliation,
   onDeleteAffiliation,
   onImportedAffiliation,
+  invitations,
+  onInvitationsChange,
 }: {
   api: CoupleWorkspaceApi;
   wedding: WeddingSummary;
@@ -1027,6 +1082,10 @@ function WeddingWorkspace({
   onMoveAffiliation(affiliationId: string, direction: -1 | 1): Promise<void>;
   onDeleteAffiliation(affiliation: GuestAffiliation): Promise<void>;
   onImportedAffiliation(affiliation: GuestAffiliation): void;
+  invitations: Record<string, InvitationCreated>;
+  onInvitationsChange: Dispatch<
+    SetStateAction<Record<string, InvitationCreated>>
+  >;
 }) {
   return (
     <div className="space-y-6">
@@ -1046,6 +1105,8 @@ function WeddingWorkspace({
         initialPage={{ items: guests, nextCursor }}
         api={api}
         onAffiliationCreated={onImportedAffiliation}
+        invitations={invitations}
+        onInvitationsChange={onInvitationsChange}
       />
     </div>
   );

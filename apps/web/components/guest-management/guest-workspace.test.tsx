@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
 
 import type { GuestDetail, GuestSummary, Page } from "@lovechapter/contracts";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -42,6 +49,42 @@ describe("GuestWorkspace", () => {
     expect(
       await screen.findByRole("link", { name: "เปิดคำเชิญของ Nok" }),
     ).toHaveAttribute("href", "https://web.example.test/i/private-token");
+  });
+  it("publishes a late invitation to the owning wedding after leaving Guests", async () => {
+    const pending = deferred<{
+      id: string;
+      guestId: string;
+      token: string;
+      publicUrl: string;
+    }>();
+    const api = apiFixture();
+    api.createInvitation = vi.fn(() => pending.promise);
+    const onInvitationsChange = vi.fn();
+    const view = render(
+      <GuestWorkspace
+        weddingId={weddingId}
+        weddingName="Mali & Arun"
+        affiliations={[]}
+        initialPage={page([guest()])}
+        api={api}
+        invitations={{}}
+        onInvitationsChange={onInvitationsChange}
+      />,
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /create invitation/i }),
+    );
+    view.unmount();
+    await act(async () => {
+      pending.resolve({
+        id: "invite",
+        guestId: guest().id,
+        token: "late-token",
+        publicUrl: "https://web.example.test/i/late-token",
+      });
+      await pending.promise;
+    });
+    expect(onInvitationsChange).toHaveBeenCalledOnce();
   });
 
   it("hides unknown backend errors behind Thai fallback copy", async () => {
@@ -320,6 +363,47 @@ describe("GuestWorkspace", () => {
       expect.objectContaining({ name: "Nok" }),
     );
     expect(screen.queryByRole("button", { name: /edit nok/i })).toBeNull();
+  });
+  it("removes a guest from a filtered affiliation after moving them", async () => {
+    const family = {
+      id: "family",
+      name: "Family",
+      color: "#a855f7",
+      sortOrder: 0,
+      createdAt: "2026-09-21T10:00:00.000Z",
+    };
+    const friends = { ...family, id: "friends", name: "Friends" };
+    const member = { ...guest(), affiliation: family };
+    let moved = false;
+    const api = apiFixture();
+    api.listGuestManagement = vi.fn(async () => page(moved ? [] : [member]));
+    api.setGuestAffiliation = vi.fn(async () => {
+      moved = true;
+      return { ...member, affiliation: friends };
+    });
+    render(
+      <GuestWorkspace
+        weddingId={weddingId}
+        weddingName="Mali & Arun"
+        affiliations={[family, friends]}
+        initialPage={page([member])}
+        api={api}
+      />,
+    );
+    await userEvent.selectOptions(
+      screen.getByLabelText("Affiliation"),
+      "family",
+    );
+    expect(await screen.findByText("Nok")).toBeVisible();
+    await userEvent.selectOptions(
+      screen.getByLabelText(/nok.*affiliation/i),
+      "friends",
+    );
+    await waitFor(() => expect(screen.queryByText("Nok")).toBeNull());
+    expect(api.listGuestManagement).toHaveBeenCalledWith(
+      weddingId,
+      expect.objectContaining({ affiliation: "family" }),
+    );
   });
 
   it("archives and restores only after confirmation", async () => {

@@ -10,7 +10,14 @@ import type {
   Page,
   WeddingSummary,
 } from "@lovechapter/contracts";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -458,6 +465,208 @@ describe("CoupleWorkspace", () => {
     expect(screen.getByLabelText("Task title")).toHaveValue("Choose flowers");
     confirm.mockRestore();
   });
+  it("does not create a new wedding when discarding the current draft is cancelled", async () => {
+    const wedding = weddingFixture();
+    const api: CoupleWorkspaceApi = {
+      ...affiliationApi(),
+      listWeddings: vi.fn(async () => page([wedding])),
+      createWedding: vi.fn(),
+      listGuests: vi.fn(async () => page([])),
+      addGuest: vi.fn(),
+      createInvitation: vi.fn(),
+      listPlanningTasks: vi.fn(async () => page([])),
+      createPlanningTask: vi.fn(),
+      updatePlanningTask: vi.fn(),
+      deletePlanningTask: vi.fn(),
+    };
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const user = userEvent.setup();
+    render(
+      <CoupleWorkspace
+        identity={userFixture()}
+        api={api}
+        onSignOut={vi.fn()}
+      />,
+    );
+    await user.click(await screen.findByRole("button", { name: "Planning" }));
+    await user.type(await screen.findByLabelText("Task title"), "Flowers");
+    await user.click(screen.getByRole("button", { name: "New wedding" }));
+    await user.type(screen.getByLabelText("Wedding name"), "Dao & Lin");
+    fireEvent.submit(screen.getByLabelText("Wedding name").closest("form")!);
+    expect(confirm).toHaveBeenCalled();
+    expect(api.createWedding).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Task title")).toHaveValue("Flowers");
+    confirm.mockRestore();
+  });
+  it("locks existing drafts while a new wedding is being created", async () => {
+    const wedding = weddingFixture();
+    const pending = deferred<WeddingSummary>();
+    const pendingMore = deferred<Page<WeddingSummary>>();
+    const api: CoupleWorkspaceApi = {
+      ...affiliationApi(),
+      listWeddings: vi.fn((cursor?: string) =>
+        cursor ? pendingMore.promise : Promise.resolve(page([wedding], "more")),
+      ),
+      createWedding: vi.fn(() => pending.promise),
+      listGuests: vi.fn(async () => page([])),
+      addGuest: vi.fn(),
+      createInvitation: vi.fn(),
+      listPlanningTasks: vi.fn(async () => page([])),
+      createPlanningTask: vi.fn(),
+      updatePlanningTask: vi.fn(),
+      deletePlanningTask: vi.fn(),
+    };
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const user = userEvent.setup();
+    render(
+      <CoupleWorkspace
+        identity={userFixture()}
+        api={api}
+        onSignOut={vi.fn()}
+      />,
+    );
+    await user.click(await screen.findByRole("button", { name: "Planning" }));
+    await user.type(await screen.findByLabelText("Task title"), "Flowers");
+    await user.click(screen.getByRole("button", { name: "Choose wedding" }));
+    await user.click(
+      screen.getByRole("button", { name: "Load more weddings" }),
+    );
+    await user.click(screen.getByRole("button", { name: "New wedding" }));
+    await user.type(screen.getByLabelText("Wedding name"), "Dao & Lin");
+    fireEvent.submit(screen.getByLabelText("Wedding name").closest("form")!);
+    expect(screen.getByLabelText("Task title")).toBeDisabled();
+    expect(screen.getByLabelText("Wedding name")).toBeDisabled();
+    await act(async () => {
+      pendingMore.resolve(page([]));
+      await pendingMore.promise;
+    });
+    expect(screen.getByLabelText("Task title")).toBeDisabled();
+    expect(screen.getByLabelText("Wedding name")).toBeDisabled();
+    await act(async () => {
+      pending.resolve({
+        ...wedding,
+        id: crypto.randomUUID(),
+        name: "Dao & Lin",
+      });
+      await pending.promise;
+    });
+    expect(
+      await screen.findByRole("heading", { name: "Dao & Lin" }),
+    ).toBeVisible();
+    confirm.mockRestore();
+  });
+  it("does not warn about an unsaved draft after a budget form saves", async () => {
+    const wedding = weddingFixture();
+    const api: CoupleWorkspaceApi = {
+      ...affiliationApi(),
+      ...operationsApi(),
+      listWeddings: vi.fn(async () => page([wedding])),
+      createWedding: vi.fn(),
+      listGuests: vi.fn(async () => page([])),
+      addGuest: vi.fn(),
+      createInvitation: vi.fn(),
+    };
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const user = userEvent.setup();
+    render(
+      <CoupleWorkspace
+        identity={userFixture()}
+        api={api}
+        onSignOut={vi.fn()}
+      />,
+    );
+    await user.click(await screen.findByRole("button", { name: "Budget" }));
+    await user.clear(await screen.findByLabelText("Budget target"));
+    await user.type(screen.getByLabelText("Budget target"), "200");
+    await user.click(screen.getByRole("button", { name: "Save budget" }));
+    await waitFor(() => expect(api.setBudget).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Save budget" })).toBeEnabled(),
+    );
+    await user.click(screen.getByRole("button", { name: "Overview" }));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "At a glance" })).toBeVisible();
+    confirm.mockRestore();
+  });
+  it("locks budget inputs while a save is pending", async () => {
+    const wedding = weddingFixture();
+    const pending = deferred<{
+      currency: string;
+      targetMinor: number | null;
+    }>();
+    const api: CoupleWorkspaceApi = {
+      ...affiliationApi(),
+      ...operationsApi(),
+      setBudget: vi.fn(() => pending.promise),
+      listWeddings: vi.fn(async () => page([wedding])),
+      createWedding: vi.fn(),
+      listGuests: vi.fn(async () => page([])),
+      addGuest: vi.fn(),
+      createInvitation: vi.fn(),
+    };
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const user = userEvent.setup();
+    render(
+      <CoupleWorkspace
+        identity={userFixture()}
+        api={api}
+        onSignOut={vi.fn()}
+      />,
+    );
+    await user.click(await screen.findByRole("button", { name: "Budget" }));
+    const target = await screen.findByLabelText("Budget target");
+    await user.clear(target);
+    await user.type(target, "200");
+    await user.click(screen.getByRole("button", { name: "Save budget" }));
+    expect(target).toBeDisabled();
+    await act(async () => {
+      pending.resolve({ currency: "USD", targetMinor: 20000 });
+      await pending.promise;
+    });
+    await user.click(screen.getByRole("button", { name: "Overview" }));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "At a glance" })).toBeVisible();
+    confirm.mockRestore();
+  });
+  it("keeps an affiliation rename typed after the previous save began", async () => {
+    const wedding = weddingFixture();
+    const affiliation = affiliationFixture();
+    const pending = deferred<GuestAffiliation>();
+    const api: CoupleWorkspaceApi = {
+      ...affiliationApi(),
+      listGuestAffiliations: vi.fn(async () => [affiliation]),
+      updateGuestAffiliation: vi.fn(() => pending.promise),
+      listWeddings: vi.fn(async () => page([wedding])),
+      createWedding: vi.fn(),
+      listGuests: vi.fn(async () => page([])),
+      addGuest: vi.fn(),
+      createInvitation: vi.fn(),
+    };
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const user = userEvent.setup();
+    render(
+      <CoupleWorkspace
+        identity={userFixture()}
+        api={api}
+        onSignOut={vi.fn()}
+      />,
+    );
+    await openGuests();
+    const name = await screen.findByLabelText("Family name");
+    await user.clear(name);
+    await user.type(name, "Family saved");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await user.clear(name);
+    await user.type(name, "Family newer");
+    await act(async () => {
+      pending.resolve({ ...affiliation, name: "Family saved" });
+      await pending.promise;
+    });
+    await user.click(screen.getByRole("button", { name: "Overview" }));
+    expect(confirm).toHaveBeenCalled();
+    expect(name).toHaveValue("Family newer");
+    confirm.mockRestore();
+  });
   it("opens the full guest management workspace when detail endpoints are available", async () => {
     const wedding = weddingFixture();
     const guest = guestFixture();
@@ -690,6 +899,13 @@ describe("CoupleWorkspace", () => {
       await screen.findByRole("link", { name: /open nok's invitation/i }),
     ).toBeVisible();
 
+    await user.click(screen.getByRole("button", { name: "Overview" }));
+    await openGuests();
+    expect(
+      await screen.findByRole("link", { name: /open nok's invitation/i }),
+    ).toHaveAttribute("href", invitationFixture(guest.id).publicUrl);
+    expect(api.createInvitation).toHaveBeenCalledTimes(1);
+
     await user.click(screen.getByRole("button", { name: /choose wedding/i }));
     await user.click(
       screen.getByRole("button", { name: new RegExp(secondWedding.name, "i") }),
@@ -700,6 +916,118 @@ describe("CoupleWorkspace", () => {
     expect(
       screen.queryByRole("link", { name: /open nok's invitation/i }),
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps a late invitation for the same wedding after Guests unmounts", async () => {
+    const wedding = weddingFixture();
+    const guest = guestFixture();
+    const pending = deferred<InvitationCreated>();
+    const api: CoupleWorkspaceApi = {
+      ...affiliationApi(),
+      listWeddings: vi.fn(async () => page([wedding])),
+      createWedding: vi.fn(),
+      listGuests: vi.fn(async () => page([guest])),
+      addGuest: vi.fn(),
+      createInvitation: vi.fn(() => pending.promise),
+    };
+    const user = userEvent.setup();
+    render(
+      <CoupleWorkspace
+        identity={userFixture()}
+        api={api}
+        onSignOut={vi.fn()}
+      />,
+    );
+    await openGuests();
+    await user.click(
+      await screen.findByRole("button", { name: /create invitation/i }),
+    );
+    await user.click(screen.getByRole("button", { name: "Overview" }));
+    await act(async () => {
+      pending.resolve(invitationFixture(guest.id));
+      await pending.promise;
+    });
+    await openGuests();
+    expect(
+      await screen.findByRole("link", { name: /open nok's invitation/i }),
+    ).toHaveAttribute("href", invitationFixture(guest.id).publicUrl);
+  });
+
+  it("ignores a late invitation from a previously selected wedding", async () => {
+    const first = weddingFixture();
+    const second = { ...first, id: crypto.randomUUID(), name: "Dao & Lin" };
+    const guest = guestFixture();
+    const pending = deferred<InvitationCreated>();
+    const api: CoupleWorkspaceApi = {
+      ...affiliationApi(),
+      listWeddings: vi.fn(async () => page([first, second])),
+      createWedding: vi.fn(),
+      listGuests: vi.fn(async (weddingId) =>
+        page(weddingId === first.id ? [guest] : []),
+      ),
+      addGuest: vi.fn(),
+      createInvitation: vi.fn(() => pending.promise),
+    };
+    const user = userEvent.setup();
+    render(
+      <CoupleWorkspace
+        identity={userFixture()}
+        api={api}
+        onSignOut={vi.fn()}
+      />,
+    );
+    await openGuests();
+    await user.click(
+      await screen.findByRole("button", { name: /create invitation/i }),
+    );
+    await user.click(screen.getByRole("button", { name: "Choose wedding" }));
+    await user.click(screen.getByRole("button", { name: second.name }));
+    await act(async () => {
+      pending.resolve(invitationFixture(guest.id));
+      await pending.promise;
+    });
+    await user.click(screen.getByRole("button", { name: "Choose wedding" }));
+    await user.click(screen.getByRole("button", { name: first.name }));
+    await openGuests();
+    expect(
+      screen.queryByRole("link", { name: /open nok's invitation/i }),
+    ).toBeNull();
+  });
+
+  it("ignores a pending invitation response after sign out", async () => {
+    const wedding = weddingFixture();
+    const guest = guestFixture();
+    const pending = deferred<InvitationCreated>();
+    const onSignOut = vi.fn();
+    const api: CoupleWorkspaceApi = {
+      ...affiliationApi(),
+      listWeddings: vi.fn(async () => page([wedding])),
+      createWedding: vi.fn(),
+      listGuests: vi.fn(async () => page([guest])),
+      addGuest: vi.fn(),
+      createInvitation: vi.fn(() => pending.promise),
+    };
+    const user = userEvent.setup();
+    render(
+      <CoupleWorkspace
+        identity={userFixture()}
+        api={api}
+        onSignOut={onSignOut}
+      />,
+    );
+    await openGuests();
+    await user.click(
+      await screen.findByRole("button", { name: /create invitation/i }),
+    );
+    await user.click(screen.getByRole("button", { name: "Sign out" }));
+    expect(onSignOut).toHaveBeenCalledOnce();
+    await act(async () => {
+      pending.resolve(invitationFixture(guest.id));
+      await pending.promise;
+    });
+    expect(
+      screen.queryByRole("link", { name: /open nok's invitation/i }),
+    ).toBeNull();
   });
 
   it("keeps the selected wedding's guests when an older request finishes last", async () => {
@@ -1112,6 +1440,58 @@ function affiliationApi(): Pick<
     reorderGuestAffiliations: vi.fn(async () => []),
     deleteGuestAffiliation: vi.fn(async () => undefined),
     setGuestAffiliation: vi.fn(async () => guestFixture()),
+  };
+}
+
+function operationsApi(): NonNullable<
+  Pick<
+    CoupleWorkspaceApi,
+    | "getBudgetOverview"
+    | "setBudget"
+    | "listBudgetCategories"
+    | "saveBudgetCategory"
+    | "deleteBudgetCategory"
+    | "listVendors"
+    | "saveVendor"
+    | "deleteVendor"
+    | "listExpenses"
+    | "saveExpense"
+    | "deleteExpense"
+    | "listRunSheet"
+    | "saveRunSheetItem"
+    | "deleteRunSheetItem"
+    | "listSeatingTables"
+    | "saveSeatingTable"
+    | "deleteSeatingTable"
+    | "listSeatingAssignments"
+    | "assignSeating"
+  >
+> {
+  return {
+    getBudgetOverview: vi.fn(async () => ({
+      budget: { currency: "USD", targetMinor: 10000 },
+      plannedMinor: 0,
+      paidMinor: 0,
+      remainingMinor: 10000,
+    })),
+    setBudget: vi.fn(async (_id, input) => input),
+    listBudgetCategories: vi.fn(async () => []),
+    saveBudgetCategory: vi.fn(),
+    deleteBudgetCategory: vi.fn(),
+    listVendors: vi.fn(async () => page([])),
+    saveVendor: vi.fn(),
+    deleteVendor: vi.fn(),
+    listExpenses: vi.fn(async () => page([])),
+    saveExpense: vi.fn(),
+    deleteExpense: vi.fn(),
+    listRunSheet: vi.fn(async () => page([])),
+    saveRunSheetItem: vi.fn(),
+    deleteRunSheetItem: vi.fn(),
+    listSeatingTables: vi.fn(async () => []),
+    saveSeatingTable: vi.fn(),
+    deleteSeatingTable: vi.fn(),
+    listSeatingAssignments: vi.fn(async () => []),
+    assignSeating: vi.fn(),
   };
 }
 

@@ -53,6 +53,28 @@ function fixture() {
 }
 
 describe("OperationsWorkspace", () => {
+  it("locks an edited category while its save is pending", async () => {
+    const api = fixture();
+    let finish!: (value: { id: string; name: string }) => void;
+    vi.mocked(api.listBudgetCategories).mockResolvedValue([
+      { id: "category", name: "Venue" },
+    ]);
+    vi.mocked(api.saveBudgetCategory).mockImplementation(
+      () => new Promise((resolve) => (finish = resolve)),
+    );
+    const user = userEvent.setup();
+    render(
+      <OperationsWorkspace api={api} wedding={wedding} section="budget" />,
+    );
+    await user.click(await screen.findByRole("button", { name: "Edit Venue" }));
+    const name = screen.getByLabelText("Category name");
+    await user.clear(name);
+    await user.type(name, "Garden");
+    await user.click(screen.getByRole("button", { name: "Save category" }));
+    expect(name).toBeDisabled();
+    finish({ id: "category", name: "Garden" });
+    await waitFor(() => expect(name).not.toBeInTheDocument());
+  });
   it("opens only the requested section without a second tab row", async () => {
     const api = fixture();
     render(

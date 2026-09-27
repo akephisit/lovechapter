@@ -35,6 +35,23 @@ const emptyRsvp: RsvpSummary = {
 };
 
 describe("OverviewPanel", () => {
+  it("formats the wedding date using wedding locale even when the UI is Thai", async () => {
+    const api = {
+      getPlanningOverview: vi.fn(async () => emptyPlanning),
+      getRsvpSummary: vi.fn(async () => emptyRsvp),
+    };
+    render(
+      <UiLanguageProvider language="th">
+        <OverviewPanel
+          wedding={{ ...wedding, locale: "en-US" }}
+          api={api}
+          onNavigate={vi.fn()}
+        />
+      </UiLanguageProvider>,
+    );
+    expect(screen.getByText(/February 14, 2027/)).toBeVisible();
+    expect(await screen.findByText(/0 กลุ่มแขก/)).toBeVisible();
+  });
   it("shows zero guest parties without inventing a percentage", async () => {
     const api = {
       getPlanningOverview: vi.fn(async () => emptyPlanning),

@@ -13,7 +13,8 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { useUiCopy, useUiLanguage } from "../ui-language-provider";
+import { useUiCopy } from "../ui-language-provider";
+import { formatWeddingDate } from "../../lib/format-wedding-date";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import type { WorkspaceSection } from "./workspace-navigation";
@@ -33,7 +34,6 @@ export function OverviewPanel({
   onNavigate(section: WorkspaceSection): void;
 }) {
   const copy = useUiCopy();
-  const language = useUiLanguage();
   const [retry, setRetry] = useState(0);
   const [state, setState] = useState<
     | { status: "loading" }
@@ -60,10 +60,7 @@ export function OverviewPanel({
   }, [api, wedding.id, retry]);
 
   const weddingDate = wedding.weddingDate
-    ? new Intl.DateTimeFormat(language, {
-        dateStyle: "long",
-        timeZone: "UTC",
-      }).format(new Date(`${wedding.weddingDate}T12:00:00.000Z`))
+    ? formatWeddingDate(wedding.weddingDate, wedding.locale)
     : copy.workspace.datePending;
 
   return (

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type { WeddingSummary } from "@lovechapter/contracts";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -91,5 +91,28 @@ describe("WeddingSettingsForm", () => {
     expect(
       screen.queryByRole("button", { name: "Save settings" }),
     ).not.toBeInTheDocument();
+  });
+  it("locks the draft while saving so a late response cannot erase new typing", async () => {
+    let resolveSave!: (value: WeddingSummary) => void;
+    const updateWedding = vi.fn(
+      () => new Promise<WeddingSummary>((resolve) => (resolveSave = resolve)),
+    );
+    render(
+      <WeddingSettingsForm
+        wedding={wedding}
+        updateWedding={updateWedding}
+        onSaved={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    );
+    const name = screen.getByLabelText("Wedding name");
+    await userEvent.clear(name);
+    await userEvent.type(name, "Saved name");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Save settings" }),
+    );
+    expect(name).toBeDisabled();
+    await act(async () => resolveSave({ ...wedding, name: "Saved name" }));
+    expect(name).toHaveValue("Saved name");
   });
 });

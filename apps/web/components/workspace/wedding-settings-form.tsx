@@ -7,6 +7,7 @@ import type {
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { safeUiError } from "../../lib/ui-error";
+import { formatWeddingDate } from "../../lib/format-wedding-date";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { Input } from "../ui/input";
@@ -97,10 +98,7 @@ export function WeddingSettingsForm({
           <p>{wedding.name}</p>
           <p>
             {wedding.weddingDate
-              ? new Intl.DateTimeFormat(language, {
-                  dateStyle: "long",
-                  timeZone: "UTC",
-                }).format(new Date(`${wedding.weddingDate}T12:00:00.000Z`))
+              ? formatWeddingDate(wedding.weddingDate, wedding.locale)
               : copy.workspace.datePending}
           </p>
           <p>
@@ -113,6 +111,7 @@ export function WeddingSettingsForm({
             <Label htmlFor="settings-name">{copy.workspace.weddingName}</Label>
             <Input
               id="settings-name"
+              disabled={busy}
               required
               maxLength={120}
               value={draft.name}
@@ -125,6 +124,7 @@ export function WeddingSettingsForm({
             <Label htmlFor="settings-date">{copy.workspace.weddingDate}</Label>
             <Input
               id="settings-date"
+              disabled={busy}
               type="date"
               value={draft.weddingDate ?? ""}
               onChange={(event) =>
@@ -137,6 +137,7 @@ export function WeddingSettingsForm({
               <Label htmlFor="settings-zone">{copy.workspace.timeZone}</Label>
               <StandardCodeCombobox
                 kind="timeZone"
+                disabled={busy}
                 uiLanguage={language}
                 id="settings-zone"
                 name="timeZone"
@@ -149,6 +150,7 @@ export function WeddingSettingsForm({
               <Label htmlFor="settings-locale">{copy.workspace.locale}</Label>
               <StandardCodeCombobox
                 kind="locale"
+                disabled={busy}
                 uiLanguage={language}
                 id="settings-locale"
                 name="locale"

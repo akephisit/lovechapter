@@ -63,9 +63,10 @@ type Props = {
   wedding: Wedding;
   api: OperationsWorkspaceApi;
   section?: "budget" | "schedule" | "seating";
+  onSaved?: (form: HTMLFormElement) => void;
 };
 
-export function OperationsWorkspace({ wedding, api, section }: Props) {
+export function OperationsWorkspace({ wedding, api, section, onSaved }: Props) {
   const copy = useUiCopy();
   const [tab, setTab] = useState<"budget" | "schedule" | "seating">("budget");
   const active = section ?? tab;
@@ -100,12 +101,26 @@ export function OperationsWorkspace({ wedding, api, section }: Props) {
           </Button>
         </div>
       ) : null}
-      {active === "budget" ? <BudgetPanel wedding={wedding} api={api} /> : null}
+      {active === "budget" ? (
+        <BudgetPanel
+          wedding={wedding}
+          api={api}
+          {...(onSaved ? { onSaved } : {})}
+        />
+      ) : null}
       {active === "schedule" ? (
-        <RunSheetPanel wedding={wedding} api={api} />
+        <RunSheetPanel
+          wedding={wedding}
+          api={api}
+          {...(onSaved ? { onSaved } : {})}
+        />
       ) : null}
       {active === "seating" ? (
-        <SeatingPanel wedding={wedding} api={api} />
+        <SeatingPanel
+          wedding={wedding}
+          api={api}
+          {...(onSaved ? { onSaved } : {})}
+        />
       ) : null}
     </section>
   );
@@ -148,7 +163,7 @@ function Field({
 }
 const inputClass = "w-full";
 
-function BudgetPanel({ wedding, api }: Props) {
+function BudgetPanel({ wedding, api, onSaved }: Props) {
   const copy = useUiCopy();
   const uiLanguage = useUiLanguage();
   const [overview, setOverview] = useState<Awaited<
@@ -198,11 +213,16 @@ function BudgetPanel({ wedding, api }: Props) {
       generation.current += 1;
     };
   }, [wedding.id, api]);
-  async function mutate(action: () => Promise<unknown>, after?: () => void) {
+  async function mutate(
+    action: () => Promise<unknown>,
+    after?: () => void,
+    savedForm?: HTMLFormElement,
+  ) {
     setBusy(true);
     setError(null);
     try {
       await action();
+      if (savedForm) onSaved?.(savedForm);
       after?.();
       await reload();
     } catch (caught) {
@@ -244,7 +264,7 @@ function BudgetPanel({ wedding, api }: Props) {
   }
   const currency = overview?.budget?.currency ?? null;
   return (
-    <div className="space-y-4">
+    <fieldset disabled={busy} className="min-w-0 space-y-4 border-0 p-0">
       <Card className="space-y-4 p-5 sm:p-6">
         <h2 className="font-serif text-2xl text-[#432f35]">
           {copy.operations.budget}
@@ -276,16 +296,19 @@ function BudgetPanel({ wedding, api }: Props) {
           onSubmit={(event) => {
             event.preventDefault();
             const fields = new FormData(event.currentTarget);
-            void mutate(() =>
-              api.setBudget(wedding.id, {
-                currency: field(fields, "currency").toUpperCase(),
-                targetMinor: field(fields, "target")
-                  ? parseMoney(
-                      field(fields, "target"),
-                      field(fields, "currency"),
-                    )
-                  : null,
-              }),
+            void mutate(
+              () =>
+                api.setBudget(wedding.id, {
+                  currency: field(fields, "currency").toUpperCase(),
+                  targetMinor: field(fields, "target")
+                    ? parseMoney(
+                        field(fields, "target"),
+                        field(fields, "currency"),
+                      )
+                    : null,
+                }),
+              undefined,
+              event.currentTarget,
             );
           }}
         >
@@ -336,6 +359,7 @@ function BudgetPanel({ wedding, api }: Props) {
                   input,
                 ),
               () => setEditingCategory(null),
+              event.currentTarget,
             );
           }}
         >
@@ -418,6 +442,7 @@ function BudgetPanel({ wedding, api }: Props) {
                   note: field(values, "vendorNote") || null,
                 }),
               () => setEditingVendor(null),
+              event.currentTarget,
             );
           }}
         >
@@ -576,6 +601,7 @@ function BudgetPanel({ wedding, api }: Props) {
                     note: field(values, "expenseNote") || null,
                   }),
                 () => setEditingExpense(null),
+                event.currentTarget,
               );
             }}
           >
@@ -737,7 +763,7 @@ function BudgetPanel({ wedding, api }: Props) {
           </Button>
         ) : null}
       </Card>
-    </div>
+    </fieldset>
   );
 }
 
@@ -758,7 +784,7 @@ function localValue(instant: string, timeZone: string): string {
   return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
 }
 
-function RunSheetPanel({ wedding, api }: Props) {
+function RunSheetPanel({ wedding, api, onSaved }: Props) {
   const copy = useUiCopy();
   const [items, setItems] = useState<RunSheetItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -789,11 +815,15 @@ function RunSheetPanel({ wedding, api }: Props) {
       generation.current += 1;
     };
   }, [wedding.id, api]);
-  async function mutate(action: () => Promise<unknown>) {
+  async function mutate(
+    action: () => Promise<unknown>,
+    savedForm?: HTMLFormElement,
+  ) {
     setBusy(true);
     setError(null);
     try {
       await action();
+      if (savedForm) onSaved?.(savedForm);
       setEditing(null);
       await reload();
     } catch (caught) {
@@ -803,186 +833,196 @@ function RunSheetPanel({ wedding, api }: Props) {
     }
   }
   return (
-    <Card className="space-y-4 p-5 sm:p-6">
-      <h2 className="font-serif text-2xl">{copy.operations.schedule}</h2>
-      <p className="text-sm">
-        {copy.operations.scheduleDescription(wedding.timeZone)}
-      </p>
-      {error ? (
-        <p role="alert" className="text-[#9b3737]">
-          {localizeStoredUiMessage(error, copy)}
+    <fieldset disabled={busy} className="min-w-0 border-0 p-0">
+      <Card className="space-y-4 p-5 sm:p-6">
+        <h2 className="font-serif text-2xl">{copy.operations.schedule}</h2>
+        <p className="text-sm">
+          {copy.operations.scheduleDescription(wedding.timeZone)}
         </p>
-      ) : null}
-      <form
-        key={editing?.id ?? "new"}
-        className="grid gap-3 sm:grid-cols-2"
-        onSubmit={(event: FormEvent<HTMLFormElement>) => {
-          event.preventDefault();
-          const values = new FormData(event.currentTarget);
-          try {
-            const input = {
-              title: field(values, "scheduleTitle"),
-              startsAt: resolveWeddingLocalTime(
-                field(values, "start"),
-                wedding.timeZone,
-              ),
-              endsAt: resolveWeddingLocalTime(
-                field(values, "end"),
-                wedding.timeZone,
-              ),
-              location: field(values, "location") || null,
-              responsible: field(values, "responsible") || null,
-              note: field(values, "scheduleNote") || null,
-            };
-            void mutate(() =>
-              api.saveRunSheetItem(wedding.id, editing?.id ?? null, input),
-            );
-          } catch (caught) {
-            setError(errorText(caught, copy));
-          }
-        }}
-      >
-        <Field label={copy.operations.scheduleTitle} name="scheduleTitle">
-          <Input
-            id="scheduleTitle"
-            name="scheduleTitle"
-            required
-            defaultValue={editing?.title ?? ""}
-          />
-        </Field>
-        <Field label={copy.operations.location} name="location">
-          <Input
-            id="location"
-            name="location"
-            defaultValue={editing?.location ?? ""}
-          />
-        </Field>
-        <Field label={copy.operations.start} name="start">
-          <Input
-            id="start"
-            name="start"
-            type="datetime-local"
-            required
-            defaultValue={
-              editing ? localValue(editing.startsAt, wedding.timeZone) : ""
-            }
-          />
-        </Field>
-        <Field label={copy.operations.end} name="end">
-          <Input
-            id="end"
-            name="end"
-            type="datetime-local"
-            required
-            defaultValue={
-              editing ? localValue(editing.endsAt, wedding.timeZone) : ""
-            }
-          />
-        </Field>
-        <Field label={copy.operations.responsible} name="responsible">
-          <Input
-            id="responsible"
-            name="responsible"
-            defaultValue={editing?.responsible ?? ""}
-          />
-        </Field>
-        <Field label={copy.operations.privateNotes} name="scheduleNote">
-          <Textarea
-            id="scheduleNote"
-            name="scheduleNote"
-            defaultValue={editing?.note ?? ""}
-          />
-        </Field>
-        <div className="space-x-2">
-          <Button type="submit" disabled={busy}>
-            {editing
-              ? copy.operations.saveSchedule
-              : copy.operations.addSchedule}
-          </Button>
-          {editing ? (
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setEditing(null)}
-            >
-              {copy.operations.cancel}
-            </Button>
-          ) : null}
-        </div>
-      </form>
-      {loading ? <p role="status">{copy.operations.loadingSchedule}</p> : null}
-      {items.length ? (
-        <ol className="space-y-2">
-          {items.map((item) => (
-            <li key={item.id} className="rounded-xl border p-3">
-              <strong>{item.title}</strong> ·{" "}
-              {localValue(item.startsAt, wedding.timeZone).replace("T", " ")}–
-              {localValue(item.endsAt, wedding.timeZone).replace("T", " ")}
-              {item.location ? ` · ${item.location}` : ""}
-              {item.responsible ? ` · ${item.responsible}` : ""}
-              <div className="mt-2 flex gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setEditing(item)}
-                >
-                  {copy.operations.edit(item.title)}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  disabled={busy}
-                  onClick={() => {
-                    if (
-                      window.confirm(copy.operations.deleteSchedule(item.title))
-                    )
-                      void mutate(() =>
-                        api.deleteRunSheetItem(wedding.id, item.id),
-                      );
-                  }}
-                >
-                  {copy.operations.delete(item.title)}
-                </Button>
-              </div>
-            </li>
-          ))}
-        </ol>
-      ) : (
-        <p className="text-sm">{copy.operations.noSchedule}</p>
-      )}
-      {cursor ? (
-        <Button
-          type="button"
-          variant="ghost"
-          disabled={busy}
-          onClick={async () => {
-            const current = generation.current;
-            setBusy(true);
+        {error ? (
+          <p role="alert" className="text-[#9b3737]">
+            {localizeStoredUiMessage(error, copy)}
+          </p>
+        ) : null}
+        <form
+          key={editing?.id ?? "new"}
+          className="grid gap-3 sm:grid-cols-2"
+          onSubmit={(event: FormEvent<HTMLFormElement>) => {
+            event.preventDefault();
+            const values = new FormData(event.currentTarget);
             try {
-              const page = await api.listRunSheet(wedding.id, cursor);
-              if (current === generation.current) {
-                setItems((old) => [
-                  ...old,
-                  ...page.items.filter((i) => !old.some((x) => x.id === i.id)),
-                ]);
-                setCursor(page.nextCursor);
-              }
+              const input = {
+                title: field(values, "scheduleTitle"),
+                startsAt: resolveWeddingLocalTime(
+                  field(values, "start"),
+                  wedding.timeZone,
+                ),
+                endsAt: resolveWeddingLocalTime(
+                  field(values, "end"),
+                  wedding.timeZone,
+                ),
+                location: field(values, "location") || null,
+                responsible: field(values, "responsible") || null,
+                note: field(values, "scheduleNote") || null,
+              };
+              void mutate(
+                () =>
+                  api.saveRunSheetItem(wedding.id, editing?.id ?? null, input),
+                event.currentTarget,
+              );
             } catch (caught) {
-              if (current === generation.current)
-                setError(errorText(caught, copy));
-            } finally {
-              if (current === generation.current) setBusy(false);
+              setError(errorText(caught, copy));
             }
           }}
         >
-          {copy.operations.moreSchedule}
-        </Button>
-      ) : null}
-    </Card>
+          <Field label={copy.operations.scheduleTitle} name="scheduleTitle">
+            <Input
+              id="scheduleTitle"
+              name="scheduleTitle"
+              required
+              defaultValue={editing?.title ?? ""}
+            />
+          </Field>
+          <Field label={copy.operations.location} name="location">
+            <Input
+              id="location"
+              name="location"
+              defaultValue={editing?.location ?? ""}
+            />
+          </Field>
+          <Field label={copy.operations.start} name="start">
+            <Input
+              id="start"
+              name="start"
+              type="datetime-local"
+              required
+              defaultValue={
+                editing ? localValue(editing.startsAt, wedding.timeZone) : ""
+              }
+            />
+          </Field>
+          <Field label={copy.operations.end} name="end">
+            <Input
+              id="end"
+              name="end"
+              type="datetime-local"
+              required
+              defaultValue={
+                editing ? localValue(editing.endsAt, wedding.timeZone) : ""
+              }
+            />
+          </Field>
+          <Field label={copy.operations.responsible} name="responsible">
+            <Input
+              id="responsible"
+              name="responsible"
+              defaultValue={editing?.responsible ?? ""}
+            />
+          </Field>
+          <Field label={copy.operations.privateNotes} name="scheduleNote">
+            <Textarea
+              id="scheduleNote"
+              name="scheduleNote"
+              defaultValue={editing?.note ?? ""}
+            />
+          </Field>
+          <div className="space-x-2">
+            <Button type="submit" disabled={busy}>
+              {editing
+                ? copy.operations.saveSchedule
+                : copy.operations.addSchedule}
+            </Button>
+            {editing ? (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setEditing(null)}
+              >
+                {copy.operations.cancel}
+              </Button>
+            ) : null}
+          </div>
+        </form>
+        {loading ? (
+          <p role="status">{copy.operations.loadingSchedule}</p>
+        ) : null}
+        {items.length ? (
+          <ol className="space-y-2">
+            {items.map((item) => (
+              <li key={item.id} className="rounded-xl border p-3">
+                <strong>{item.title}</strong> ·{" "}
+                {localValue(item.startsAt, wedding.timeZone).replace("T", " ")}–
+                {localValue(item.endsAt, wedding.timeZone).replace("T", " ")}
+                {item.location ? ` · ${item.location}` : ""}
+                {item.responsible ? ` · ${item.responsible}` : ""}
+                <div className="mt-2 flex gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setEditing(item)}
+                  >
+                    {copy.operations.edit(item.title)}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          copy.operations.deleteSchedule(item.title),
+                        )
+                      )
+                        void mutate(() =>
+                          api.deleteRunSheetItem(wedding.id, item.id),
+                        );
+                    }}
+                  >
+                    {copy.operations.delete(item.title)}
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="text-sm">{copy.operations.noSchedule}</p>
+        )}
+        {cursor ? (
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={busy}
+            onClick={async () => {
+              const current = generation.current;
+              setBusy(true);
+              try {
+                const page = await api.listRunSheet(wedding.id, cursor);
+                if (current === generation.current) {
+                  setItems((old) => [
+                    ...old,
+                    ...page.items.filter(
+                      (i) => !old.some((x) => x.id === i.id),
+                    ),
+                  ]);
+                  setCursor(page.nextCursor);
+                }
+              } catch (caught) {
+                if (current === generation.current)
+                  setError(errorText(caught, copy));
+              } finally {
+                if (current === generation.current) setBusy(false);
+              }
+            }}
+          >
+            {copy.operations.moreSchedule}
+          </Button>
+        ) : null}
+      </Card>
+    </fieldset>
   );
 }
 
-function SeatingPanel({ wedding, api }: Props) {
+function SeatingPanel({ wedding, api, onSaved }: Props) {
   const copy = useUiCopy();
   const [tables, setTables] = useState<SeatingTable[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -1029,11 +1069,13 @@ function SeatingPanel({ wedding, api }: Props) {
   async function mutate(
     action: () => Promise<unknown>,
     nextSelection = selected,
+    savedForm?: HTMLFormElement,
   ) {
     setBusy(true);
     setError(null);
     try {
       await action();
+      if (savedForm) onSaved?.(savedForm);
       setEditing(null);
       await reload(nextSelection);
     } catch (caught) {
@@ -1072,200 +1114,203 @@ function SeatingPanel({ wedding, api }: Props) {
     }
   }
   return (
-    <Card className="space-y-4 p-5 sm:p-6">
-      <h2 className="font-serif text-2xl">{copy.operations.seating}</h2>
-      <p className="text-sm">{copy.operations.seatingDescription}</p>
-      {error ? (
-        <p role="alert" className="text-[#9b3737]">
-          {localizeStoredUiMessage(error, copy)}
-        </p>
-      ) : null}
-      <form
-        key={editing?.id ?? "new"}
-        className="flex flex-wrap gap-3"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const values = new FormData(event.currentTarget);
-          void mutate(
-            () =>
-              api.saveSeatingTable(wedding.id, editing?.id ?? null, {
-                name: field(values, "tableName"),
-                capacity: Number(field(values, "capacity")),
-              }),
-            editing?.id ?? null,
-          );
-        }}
-      >
-        <Field label={copy.operations.tableName} name="tableName">
-          <Input
-            id="tableName"
-            name="tableName"
-            required
-            defaultValue={editing?.name ?? ""}
-          />
-        </Field>
-        <Field label={copy.operations.tableCapacity} name="capacity">
-          <Input
-            id="capacity"
-            name="capacity"
-            type="number"
-            min={1}
-            max={100}
-            required
-            defaultValue={editing?.capacity ?? 8}
-          />
-        </Field>
-        <Button className="self-end" type="submit" disabled={busy}>
-          {editing ? copy.operations.saveTable : copy.operations.addTable}
-        </Button>
-        {editing ? (
-          <Button
-            className="self-end"
-            type="button"
-            variant="ghost"
-            onClick={() => setEditing(null)}
-          >
-            {copy.operations.cancel}
-          </Button>
-        ) : null}
-      </form>
-      {loading ? <p role="status">{copy.operations.loadingTables}</p> : null}
-      {tables.length ? (
-        <div className="flex flex-wrap gap-2">
-          {tables.map((table) => (
-            <Button
-              key={table.id}
-              type="button"
-              variant={selected === table.id ? "primary" : "ghost"}
-              onClick={() => void reload(table.id)}
-            >
-              {table.name} · {table.reserved}/{table.capacity}
-            </Button>
-          ))}
-        </div>
-      ) : (
-        <p className="text-sm">{copy.operations.noTables}</p>
-      )}
-      {selected ? (
-        <>
-          <p className="text-sm">
-            {copy.operations.seatsRemaining(
-              tables.find((table) => table.id === selected)!.capacity -
-                tables.find((table) => table.id === selected)!.reserved,
-            )}
+    <fieldset disabled={busy} className="min-w-0 border-0 p-0">
+      <Card className="space-y-4 p-5 sm:p-6">
+        <h2 className="font-serif text-2xl">{copy.operations.seating}</h2>
+        <p className="text-sm">{copy.operations.seatingDescription}</p>
+        {error ? (
+          <p role="alert" className="text-[#9b3737]">
+            {localizeStoredUiMessage(error, copy)}
           </p>
-          <div className="flex flex-wrap gap-2">
+        ) : null}
+        <form
+          key={editing?.id ?? "new"}
+          className="flex flex-wrap gap-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const values = new FormData(event.currentTarget);
+            void mutate(
+              () =>
+                api.saveSeatingTable(wedding.id, editing?.id ?? null, {
+                  name: field(values, "tableName"),
+                  capacity: Number(field(values, "capacity")),
+                }),
+              editing?.id ?? null,
+              event.currentTarget,
+            );
+          }}
+        >
+          <Field label={copy.operations.tableName} name="tableName">
+            <Input
+              id="tableName"
+              name="tableName"
+              required
+              defaultValue={editing?.name ?? ""}
+            />
+          </Field>
+          <Field label={copy.operations.tableCapacity} name="capacity">
+            <Input
+              id="capacity"
+              name="capacity"
+              type="number"
+              min={1}
+              max={100}
+              required
+              defaultValue={editing?.capacity ?? 8}
+            />
+          </Field>
+          <Button className="self-end" type="submit" disabled={busy}>
+            {editing ? copy.operations.saveTable : copy.operations.addTable}
+          </Button>
+          {editing ? (
             <Button
+              className="self-end"
               type="button"
               variant="ghost"
-              onClick={() =>
-                setEditing(tables.find((t) => t.id === selected) ?? null)
-              }
+              onClick={() => setEditing(null)}
             >
-              {copy.operations.editTable}
+              {copy.operations.cancel}
             </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              disabled={busy}
-              onClick={() => {
-                if (window.confirm(copy.operations.deleteTableConfirm))
-                  void mutate(
-                    () => api.deleteSeatingTable(wedding.id, selected),
-                    null,
-                  );
+          ) : null}
+        </form>
+        {loading ? <p role="status">{copy.operations.loadingTables}</p> : null}
+        {tables.length ? (
+          <div className="flex flex-wrap gap-2">
+            {tables.map((table) => (
+              <Button
+                key={table.id}
+                type="button"
+                variant={selected === table.id ? "primary" : "ghost"}
+                onClick={() => void reload(table.id)}
+              >
+                {table.name} · {table.reserved}/{table.capacity}
+              </Button>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm">{copy.operations.noTables}</p>
+        )}
+        {selected ? (
+          <>
+            <p className="text-sm">
+              {copy.operations.seatsRemaining(
+                tables.find((table) => table.id === selected)!.capacity -
+                  tables.find((table) => table.id === selected)!.reserved,
+              )}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() =>
+                  setEditing(tables.find((t) => t.id === selected) ?? null)
+                }
+              >
+                {copy.operations.editTable}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => {
+                  if (window.confirm(copy.operations.deleteTableConfirm))
+                    void mutate(
+                      () => api.deleteSeatingTable(wedding.id, selected),
+                      null,
+                    );
+                }}
+              >
+                {copy.operations.deleteTable}
+              </Button>
+            </div>
+            <h3 className="font-serif text-xl">
+              {copy.operations.assignedParties}
+            </h3>
+            {assignments.length ? (
+              <ul className="space-y-2">
+                {assignments.map((party) => (
+                  <li
+                    key={party.guestId}
+                    className="flex flex-wrap items-center gap-2"
+                  >
+                    {party.guestName} ·{" "}
+                    {copy.operations.partySeats(party.partySize)}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      disabled={busy}
+                      onClick={() =>
+                        void mutate(() =>
+                          api.assignSeating(wedding.id, party.guestId, null),
+                        )
+                      }
+                    >
+                      {copy.operations.unassign(party.guestName)}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm">{copy.operations.noParties}</p>
+            )}
+            <form
+              className="flex flex-wrap items-end gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void findGuests(search.trim());
               }}
             >
-              {copy.operations.deleteTable}
-            </Button>
-          </div>
-          <h3 className="font-serif text-xl">
-            {copy.operations.assignedParties}
-          </h3>
-          {assignments.length ? (
-            <ul className="space-y-2">
-              {assignments.map((party) => (
-                <li
-                  key={party.guestId}
-                  className="flex flex-wrap items-center gap-2"
-                >
-                  {party.guestName} ·{" "}
-                  {copy.operations.partySeats(party.partySize)}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    disabled={busy}
-                    onClick={() =>
-                      void mutate(() =>
-                        api.assignSeating(wedding.id, party.guestId, null),
-                      )
-                    }
+              <Field label={copy.operations.findParty} name="seatSearch">
+                <Input
+                  id="seatSearch"
+                  name="seatSearch"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+              </Field>
+              <Button type="submit" disabled={busy}>
+                {copy.operations.searchGuests}
+              </Button>
+            </form>
+            {candidates.length ? (
+              <ul className="space-y-2">
+                {candidates.map((guest) => (
+                  <li
+                    key={guest.id}
+                    className="flex flex-wrap items-center gap-2"
                   >
-                    {copy.operations.unassign(party.guestName)}
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm">{copy.operations.noParties}</p>
-          )}
-          <form
-            className="flex flex-wrap items-end gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void findGuests(search.trim());
-            }}
-          >
-            <Field label={copy.operations.findParty} name="seatSearch">
-              <Input
-                id="seatSearch"
-                name="seatSearch"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-              />
-            </Field>
-            <Button type="submit" disabled={busy}>
-              {copy.operations.searchGuests}
-            </Button>
-          </form>
-          {candidates.length ? (
-            <ul className="space-y-2">
-              {candidates.map((guest) => (
-                <li
-                  key={guest.id}
-                  className="flex flex-wrap items-center gap-2"
-                >
-                  {guest.name} ·{" "}
-                  {copy.operations.upToSeats(guest.allowedPartySize)}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    disabled={busy || guest.rsvp?.attendance === "declined"}
-                    onClick={() =>
-                      void mutate(() =>
-                        api.assignSeating(wedding.id, guest.id, selected),
-                      )
-                    }
-                  >
-                    {guest.rsvp?.attendance === "declined"
-                      ? copy.operations.declined
-                      : copy.operations.assign(guest.name)}
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          {candidateCursor ? (
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => void findGuests(search.trim(), candidateCursor)}
-            >
-              {copy.operations.moreGuests}
-            </Button>
-          ) : null}
-        </>
-      ) : null}
-    </Card>
+                    {guest.name} ·{" "}
+                    {copy.operations.upToSeats(guest.allowedPartySize)}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      disabled={busy || guest.rsvp?.attendance === "declined"}
+                      onClick={() =>
+                        void mutate(() =>
+                          api.assignSeating(wedding.id, guest.id, selected),
+                        )
+                      }
+                    >
+                      {guest.rsvp?.attendance === "declined"
+                        ? copy.operations.declined
+                        : copy.operations.assign(guest.name)}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {candidateCursor ? (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => void findGuests(search.trim(), candidateCursor)}
+              >
+                {copy.operations.moreGuests}
+              </Button>
+            ) : null}
+          </>
+        ) : null}
+      </Card>
+    </fieldset>
   );
 }

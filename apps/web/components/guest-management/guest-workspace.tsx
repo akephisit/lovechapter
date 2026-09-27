@@ -15,7 +15,14 @@ import type {
   SetGuestAffiliationInput,
   UpdateGuestInput,
 } from "@lovechapter/contracts";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 
 import { safeUiError } from "../../lib/ui-error";
 import {
@@ -97,6 +104,10 @@ type GuestWorkspaceProps = {
   initialView?: GuestView;
   api: GuestWorkspaceApi;
   onAffiliationCreated?: (affiliation: GuestAffiliation) => void;
+  invitations?: Record<string, InvitationCreated>;
+  onInvitationsChange?: Dispatch<
+    SetStateAction<Record<string, InvitationCreated>>
+  >;
 };
 
 export function GuestWorkspace(props: GuestWorkspaceProps) {
@@ -111,6 +122,8 @@ function WeddingGuestWorkspace({
   initialView = "active",
   api,
   onAffiliationCreated,
+  invitations: providedInvitations,
+  onInvitationsChange,
 }: GuestWorkspaceProps) {
   const copy = useUiCopy();
   const [guests, setGuests] = useState(initialPage.items);
@@ -122,9 +135,11 @@ function WeddingGuestWorkspace({
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selection, setSelection] = useState<GuestSelection>(new Set());
   const [detail, setDetail] = useState<GuestDetail | null>(null);
-  const [invitations, setInvitations] = useState<
+  const [localInvitations, setLocalInvitations] = useState<
     Record<string, InvitationCreated>
   >({});
+  const invitations = providedInvitations ?? localInvitations;
+  const setInvitations = onInvitationsChange ?? setLocalInvitations;
   const [busy, setBusy] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [showEnvelopes, setShowEnvelopes] = useState(false);
@@ -132,6 +147,7 @@ function WeddingGuestWorkspace({
   const requestId = useRef(0);
   const mutationVersion = useRef(0);
   const skipFilterRequest = useRef(true);
+  const controlledInvitations = Boolean(onInvitationsChange);
 
   useEffect(() => {
     const timer = window.setTimeout(
@@ -147,10 +163,10 @@ function WeddingGuestWorkspace({
     setFilters({ search: "", view: initialView });
     setDebouncedSearch("");
     setSelection(new Set());
-    setInvitations({});
+    if (!controlledInvitations) setLocalInvitations({});
     requestId.current += 1;
     skipFilterRequest.current = true;
-  }, [weddingId, initialView]);
+  }, [weddingId, initialView, controlledInvitations]);
 
   useEffect(() => {
     setGuests(initialPage.items);
@@ -387,6 +403,7 @@ function WeddingGuestWorkspace({
       setGuests((current) =>
         current.map((item) => (item.id === updated.id ? updated : item)),
       );
+      if (filters.affiliation) await loadPage(requestFilters, false);
     } catch (error) {
       setMessage(safeUiError(error, copy, copy.workspace.setAffiliationError));
     } finally {

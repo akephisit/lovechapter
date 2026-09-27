@@ -18,8 +18,20 @@ invitation, and individual affiliation controls; the duplicate old editor was
 removed. Unsaved forms prompt before section/wedding navigation. No schema
 migration was added.
 
+Whole-branch review found and fixed draft/data-loss edge cases before release:
+one-time invitation links now remain available within the selected wedding
+when Guests is revisited or a response arrives after leaving that section,
+while a wedding switch/sign-out clears them and ignores stale responses.
+Wedding creation checks existing drafts and locks editors while pending.
+Settings and operations fields cannot change during save; affiliation saves
+clear the unsaved warning only when the current form still matches the
+submitted values. The wedding-creation lock is independent of other pending
+requests. Affiliation-filtered guest results refresh after a guest is moved.
+Wedding dates use the wedding's locale independently of the UI language.
+Regression tests cover these cases, including delayed and overlapping requests.
+
 Local verification passed: `npm run ci` with pinned Bun 1.4.2 (format, lint,
-typecheck, 116 test files / 748 tests, Bun API/jobs builds and runtime smoke,
+typecheck, 116 test files / 761 tests, Bun API/jobs builds and runtime smoke,
 Drizzle snapshot check, API Worker Wrangler dry-run, Next and vinext builds,
 vinext compatibility check, and web Worker dry-run). The disposable local
 PostgreSQL 16 integration suites passed 43 database cases (one existing skip)
