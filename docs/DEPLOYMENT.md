@@ -27,7 +27,8 @@ only `lovechapter-api`. Shared or uncertain changes deploy both. A breaking
 schema/API change also deploys both. Every application deployment closes the
 whole site, even when only one Worker changes. Documentation-only changes
 run CI but do not close or deploy. The workflow is serial, and
-`PRODUCTION_RELEASE_ENABLED` stays absent or `false` until first publication.
+`PRODUCTION_RELEASE_ENABLED` was enabled after first publication and cleanup
+CI. Setting it to `false` pauses production cutovers while leaving CI active.
 After a post-closure failure, leave maintenance on; use a reviewed forward fix
 or a verified database restore, not an old Worker against a new schema.
 

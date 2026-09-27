@@ -13,8 +13,10 @@ Readback confirmed the production gate is open at that SHA, web version
 production deployment record is successful. Public sign-in returns 200,
 same-origin unauthenticated session returns 401, and direct API ingress
 returns 403. Preview URLs remain disabled. The temporary first-publication
-workflow and scripts are being removed; keep
-`PRODUCTION_RELEASE_ENABLED=false` until cleanup CI passes, then enable it.
+workflow and scripts were removed in `3b09078`; its hosted CI and disposable
+PostgreSQL integration passed in run `36324125860`. The production
+`PRODUCTION_RELEASE_ENABLED` variable was then set to `true` for future
+owner pushes.
 
 `lovechapter.net` is registered and Resend Sending is verified, but the web
 custom-domain route/TLS has not yet been verified; the generated Worker URL
