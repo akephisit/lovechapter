@@ -6,8 +6,13 @@ Task 1 adds a pre-`0011` staging gate reader, open-only closure, and bounded
 lease drain. A disposable PostgreSQL fixture migrated only through `0010`
 exercises the old schema without version columns. This is local implementation
 only: active staging and production have not been changed, and the one-time
-cutover still requires a separate exact-SHA go/no-go. The remaining CLI,
-recovery, coordinator, and workflow tasks are not yet complete.
+cutover still requires a separate exact-SHA go/no-go. Task 2 adds staging-only
+gate and migration commands: the latter verifies the direct release and
+migration roles, independent Neon checkpoint provenance and endpoint, `0010`
+ledger, drained closure, retained-row counts, then applies only checked-in
+`0011` and verifies the resulting schema. A disposable PostgreSQL test runs
+that transition and rejects a second application. Recovery creation,
+coordinator, and workflow tasks are not yet complete.
 
 ## Current phase
 

@@ -18,6 +18,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import * as database from "./index";
 import { createPostgresRuntime, type PostgresRuntime } from "./client";
 import { PostgresStagingBootstrapGate } from "./staging-bootstrap-gate";
+import { runStagingBootstrapMigrationCli } from "./staging-bootstrap-migration-cli";
 
 const connectionString = process.env.TEST_DATABASE_URL;
 const restrictedConnectionString = process.env.TEST_GATE_APP_DATABASE_URL;
@@ -229,6 +230,133 @@ describe("PostgreSQL release gate", () => {
             deadlineMs: Date.now() + 2_000,
           }),
         ).toMatchObject({ mode: "maintenance", activeCount: 0 });
+        const retainedUserId = randomUUID();
+        await fixture.query(
+          `insert into users (id, auth_provider, auth_subject, display_name)
+           values ($1, 'local', $2, 'Retained fixture')`,
+          [retainedUserId, retainedUserId],
+        );
+        const stagingHost = "ep-fixture-staging.ap-southeast-1.aws.neon.tech";
+        const checkpointHost =
+          "ep-fixture-checkpoint.ap-southeast-1.aws.neon.tech";
+        const environment = {
+          RELEASE_ENVIRONMENT: "staging",
+          RELEASE_DATABASE_URL: `postgresql://release:gate-password@${stagingHost}/lovechapter?sslmode=require`,
+          RELEASE_DATABASE_ROLE: "release",
+          RELEASE_MIGRATION_DATABASE_URL: `postgresql://migrator:migration-password@${stagingHost}/lovechapter?sslmode=require`,
+          RELEASE_MIGRATION_DATABASE_ROLE: "migrator",
+          RELEASE_CHECKPOINT_DATABASE_URL: `postgresql://checkpoint:checkpoint-password@${checkpointHost}/lovechapter?sslmode=require`,
+          RELEASE_CHECKPOINT_DATABASE_ROLE: "checkpoint",
+          RELEASE_APP_DATABASE_ROLE: "app",
+          RELEASE_NEON_PROJECT_ID: "fixture-project",
+          RELEASE_NEON_BRANCH_ID: "br-staging-fixture",
+          RELEASE_DATABASE_NAME: "lovechapter",
+          RELEASE_CLOUDFLARE_ACCOUNT_ID: "fixture-account",
+          RELEASE_HYPERDRIVE_ID: "fixture-hyperdrive",
+          RELEASE_NEON_API_KEY: "fixture-neon-token",
+          RELEASE_CLOUDFLARE_API_TOKEN: "fixture-cloudflare-token",
+        };
+        const checkpointBranchId = "br-checkpoint-fixture";
+        const checkpointLsn = "0/1DE2850";
+        const fetcher = async (input: string | URL | Request) => {
+          const url = String(input);
+          if (url.endsWith(`/branches/${checkpointBranchId}`)) {
+            return new Response(
+              JSON.stringify({
+                branch: {
+                  id: checkpointBranchId,
+                  project_id: environment.RELEASE_NEON_PROJECT_ID,
+                  parent_id: environment.RELEASE_NEON_BRANCH_ID,
+                  parent_lsn: checkpointLsn,
+                  init_source: "parent-data",
+                },
+              }),
+            );
+          }
+          if (url.endsWith(`/branches/${checkpointBranchId}/endpoints`)) {
+            return new Response(
+              JSON.stringify({
+                endpoints: [
+                  {
+                    branch_id: checkpointBranchId,
+                    host: checkpointHost,
+                    type: "read_write",
+                  },
+                ],
+              }),
+            );
+          }
+          if (url.startsWith("https://console.neon.tech/")) {
+            return new Response(
+              JSON.stringify({
+                endpoints: [
+                  {
+                    branch_id: environment.RELEASE_NEON_BRANCH_ID,
+                    host: stagingHost,
+                    type: "read_write",
+                  },
+                ],
+              }),
+            );
+          }
+          return new Response(
+            JSON.stringify({
+              success: true,
+              result: {
+                id: environment.RELEASE_HYPERDRIVE_ID,
+                origin: {
+                  host: stagingHost,
+                  database: "lovechapter",
+                  user: "app",
+                },
+                caching: { disabled: true },
+              },
+            }),
+          );
+        };
+        const migrationArgs = [
+          "--sha",
+          "9".repeat(40),
+          "--closed-at",
+          closure.changedAt,
+          "--checkpoint-branch-id",
+          checkpointBranchId,
+          "--checkpoint-lsn",
+          checkpointLsn,
+        ];
+        const output: string[] = [];
+        const options = {
+          createClient: () =>
+            new Client({ connectionString: fixtureUrl.toString() }),
+          fetcher: fetcher as typeof fetch,
+          write: (line: string) => output.push(line),
+        };
+        await runStagingBootstrapMigrationCli(
+          migrationArgs,
+          environment,
+          options,
+        );
+        expect(output).toHaveLength(1);
+        expect(JSON.parse(output[0]!)).toMatchObject({
+          status: "applied_and_validated",
+          checkpointBranchId,
+        });
+        const retained = await fixture.query<{ id: string }>(
+          "select id from users where id = $1",
+          [retainedUserId],
+        );
+        expect(retained.rows).toEqual([{ id: retainedUserId }]);
+        expect(
+          (
+            await fixture.query(
+              "select 1 from ops.release_control where id = 1",
+            )
+          ).rowCount,
+        ).toBe(1);
+        await expect(
+          runStagingBootstrapMigrationCli(migrationArgs, environment, options),
+        ).rejects.toThrow();
+        expect(output).toHaveLength(1);
       } finally {
         await fixture?.end();
         if (created)
