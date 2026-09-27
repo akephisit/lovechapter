@@ -15,8 +15,9 @@ selectors. The shared API/repository authorizes Owner, Couple, and Planner
 edits; Collaborator remains read-only. UI language remains independent of
 wedding locale. The single current guest editor retains CSV, envelope,
 invitation, and individual affiliation controls; the duplicate old editor was
-removed. Unsaved forms prompt before section/wedding navigation. No schema
-migration was added.
+removed. Unsaved forms, CSV import drafts, and envelope template/selection
+drafts prompt before section/wedding navigation; the envelope editor also
+guards its own close and guest-view switch. No schema migration was added.
 
 Whole-branch review found and fixed draft/data-loss edge cases before release:
 one-time invitation links now remain available within the selected wedding
@@ -31,7 +32,7 @@ Wedding dates use the wedding's locale independently of the UI language.
 Regression tests cover these cases, including delayed and overlapping requests.
 
 Local verification passed: `npm run ci` with pinned Bun 1.4.2 (format, lint,
-typecheck, 116 test files / 761 tests, Bun API/jobs builds and runtime smoke,
+typecheck, 116 test files / 763 tests, Bun API/jobs builds and runtime smoke,
 Drizzle snapshot check, API Worker Wrangler dry-run, Next and vinext builds,
 vinext compatibility check, and web Worker dry-run). The disposable local
 PostgreSQL 16 integration suites passed 43 database cases (one existing skip)

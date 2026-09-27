@@ -117,6 +117,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsDirty, setSettingsDirty] = useState(false);
   const dirtyForms = useRef(new Set<HTMLFormElement>());
+  const dirtyEditors = useRef(new Set<"guest-import" | "envelope">());
   const [pickerOpen, setPickerOpen] = useState(false);
   const [guestsLoaded, setGuestsLoaded] = useState(false);
   const [guestLoadError, setGuestLoadError] = useState(false);
@@ -230,12 +231,14 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
     }
     if (
       !settingsDirty &&
-      ![...dirtyForms.current].some((form) => form !== excluding)
+      ![...dirtyForms.current].some((form) => form !== excluding) &&
+      dirtyEditors.current.size === 0
     )
       return true;
     if (!window.confirm(copy.weddingSettings.discardConfirm)) return false;
     setSettingsDirty(false);
     dirtyForms.current.clear();
+    dirtyEditors.current.clear();
     return true;
   }
 
@@ -756,6 +759,22 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
                             : update;
                         });
                       }}
+                      onImportDraftChange={(dirty) => {
+                        if (
+                          weddingGeneration.current !== weddingScopeGeneration
+                        )
+                          return;
+                        if (dirty) dirtyEditors.current.add("guest-import");
+                        else dirtyEditors.current.delete("guest-import");
+                      }}
+                      onEnvelopeDraftChange={(dirty) => {
+                        if (
+                          weddingGeneration.current !== weddingScopeGeneration
+                        )
+                          return;
+                        if (dirty) dirtyEditors.current.add("envelope");
+                        else dirtyEditors.current.delete("envelope");
+                      }}
                     />
                   ) : (
                     <Card
@@ -1067,6 +1086,8 @@ function WeddingWorkspace({
   onImportedAffiliation,
   invitations,
   onInvitationsChange,
+  onImportDraftChange,
+  onEnvelopeDraftChange,
 }: {
   api: CoupleWorkspaceApi;
   wedding: WeddingSummary;
@@ -1086,6 +1107,8 @@ function WeddingWorkspace({
   onInvitationsChange: Dispatch<
     SetStateAction<Record<string, InvitationCreated>>
   >;
+  onImportDraftChange(dirty: boolean): void;
+  onEnvelopeDraftChange(dirty: boolean): void;
 }) {
   return (
     <div className="space-y-6">
@@ -1107,6 +1130,8 @@ function WeddingWorkspace({
         onAffiliationCreated={onImportedAffiliation}
         invitations={invitations}
         onInvitationsChange={onInvitationsChange}
+        onImportDraftChange={onImportDraftChange}
+        onEnvelopeDraftChange={onEnvelopeDraftChange}
       />
     </div>
   );

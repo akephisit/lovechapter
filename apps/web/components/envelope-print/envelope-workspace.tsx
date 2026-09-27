@@ -57,10 +57,12 @@ export function EnvelopeWorkspace({
   weddingId,
   guests,
   api,
+  onDraftChange,
 }: {
   weddingId: string;
   guests: GuestSummary[];
   api: EnvelopeApi;
+  onDraftChange?(dirty: boolean): void;
 }) {
   const copy = useUiCopy();
   const copyRef = useRef(copy);
@@ -70,6 +72,7 @@ export function EnvelopeWorkspace({
     ...defaultTemplate,
     name: copy.envelope.defaultName,
   }));
+  const initialTemplate = useRef(template);
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [saved, setSaved] = useState<EnvelopeTemplate[]>([]);
   const [data, setData] = useState<EnvelopePrintData | null>(null);
@@ -82,6 +85,21 @@ export function EnvelopeWorkspace({
   const [error, setError] = useState<string | null>(null);
   const requestId = useRef(0);
   const cleanupPrint = useRef<(() => void) | null>(null);
+  const baseline = templateId
+    ? saved.find((item) => item.id === templateId)
+    : initialTemplate.current;
+  const templateDirty =
+    JSON.stringify(template) !==
+    JSON.stringify(
+      baseline && templateId
+        ? normalizeEnvelopeTemplateInput(baseline)
+        : baseline,
+    );
+  const hasDraft = templateDirty || selected.length > 0;
+
+  useEffect(() => {
+    onDraftChange?.(hasDraft);
+  }, [hasDraft, onDraftChange]);
 
   useEffect(
     () => () => {
@@ -194,6 +212,7 @@ export function EnvelopeWorkspace({
         ...current.filter((item) => item.id !== value.id),
         value,
       ]);
+      setTemplate(normalizeEnvelopeTemplateInput(value));
       setTemplateId(value.id);
     } catch (cause) {
       setError(readError(cause, copy));

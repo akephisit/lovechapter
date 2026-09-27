@@ -747,6 +747,84 @@ describe("CoupleWorkspace", () => {
     ).toBeVisible();
     expect(screen.getByText(/import guests/i)).toBeVisible();
   });
+  it("keeps a selected CSV file when leaving Guests is cancelled", async () => {
+    const wedding = weddingFixture();
+    const api: CoupleWorkspaceApi = {
+      ...affiliationApi(),
+      listWeddings: vi.fn(async () => page([wedding])),
+      createWedding: vi.fn(),
+      listGuests: vi.fn(async () => page([])),
+      addGuest: vi.fn(),
+      createInvitation: vi.fn(),
+      uploadGuestCsv: vi.fn(),
+      getGuestImportPreview: vi.fn(),
+      updateGuestImportMapping: vi.fn(),
+      commitGuestImport: vi.fn(),
+    };
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(
+      <CoupleWorkspace
+        identity={userFixture()}
+        api={api}
+        onSignOut={vi.fn()}
+      />,
+    );
+    await openGuests();
+    const fileInput = screen.getByLabelText("Select CSV");
+    fireEvent.change(fileInput, {
+      target: { files: [new File(["name\nNok"], "guests.csv")] },
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Overview" }));
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(screen.getByLabelText("Select CSV")).toBeVisible();
+    confirm.mockRestore();
+  });
+  it("keeps an unsaved envelope template when leaving Guests is cancelled", async () => {
+    const wedding = weddingFixture();
+    const api: CoupleWorkspaceApi = {
+      ...affiliationApi(),
+      listWeddings: vi.fn(async () => page([wedding])),
+      createWedding: vi.fn(),
+      listGuests: vi.fn(async () => page([])),
+      addGuest: vi.fn(),
+      createInvitation: vi.fn(),
+      listEnvelopeTemplates: vi.fn(async () => []),
+      createEnvelopeTemplate: vi.fn(),
+      updateEnvelopeTemplate: vi.fn(),
+      deleteEnvelopeTemplate: vi.fn(),
+      getEnvelopePrintData: vi.fn(),
+    };
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(
+      <CoupleWorkspace
+        identity={userFixture()}
+        api={api}
+        onSignOut={vi.fn()}
+      />,
+    );
+    await openGuests();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Print envelopes" }),
+    );
+    await userEvent.type(screen.getByLabelText("Template name"), " revised");
+    await userEvent.click(screen.getByRole("button", { name: "Overview" }));
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(screen.getByLabelText("Template name")).toHaveValue(
+      "DL envelopes revised",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Close envelope printing" }),
+    );
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(screen.getByLabelText("Template name")).toBeVisible();
+    await userEvent.selectOptions(
+      screen.getByLabelText("Guest view"),
+      "archived",
+    );
+    expect(confirm).toHaveBeenCalledTimes(3);
+    expect(screen.getByLabelText("Template name")).toBeVisible();
+    confirm.mockRestore();
+  });
   it("creates a wedding and guest, then reveals the one-time invitation URL", async () => {
     const wedding = weddingFixture();
     const guest = guestFixture();

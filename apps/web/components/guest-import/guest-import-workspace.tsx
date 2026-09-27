@@ -9,7 +9,7 @@ import type {
   GuestImportPreview,
   GuestImportPreviewRow,
 } from "@lovechapter/contracts";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { safeUiError } from "../../lib/ui-error";
 import { localizeStoredUiMessage, type UiCopy } from "../../lib/ui-copy";
@@ -48,12 +48,14 @@ export function GuestImportWorkspace({
   api,
   onImported,
   onAffiliationCreated,
+  onDraftChange,
 }: {
   weddingId: string;
   affiliations: GuestAffiliation[];
   api: GuestImportApi;
   onImported(): void;
   onAffiliationCreated?(affiliation: GuestAffiliation): void;
+  onDraftChange?(dirty: boolean): void;
 }) {
   const copy = useUiCopy();
   const [file, setFile] = useState<File | null>(null);
@@ -76,6 +78,11 @@ export function GuestImportWorkspace({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GuestImportCommitResult | null>(null);
   const [page, setPage] = useState(0);
+  const hasDraft = step !== "done" && (file !== null || step !== "select");
+
+  useEffect(() => {
+    onDraftChange?.(hasDraft);
+  }, [hasDraft, onDraftChange]);
 
   async function collect(first: GuestImportPreview) {
     const collected = [...first.items];

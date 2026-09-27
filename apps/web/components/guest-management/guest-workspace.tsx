@@ -108,6 +108,8 @@ type GuestWorkspaceProps = {
   onInvitationsChange?: Dispatch<
     SetStateAction<Record<string, InvitationCreated>>
   >;
+  onImportDraftChange?: (dirty: boolean) => void;
+  onEnvelopeDraftChange?: (dirty: boolean) => void;
 };
 
 export function GuestWorkspace(props: GuestWorkspaceProps) {
@@ -124,6 +126,8 @@ function WeddingGuestWorkspace({
   onAffiliationCreated,
   invitations: providedInvitations,
   onInvitationsChange,
+  onImportDraftChange,
+  onEnvelopeDraftChange,
 }: GuestWorkspaceProps) {
   const copy = useUiCopy();
   const [guests, setGuests] = useState(initialPage.items);
@@ -143,6 +147,7 @@ function WeddingGuestWorkspace({
   const [busy, setBusy] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [showEnvelopes, setShowEnvelopes] = useState(false);
+  const [envelopeDirty, setEnvelopeDirty] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const requestId = useRef(0);
   const mutationVersion = useRef(0);
@@ -527,6 +532,9 @@ function WeddingGuestWorkspace({
           affiliations={affiliations}
           api={api as GuestImportApi}
           {...(onAffiliationCreated ? { onAffiliationCreated } : {})}
+          {...(onImportDraftChange
+            ? { onDraftChange: onImportDraftChange }
+            : {})}
           onImported={() => {
             mutationVersion.current += 1;
             void loadPage(requestFilters, false);
@@ -545,7 +553,21 @@ function WeddingGuestWorkspace({
       <GuestFiltersForm
         filters={filters}
         affiliations={affiliations}
-        onChange={setFilters}
+        onChange={(next) => {
+          if (
+            next.view !== "active" &&
+            showEnvelopes &&
+            envelopeDirty &&
+            !window.confirm(copy.weddingSettings.discardConfirm)
+          )
+            return;
+          if (next.view !== "active" && showEnvelopes) {
+            setShowEnvelopes(false);
+            setEnvelopeDirty(false);
+            onEnvelopeDraftChange?.(false);
+          }
+          setFilters(next);
+        }}
       />
       {api.downloadGuestCsv ? (
         <div className="rounded-xl bg-[#fff9f3] p-3 text-sm text-[#806d70]">
@@ -570,7 +592,19 @@ function WeddingGuestWorkspace({
         <div className="space-y-3">
           <Button
             variant="secondary"
-            onClick={() => setShowEnvelopes((value) => !value)}
+            onClick={() => {
+              if (
+                showEnvelopes &&
+                envelopeDirty &&
+                !window.confirm(copy.weddingSettings.discardConfirm)
+              )
+                return;
+              if (showEnvelopes) {
+                setEnvelopeDirty(false);
+                onEnvelopeDraftChange?.(false);
+              }
+              setShowEnvelopes((value) => !value);
+            }}
           >
             {showEnvelopes
               ? copy.guest.closeEnvelopes
@@ -581,6 +615,10 @@ function WeddingGuestWorkspace({
               weddingId={weddingId}
               guests={guests}
               api={api as EnvelopeApi}
+              onDraftChange={(dirty) => {
+                setEnvelopeDirty(dirty);
+                onEnvelopeDraftChange?.(dirty);
+              }}
             />
           ) : null}
         </div>
