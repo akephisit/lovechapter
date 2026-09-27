@@ -134,6 +134,17 @@ const en = {
     privateLink:
       "No account or password is needed. Keep this private invitation link safe.",
   },
+  workspaceNavigation: {
+    label: "Workspace sections",
+    overview: "Overview",
+    planning: "Planning",
+    guests: "Guests",
+    budget: "Budget",
+    schedule: "Schedule",
+    seating: "Seating",
+    chooseWedding: "Choose wedding",
+    newWedding: "New wedding",
+  },
   workspace: {
     label: "Wedding workspace",
     signOut: "Sign out",
@@ -142,6 +153,7 @@ const en = {
     description:
       "Start with one wedding, welcome your guests, and keep every reply in one calm place.",
     opening: "Opening your workspace…",
+    retry: "Try again",
     weddings: "Your weddings",
     open: "Open",
     loading: "Loading…",
@@ -727,6 +739,17 @@ const th: UiCopy = {
     privateLink:
       "ไม่ต้องสมัครบัญชีหรือใช้รหัสผ่าน โปรดเก็บลิงก์คำเชิญนี้ไว้เป็นส่วนตัว",
   },
+  workspaceNavigation: {
+    label: "ส่วนต่าง ๆ ของงานแต่ง",
+    overview: "ภาพรวม",
+    planning: "แผนงาน",
+    guests: "แขก",
+    budget: "งบประมาณ",
+    schedule: "กำหนดการ",
+    seating: "ผังที่นั่ง",
+    chooseWedding: "เลือกงานแต่ง",
+    newWedding: "สร้างงานแต่งใหม่",
+  },
   workspace: {
     label: "พื้นที่งานแต่ง",
     signOut: "ออกจากระบบ",
@@ -734,6 +757,7 @@ const th: UiCopy = {
     title: "วางแผนวันสำคัญที่ทุกคนจะจดจำ",
     description: "เริ่มจากงานแต่งของคุณ เชิญแขก และติดตามทุกคำตอบในที่เดียว",
     opening: "กำลังเปิดพื้นที่ของคุณ…",
+    retry: "ลองอีกครั้ง",
     weddings: "งานแต่งของคุณ",
     open: "กำลังเปิด",
     loading: "กำลังโหลด…",

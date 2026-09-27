@@ -5,6 +5,12 @@
 :root {
   --background: #fbf6ef;
   --foreground: #3e2d31;
+  --rose-plum: #6c304d;
+  --rose-background: #fff7f9;
+  --rose-ink: #513542;
+  --rose-soft: #f8e8ed;
+  --rose-focus: #a84970;
+  --rose-border: #ecd5dc;
 }
 
 * {

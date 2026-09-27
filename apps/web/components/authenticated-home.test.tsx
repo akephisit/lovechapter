@@ -30,7 +30,7 @@ describe("AuthenticatedHome", () => {
     renderHome(sessionApi(userFixture()));
 
     expect(
-      await screen.findByRole("heading", { name: /plan the chapter/i }),
+      await screen.findByRole("heading", { name: /begin with the day/i }),
     ).toBeVisible();
     expect(screen.getByText("Couple one")).toBeVisible();
   });
@@ -62,7 +62,7 @@ describe("AuthenticatedHome", () => {
     await user.click(screen.getByRole("button", { name: /continue/i }));
 
     expect(
-      await screen.findByRole("heading", { name: /plan the chapter/i }),
+      await screen.findByRole("heading", { name: /begin with the day/i }),
     ).toBeVisible();
     expect(getSession).toHaveBeenCalledTimes(2);
   });
@@ -75,13 +75,13 @@ describe("AuthenticatedHome", () => {
     const signOut = vi.fn(async () => undefined);
     renderHome(sessionApi(userFixture(), { signOut }));
     const user = userEvent.setup();
-    await screen.findByRole("heading", { name: /plan the chapter/i });
+    await screen.findByRole("heading", { name: /begin with the day/i });
 
     await user.click(screen.getByRole("button", { name: /sign out/i }));
 
     expect(signOut).toHaveBeenCalledOnce();
     expect(
-      screen.queryByRole("heading", { name: /plan the chapter/i }),
+      screen.queryByRole("heading", { name: /begin with the day/i }),
     ).not.toBeInTheDocument();
   });
 
@@ -102,10 +102,7 @@ describe("AuthenticatedHome", () => {
       );
     renderHome(sessionApi(undefined, { getSession }));
 
-    expect(
-      await screen.findByRole("heading", { name: /plan the chapter/i }),
-    ).toBeVisible();
-    expect(screen.getByText("Couple one")).toBeVisible();
+    expect(await screen.findByText("Couple one")).toBeVisible();
     await waitFor(() => expect(fetchWorkspace).toHaveBeenCalledOnce());
 
     finishWorkspaceRequest(
@@ -121,9 +118,7 @@ describe("AuthenticatedHome", () => {
     );
 
     await waitFor(() => {
-      expect(
-        screen.queryByRole("heading", { name: /plan the chapter/i }),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Couple one")).not.toBeInTheDocument();
       expect(screen.queryByText("Couple one")).not.toBeInTheDocument();
     });
     expect(getSession).toHaveBeenCalledTimes(2);

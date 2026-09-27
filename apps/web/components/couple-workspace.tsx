@@ -46,6 +46,10 @@ import { useUiCopy, useUiLanguage } from "./ui-language-provider";
 import { localizeStoredUiMessage } from "../lib/ui-copy";
 import { StandardCodeCombobox } from "./ui/standard-code-combobox";
 import { LanguageSwitcher } from "./language-switcher";
+import {
+  WorkspaceNavigation,
+  type WorkspaceSection,
+} from "./workspace/workspace-navigation";
 
 export interface CoupleWorkspaceApi
   extends
@@ -91,6 +95,11 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
   const [weddings, setWeddings] = useState<WeddingSummary[]>([]);
   const [weddingCursor, setWeddingCursor] = useState<string | null>(null);
   const [selected, setSelected] = useState<WeddingSummary | null>(null);
+  const [activeSection, setActiveSection] =
+    useState<WorkspaceSection>("overview");
+  const [showCreate, setShowCreate] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [guestsLoaded, setGuestsLoaded] = useState(false);
   const [guests, setGuests] = useState<GuestSummary[]>([]);
   const [affiliations, setAffiliations] = useState<GuestAffiliation[]>([]);
   const [guestCursor, setGuestCursor] = useState<string | null>(null);
@@ -98,6 +107,8 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
     Record<string, InvitationCreated>
   >({});
   const [loading, setLoading] = useState(true);
+  const [weddingListError, setWeddingListError] = useState(false);
+  const [weddingListRetry, setWeddingListRetry] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [copiedGuestId, setCopiedGuestId] = useState<string | null>(null);
@@ -107,35 +118,23 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
 
   useEffect(() => {
     let current = true;
+    setLoading(true);
+    setWeddingListError(false);
     void api
       .listWeddings()
       .then(async (weddingPage) => {
         if (!current) return;
+        setWeddingListError(false);
+        setMessage(null);
         setWeddings(weddingPage.items);
         setWeddingCursor(weddingPage.nextCursor);
         const first = weddingPage.items[0];
         if (!first) return;
         setSelected(first);
-        const generation = ++weddingGeneration.current;
-        const requestId = ++guestRequestId.current;
-        const mutationVersion = workspaceMutationVersion.current;
-        const [guestPage, loadedAffiliations] = await Promise.all([
-          api.listGuests(first.id),
-          api.listGuestAffiliations(first.id),
-        ]);
-        if (
-          current &&
-          weddingGeneration.current === generation &&
-          guestRequestId.current === requestId &&
-          workspaceMutationVersion.current === mutationVersion
-        ) {
-          setGuests(guestPage.items);
-          setGuestCursor(guestPage.nextCursor);
-          setAffiliations(loadedAffiliations);
-        }
       })
       .catch(() => {
         if (current) {
+          setWeddingListError(true);
           setMessage(copyRef.current.workspace.disconnected);
         }
       })
@@ -147,7 +146,55 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
       weddingGeneration.current += 1;
       guestRequestId.current += 1;
     };
-  }, [api]);
+  }, [api, weddingListRetry]);
+
+  useEffect(() => {
+    if (!selected || activeSection !== "guests") return;
+    let current = true;
+    const weddingId = selected.id;
+    const generation = weddingGeneration.current;
+    const requestId = ++guestRequestId.current;
+    const mutationVersion = workspaceMutationVersion.current;
+    setGuestsLoaded(false);
+    setGuests([]);
+    setAffiliations([]);
+    void Promise.all([
+      api.listGuests(weddingId),
+      api.listGuestAffiliations(weddingId),
+    ])
+      .then(([page, loadedAffiliations]) => {
+        if (
+          current &&
+          weddingGeneration.current === generation &&
+          guestRequestId.current === requestId &&
+          workspaceMutationVersion.current === mutationVersion
+        ) {
+          setGuests(page.items);
+          setGuestCursor(page.nextCursor);
+          setAffiliations(loadedAffiliations);
+        }
+      })
+      .catch((error: unknown) => {
+        if (current && weddingGeneration.current === generation) {
+          setMessage(
+            safeUiError(
+              error,
+              copyRef.current,
+              copyRef.current.workspace.guestListError,
+            ),
+          );
+        }
+      })
+      .finally(() => {
+        if (current && weddingGeneration.current === generation) {
+          setGuestsLoaded(true);
+        }
+      });
+    return () => {
+      current = false;
+      guestRequestId.current += 1;
+    };
+  }, [api, selected?.id, activeSection]);
 
   async function createWedding(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -167,6 +214,10 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
       weddingGeneration.current += 1;
       guestRequestId.current += 1;
       setSelected(created);
+      setActiveSection("overview");
+      setShowCreate(false);
+      setPickerOpen(false);
+      setGuestsLoaded(false);
       setGuests([]);
       setAffiliations([]);
       setGuestCursor(null);
@@ -179,46 +230,20 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
     }
   }
 
-  async function chooseWedding(wedding: WeddingSummary) {
-    const generation = ++weddingGeneration.current;
-    const requestId = ++guestRequestId.current;
-    const mutationVersion = workspaceMutationVersion.current;
+  function chooseWedding(wedding: WeddingSummary) {
+    weddingGeneration.current += 1;
+    guestRequestId.current += 1;
     setSelected(wedding);
+    setActiveSection("overview");
+    setShowCreate(false);
+    setPickerOpen(false);
+    setGuestsLoaded(false);
     setGuests([]);
     setAffiliations([]);
     setGuestCursor(null);
     setInvitations({});
-    setBusy("guests");
+    setBusy(null);
     setMessage(null);
-    try {
-      const [page, loadedAffiliations] = await Promise.all([
-        api.listGuests(wedding.id),
-        api.listGuestAffiliations(wedding.id),
-      ]);
-      if (
-        weddingGeneration.current === generation &&
-        guestRequestId.current === requestId &&
-        workspaceMutationVersion.current === mutationVersion
-      ) {
-        setGuests(page.items);
-        setGuestCursor(page.nextCursor);
-        setAffiliations(loadedAffiliations);
-      }
-    } catch (error) {
-      if (
-        weddingGeneration.current === generation &&
-        guestRequestId.current === requestId
-      ) {
-        setMessage(safeUiError(error, copy, copy.workspace.guestListError));
-      }
-    } finally {
-      if (
-        weddingGeneration.current === generation &&
-        guestRequestId.current === requestId
-      ) {
-        setBusy(null);
-      }
-    }
   }
 
   async function addGuest(event: FormEvent<HTMLFormElement>) {
@@ -551,12 +576,11 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
   }
 
   return (
-    <main className="min-h-screen overflow-hidden px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
-      <div className="pointer-events-none fixed inset-x-0 top-0 -z-10 h-[34rem] bg-[radial-gradient(circle_at_15%_10%,rgba(205,150,143,0.25),transparent_35%),radial-gradient(circle_at_85%_5%,rgba(177,138,163,0.2),transparent_32%)]" />
+    <main className="min-h-screen min-w-0 bg-[var(--rose-background)] px-4 py-5 sm:px-6 lg:px-10">
       <div className="mx-auto max-w-7xl">
-        <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
+        <header className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-[var(--rose-border)] pb-5">
           <div className="flex items-center gap-3">
-            <span className="grid size-11 place-items-center rounded-full bg-[#71384b] text-white shadow-lg">
+            <span className="grid size-10 place-items-center rounded-2xl bg-[var(--rose-plum)] text-white shadow-sm">
               <Heart
                 aria-hidden="true"
                 className="size-5"
@@ -564,17 +588,17 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
               />
             </span>
             <div>
-              <p className="font-serif text-xl font-semibold tracking-tight text-[#432f35]">
+              <p className="font-serif text-xl font-semibold text-[var(--rose-ink)]">
                 LoveChapter
               </p>
-              <p className="text-xs tracking-[0.18em] text-[#8c7478] uppercase">
+              <p className="text-xs tracking-[0.16em] text-[var(--rose-plum)] uppercase">
                 {copy.workspace.label}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
             <LanguageSwitcher />
-            <span className="text-sm font-semibold text-[#574248]">
+            <span className="max-w-40 truncate text-sm font-medium text-[var(--rose-ink)]">
               {identity.displayName}
             </span>
             <Button variant="ghost" onClick={onSignOut}>
@@ -583,58 +607,101 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
           </div>
         </header>
 
-        <section className="mb-8 max-w-3xl">
-          <p className="mb-3 text-sm font-bold tracking-[0.22em] text-[#925c68] uppercase">
-            {copy.workspace.eyebrow}
-          </p>
-          <h1 className="font-serif text-4xl leading-[1.05] font-semibold text-[#3e2d31] sm:text-5xl lg:text-6xl">
-            {copy.workspace.title}
-          </h1>
-          <p className="mt-4 max-w-2xl text-base leading-7 text-[#725f62] sm:text-lg">
-            {copy.workspace.description}
-          </p>
-        </section>
-
         {message ? (
           <div
             role="alert"
-            className="mb-6 rounded-2xl border border-[#d6aaa4] bg-[#fff3ed] px-4 py-3 text-sm text-[#743f45]"
+            className="mb-5 rounded-2xl border border-[var(--rose-border)] bg-white px-4 py-3 text-sm text-[var(--rose-ink)]"
           >
             {localizeStoredUiMessage(message, copy)}
           </div>
         ) : null}
 
         {loading ? (
-          <Card className="p-8 text-center text-[#725f62]" aria-live="polite">
+          <Card
+            className="p-8 text-center text-[var(--rose-ink)]"
+            aria-live="polite"
+          >
             {copy.workspace.opening}
           </Card>
+        ) : weddingListError ? (
+          <Card className="mx-auto max-w-xl space-y-4 p-7 text-center">
+            <p className="text-sm text-[var(--rose-ink)]">
+              {copy.workspace.disconnected}
+            </p>
+            <Button onClick={() => setWeddingListRetry((value) => value + 1)}>
+              {copy.workspace.retry}
+            </Button>
+          </Card>
+        ) : !selected ? (
+          <section className="mx-auto max-w-xl space-y-5">
+            <div className="py-5 text-center">
+              <CalendarDays
+                aria-hidden="true"
+                className="mx-auto mb-4 size-8 text-[var(--rose-plum)]"
+              />
+              <h1 className="font-serif text-3xl font-semibold text-[var(--rose-ink)]">
+                {copy.workspace.beginTitle}
+              </h1>
+              <p className="mt-2 text-sm leading-6 text-[var(--rose-ink)]">
+                {copy.workspace.beginDescription}
+              </p>
+            </div>
+            <WeddingForm busy={busy === "wedding"} onSubmit={createWedding} />
+          </section>
         ) : (
-          <div className="grid items-start gap-6 lg:grid-cols-[minmax(18rem,0.72fr)_minmax(0,1.45fr)]">
-            <div className="space-y-6">
-              <WeddingForm busy={busy === "wedding"} onSubmit={createWedding} />
-              {weddings.length > 0 ? (
-                <Card className="p-5">
-                  <h2 className="mb-3 text-sm font-bold tracking-[0.16em] text-[#806a6d] uppercase">
-                    {copy.workspace.weddings}
-                  </h2>
-                  <div className="space-y-2">
+          <>
+            <section className="mb-6 rounded-[1.75rem] border border-[var(--rose-border)] bg-white/85 p-5 shadow-sm sm:p-6">
+              <p className="text-xs font-bold tracking-[0.17em] text-[var(--rose-plum)] uppercase">
+                {copy.workspace.current}
+              </p>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h1 className="font-serif text-3xl font-semibold text-[var(--rose-ink)] sm:text-4xl">
+                    {selected.name}
+                  </h1>
+                  <p className="mt-1 text-sm text-[var(--rose-ink)]">
+                    {selected.weddingDate ?? copy.workspace.datePending} ·{" "}
+                    {selected.timeZone}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {weddings.length > 1 || weddingCursor ? (
+                    <Button
+                      variant="secondary"
+                      aria-expanded={pickerOpen}
+                      onClick={() => setPickerOpen((open) => !open)}
+                    >
+                      {copy.workspaceNavigation.chooseWedding}
+                    </Button>
+                  ) : null}
+                  <Button
+                    variant="ghost"
+                    onClick={() => setShowCreate((shown) => !shown)}
+                  >
+                    {copy.workspaceNavigation.newWedding}
+                  </Button>
+                </div>
+              </div>
+              {pickerOpen ? (
+                <div className="mt-4 rounded-2xl border border-[var(--rose-border)] bg-[var(--rose-soft)] p-2">
+                  <div className="grid gap-1 sm:grid-cols-2">
                     {weddings.map((wedding) => (
                       <button
                         key={wedding.id}
                         type="button"
-                        onClick={() => void chooseWedding(wedding)}
-                        className="flex min-h-11 w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-semibold text-[#523b41] transition hover:bg-[#f6ece6] focus-visible:ring-2 focus-visible:ring-[#7d4152] focus-visible:outline-none"
+                        onClick={() => chooseWedding(wedding)}
+                        className="min-h-11 rounded-xl px-3 py-2 text-left text-sm font-semibold text-[var(--rose-ink)] hover:bg-white focus-visible:ring-2 focus-visible:ring-[var(--rose-focus)] focus-visible:outline-none"
                       >
                         {wedding.name}
-                        {selected?.id === wedding.id ? (
-                          <Badge>{copy.workspace.open}</Badge>
-                        ) : null}
+                        {selected.id === wedding.id
+                          ? ` · ${copy.workspace.open}`
+                          : ""}
                       </button>
                     ))}
                   </div>
                   {weddingCursor ? (
                     <Button
-                      className="mt-3 w-full"
+                      className="mt-2"
                       variant="ghost"
                       disabled={busy === "more-weddings"}
                       onClick={() => void loadMoreWeddings()}
@@ -644,63 +711,86 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
                         : copy.workspace.loadMoreWeddings}
                     </Button>
                   ) : null}
-                </Card>
+                </div>
               ) : null}
-            </div>
+            </section>
 
-            {selected ? (
-              <div className="space-y-6">
-                {hasPlanningApi(api) ? (
+            {showCreate ? (
+              <div className="mb-6 max-w-xl">
+                <WeddingForm
+                  busy={busy === "wedding"}
+                  onSubmit={createWedding}
+                />
+              </div>
+            ) : null}
+
+            <div className="grid min-w-0 gap-5 lg:grid-cols-[12rem_minmax(0,1fr)] lg:gap-7">
+              <WorkspaceNavigation
+                active={activeSection}
+                onChange={setActiveSection}
+              />
+              <section
+                aria-label={copy.workspaceNavigation[activeSection]}
+                className="min-w-0 space-y-5"
+              >
+                {activeSection === "overview" ? (
+                  <Card className="p-6 text-[var(--rose-ink)]">
+                    {copy.workspaceNavigation.overview}
+                  </Card>
+                ) : null}
+                {activeSection === "planning" && hasPlanningApi(api) ? (
                   <PlanningWorkspace
                     key={selected.id}
                     wedding={selected}
                     api={api}
                   />
                 ) : null}
-                {hasOperationsApi(api) ? (
+                {activeSection === "guests" ? (
+                  guestsLoaded ? (
+                    <WeddingWorkspace
+                      api={api}
+                      wedding={selected}
+                      guests={guests}
+                      affiliations={affiliations}
+                      invitations={invitations}
+                      busy={busy}
+                      nextCursor={guestCursor}
+                      copiedGuestId={copiedGuestId}
+                      onAddGuest={addGuest}
+                      onCreateAffiliation={createGuestAffiliation}
+                      onUpdateAffiliation={updateGuestAffiliation}
+                      onMoveAffiliation={moveGuestAffiliation}
+                      onDeleteAffiliation={deleteGuestAffiliation}
+                      onSetGuestAffiliation={setGuestAffiliation}
+                      onCreateInvitation={createInvitation}
+                      onCopyInvitation={copyInvitation}
+                      onLoadMore={loadMoreGuests}
+                      onRefresh={refreshGuests}
+                      onImportedAffiliation={(affiliation) =>
+                        setAffiliations((current) => [...current, affiliation])
+                      }
+                    />
+                  ) : (
+                    <Card
+                      aria-live="polite"
+                      className="p-6 text-[var(--rose-ink)]"
+                    >
+                      {copy.workspace.loading}
+                    </Card>
+                  )
+                ) : null}
+                {(["budget", "schedule", "seating"] as const).includes(
+                  activeSection as "budget" | "schedule" | "seating",
+                ) && hasOperationsApi(api) ? (
                   <OperationsWorkspace
-                    key={`operations:${selected.id}`}
+                    key={`operations:${selected.id}:${activeSection}`}
                     wedding={selected}
                     api={api}
                   />
                 ) : null}
-                <WeddingWorkspace
-                  api={api}
-                  wedding={selected}
-                  guests={guests}
-                  affiliations={affiliations}
-                  invitations={invitations}
-                  busy={busy}
-                  nextCursor={guestCursor}
-                  copiedGuestId={copiedGuestId}
-                  onAddGuest={addGuest}
-                  onCreateAffiliation={createGuestAffiliation}
-                  onUpdateAffiliation={updateGuestAffiliation}
-                  onMoveAffiliation={moveGuestAffiliation}
-                  onDeleteAffiliation={deleteGuestAffiliation}
-                  onSetGuestAffiliation={setGuestAffiliation}
-                  onCreateInvitation={createInvitation}
-                  onCopyInvitation={copyInvitation}
-                  onLoadMore={loadMoreGuests}
-                  onRefresh={refreshGuests}
-                  onImportedAffiliation={(affiliation) =>
-                    setAffiliations((current) => [...current, affiliation])
-                  }
-                />
-              </div>
-            ) : (
-              <Card className="relative overflow-hidden p-8 sm:p-10">
-                <div className="absolute top-0 right-0 size-44 translate-x-16 -translate-y-16 rounded-full bg-[#e7d2cb]/60" />
-                <CalendarDays className="mb-5 size-8 text-[#8c5261]" />
-                <h2 className="font-serif text-3xl font-semibold text-[#432f35]">
-                  {copy.workspace.beginTitle}
-                </h2>
-                <p className="mt-3 max-w-xl leading-7 text-[#756266]">
-                  {copy.workspace.beginDescription}
-                </p>
-              </Card>
-            )}
-          </div>
+              </section>
+            </div>
+          </>
         )}
       </div>
     </main>

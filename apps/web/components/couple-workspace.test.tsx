@@ -20,6 +20,110 @@ import { UiLanguageProvider } from "./ui-language-provider";
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 describe("CoupleWorkspace", () => {
+  it("opens one wedding in Overview without preloading the guest editor", async () => {
+    const wedding = weddingFixture();
+    const listGuests = vi.fn(async () => page([guestFixture()]));
+    const api: CoupleWorkspaceApi = {
+      ...affiliationApi(),
+      listWeddings: vi.fn(async () => page([wedding])),
+      createWedding: vi.fn(),
+      listGuests,
+      addGuest: vi.fn(),
+      createInvitation: vi.fn(),
+    };
+    render(
+      <CoupleWorkspace
+        identity={userFixture()}
+        api={api}
+        onSignOut={vi.fn()}
+      />,
+    );
+    expect(
+      await screen.findByRole("heading", { name: wedding.name }),
+    ).toBeVisible();
+    const sections = screen.getByRole("navigation", {
+      name: /workspace sections/i,
+    });
+    expect(sections).toHaveTextContent("Overview");
+    expect(sections).toHaveTextContent("Guests");
+    expect(screen.queryByLabelText(/guest name/i)).not.toBeInTheDocument();
+    expect(listGuests).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText(/wedding name/i)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Guests" }));
+    expect(await screen.findByText("Nok")).toBeVisible();
+    expect(listGuests).toHaveBeenCalledWith(wedding.id);
+  });
+
+  it("offers a compact wedding picker and bounded load-more", async () => {
+    const first = weddingFixture();
+    const second = { ...first, id: crypto.randomUUID(), name: "Dao & Lin" };
+    const third = { ...first, id: crypto.randomUUID(), name: "May & Noon" };
+    const listWeddings = vi.fn(async (cursor?: string) =>
+      cursor ? page([third]) : page([first, second], "next-weddings"),
+    );
+    const api: CoupleWorkspaceApi = {
+      ...affiliationApi(),
+      listWeddings,
+      createWedding: vi.fn(),
+      listGuests: vi.fn(async () => page([])),
+      addGuest: vi.fn(),
+      createInvitation: vi.fn(),
+    };
+    render(
+      <CoupleWorkspace
+        identity={userFixture()}
+        api={api}
+        onSignOut={vi.fn()}
+      />,
+    );
+    expect(
+      await screen.findByRole("heading", { name: first.name }),
+    ).toBeVisible();
+    await userEvent.click(
+      screen.getByRole("button", { name: /choose wedding/i }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /load more weddings/i }),
+    );
+    expect(listWeddings).toHaveBeenLastCalledWith("next-weddings");
+    await userEvent.click(
+      await screen.findByRole("button", { name: third.name }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: third.name }),
+    ).toBeVisible();
+    expect(screen.queryByLabelText(/wedding name/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps a failed wedding list distinct from an empty workspace and retries", async () => {
+    const listWeddings = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(page([]));
+    const api: CoupleWorkspaceApi = {
+      ...affiliationApi(),
+      listWeddings,
+      createWedding: vi.fn(),
+      listGuests: vi.fn(async () => page([])),
+      addGuest: vi.fn(),
+      createInvitation: vi.fn(),
+    };
+    render(
+      <CoupleWorkspace
+        identity={userFixture()}
+        api={api}
+        onSignOut={vi.fn()}
+      />,
+    );
+    expect(await screen.findByRole("alert")).toBeVisible();
+    expect(screen.queryByLabelText(/wedding name/i)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /try again/i }));
+    expect(
+      await screen.findByRole("heading", { name: /begin with the day/i }),
+    ).toBeVisible();
+    expect(listWeddings).toHaveBeenCalledTimes(2);
+  });
+
   it("uses Thai for an empty wedding workspace without changing submitted locale or time zone", async () => {
     const created = {
       ...weddingFixture(),
@@ -96,6 +200,9 @@ describe("CoupleWorkspace", () => {
       </UiLanguageProvider>,
     );
     await screen.findByRole("heading", { name: "Mali & Arun" });
+    await userEvent.click(
+      screen.getByRole("button", { name: /choose wedding/i }),
+    );
     await userEvent.click(screen.getByRole("button", { name: "Dao & Lin" }));
     expect(
       await screen.findByRole("heading", { name: "Dao & Lin" }),
@@ -138,6 +245,9 @@ describe("CoupleWorkspace", () => {
         onSignOut={vi.fn()}
       />,
     );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Planning" }),
+    );
     expect(
       await screen.findByRole("heading", { name: /planning checklist/i }),
     ).toBeVisible();
@@ -174,6 +284,7 @@ describe("CoupleWorkspace", () => {
       />,
     );
 
+    await openGuests();
     expect(await screen.findByText("Nok")).toBeVisible();
     expect(screen.getByLabelText(/search guests/i)).toBeVisible();
     await user.click(
@@ -208,7 +319,7 @@ describe("CoupleWorkspace", () => {
     );
 
     expect(
-      await screen.findByRole("heading", { name: /plan the chapter/i }),
+      await screen.findByRole("heading", { name: /begin with the day/i }),
     ).toBeVisible();
     expect(screen.getByText("Couple one")).toBeVisible();
     expect(screen.queryByText(/development identity/i)).not.toBeInTheDocument();
@@ -220,6 +331,7 @@ describe("CoupleWorkspace", () => {
     expect(
       await screen.findByRole("heading", { name: "Mali & Arun" }),
     ).toBeVisible();
+    await openGuests();
     await user.type(screen.getByLabelText(/guest name/i), "Nok");
     await user.clear(screen.getByLabelText(/party allowance/i));
     await user.type(screen.getByLabelText(/party allowance/i), "2");
@@ -284,6 +396,7 @@ describe("CoupleWorkspace", () => {
       />,
     );
 
+    await openGuests();
     expect(await screen.findByText("Nok")).toBeVisible();
     await user.click(screen.getByRole("button", { name: /load more guests/i }));
     expect(await screen.findByText("Dao")).toBeVisible();
@@ -324,6 +437,7 @@ describe("CoupleWorkspace", () => {
       />,
     );
 
+    await openGuests();
     expect(await screen.findByText("Nok")).toBeVisible();
     await user.click(
       screen.getByRole("button", { name: /create invitation/i }),
@@ -332,6 +446,7 @@ describe("CoupleWorkspace", () => {
       await screen.findByRole("link", { name: /open nok's invitation/i }),
     ).toBeVisible();
 
+    await user.click(screen.getByRole("button", { name: /choose wedding/i }));
     await user.click(
       screen.getByRole("button", { name: new RegExp(secondWedding.name, "i") }),
     );
@@ -387,13 +502,18 @@ describe("CoupleWorkspace", () => {
       />,
     );
 
+    await openGuests();
     expect(await screen.findByText("Nok")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: /choose wedding/i }));
     await user.click(
       screen.getByRole("button", { name: new RegExp(secondWedding.name, "i") }),
     );
+    await openGuests();
+    await user.click(screen.getByRole("button", { name: /choose wedding/i }));
     await user.click(
       screen.getByRole("button", { name: new RegExp(firstWedding.name, "i") }),
     );
+    await openGuests();
     firstReload.resolve(page([currentGuest]));
     expect(await screen.findByText(currentGuest.name)).toBeVisible();
 
@@ -446,6 +566,7 @@ describe("CoupleWorkspace", () => {
       />,
     );
 
+    await openGuests();
     expect(
       await screen.findByRole("heading", { name: /guest affiliations/i }),
     ).toBeVisible();
@@ -501,6 +622,7 @@ describe("CoupleWorkspace", () => {
       />,
     );
 
+    await openGuests();
     expect(await screen.findByText("Nok")).toBeVisible();
     expect(screen.getAllByText("Family")).not.toHaveLength(0);
     await user.click(screen.getByRole("button", { name: /delete family/i }));
@@ -543,6 +665,7 @@ describe("CoupleWorkspace", () => {
       />,
     );
 
+    await openGuests();
     expect(await screen.findByText("Nok")).toBeVisible();
     await user.selectOptions(
       screen.getByLabelText("Nok affiliation"),
@@ -584,9 +707,11 @@ describe("CoupleWorkspace", () => {
       />,
     );
 
+    await openGuests();
     expect(await screen.findByText(/no affiliations yet/i)).toBeVisible();
     await user.type(screen.getByLabelText(/new affiliation name/i), "Friends");
     await user.click(screen.getByRole("button", { name: /add affiliation/i }));
+    await user.click(screen.getByRole("button", { name: /choose wedding/i }));
     await user.click(
       screen.getByRole("button", { name: new RegExp(secondWedding.name, "i") }),
     );
@@ -635,6 +760,7 @@ describe("CoupleWorkspace", () => {
       />,
     );
 
+    await openGuests();
     expect(await screen.findByText("Nok")).toBeVisible();
     await user.selectOptions(
       screen.getByLabelText("Nok affiliation"),
@@ -665,6 +791,10 @@ function userFixture(): AuthenticatedUser {
     email: "one@example.test",
     onboardingComplete: true,
   };
+}
+
+async function openGuests(): Promise<void> {
+  await userEvent.click(await screen.findByRole("button", { name: "Guests" }));
 }
 
 function weddingFixture(): WeddingSummary {
