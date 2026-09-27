@@ -349,11 +349,13 @@ The first Worker installation uses owner-directed, fast-forward pushes to
 protected `main` from an isolated branch/worktree. It does not require a PR,
 independent reviewer, or hosted CI on the working branch. One hosted release
 workflow validates the pushed `main` SHA with CI and disposable PostgreSQL
-tests before any staging or production cutover. Protect `main` from force-push
+tests before any production cutover. Protect `main` from force-push
 and deletion without pre-push status checks; keep deployment secrets main-only.
 If CI fails, the commit remains on `main` but nothing deploys, and the fix is
-a later forward commit. Automatic production promotion still requires exact-SHA
-staging acceptance and a verified production bootstrap/recovery path.
+a later forward commit. Automatic production release does not depend on staging;
+it requires one verified first-publication bootstrap. Only breaking migrations
+create a new Neon recovery point after closure and drain, before SQL. A returning
+browser tab reloads when the open production publication SHA changes.
 
 Do not default to:
 

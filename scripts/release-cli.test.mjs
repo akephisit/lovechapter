@@ -12,8 +12,8 @@ function environment(overrides = {}) {
     GITHUB_REF_PROTECTED: "true",
     GITHUB_REPOSITORY: "akephisit/lovechapter",
     GITHUB_SHA: sha,
-    RELEASE_ENVIRONMENT: "staging",
-    STAGING_RELEASE_ENABLED: "true",
+    RELEASE_ENVIRONMENT: "production",
+    PRODUCTION_RELEASE_ENABLED: "true",
     ...overrides,
   };
 }
@@ -21,13 +21,13 @@ function environment(overrides = {}) {
 describe("release CLI admission", () => {
   it("rejects direct invocation, wrong event, ref, SHA, environment and disabled jobs before loading driver", async () => {
     for (const [args, env] of [
-      [["staging"], environment({ GITHUB_ACTIONS: "false" })],
-      [["staging"], environment({ GITHUB_EVENT_NAME: "pull_request" })],
-      [["staging"], environment({ GITHUB_REF: "refs/heads/feature" })],
-      [["staging"], environment({ GITHUB_REF_PROTECTED: "false" })],
-      [["staging"], environment({ GITHUB_SHA: "short" })],
-      [["production"], environment()],
-      [["staging"], environment({ STAGING_RELEASE_ENABLED: "false" })],
+      [["production"], environment({ GITHUB_ACTIONS: "false" })],
+      [["production"], environment({ GITHUB_EVENT_NAME: "pull_request" })],
+      [["production"], environment({ GITHUB_REF: "refs/heads/feature" })],
+      [["production"], environment({ GITHUB_REF_PROTECTED: "false" })],
+      [["production"], environment({ GITHUB_SHA: "short" })],
+      [["production"], environment({ PRODUCTION_RELEASE_ENABLED: "false" })],
+      [["staging"], environment({ RELEASE_ENVIRONMENT: "staging" })],
     ]) {
       const factory = vi.fn();
       await expect(
@@ -37,35 +37,32 @@ describe("release CLI admission", () => {
     }
   });
 
-  it("requires exact-SHA staging evidence for production and keeps default off", async () => {
-    const factory = vi.fn();
+  it("accepts an exact protected main SHA without staging evidence", async () => {
+    const factory = vi.fn(async () => ({ result: "accepted" }));
     await expect(
-      runReleaseCli(
-        ["production"],
-        environment({
-          RELEASE_ENVIRONMENT: "production",
-          PRODUCTION_RELEASE_ENABLED: "true",
-          RELEASE_STAGING_SHA: "b".repeat(40),
-        }),
-        { driverFactory: factory },
-      ),
-    ).rejects.toThrow(/staging/iu);
-    expect(factory).not.toHaveBeenCalled();
-  });
-
-  it("passes the selected environment and exact SHA to the injected release driver", async () => {
-    const driverFactory = vi.fn(async () => ({ result: "accepted" }));
-    const result = await runReleaseCli(["staging"], environment(), {
-      driverFactory,
-    });
-    expect(result).toEqual({ result: "accepted" });
-    expect(driverFactory).toHaveBeenCalledWith(
-      { environment: "staging", sha },
+      runReleaseCli(["production"], environment(), { driverFactory: factory }),
+    ).resolves.toEqual({ result: "accepted" });
+    expect(factory).toHaveBeenCalledWith(
+      { environment: "production", sha },
       expect.any(Object),
     );
   });
 
-  it("keeps the default staging path closed without complete environment setup", async () => {
-    await expect(runReleaseCli(["staging"], environment())).rejects.toThrow();
+  it("passes the selected environment and exact SHA to the injected release driver", async () => {
+    const driverFactory = vi.fn(async () => ({ result: "accepted" }));
+    const result = await runReleaseCli(["production"], environment(), {
+      driverFactory,
+    });
+    expect(result).toEqual({ result: "accepted" });
+    expect(driverFactory).toHaveBeenCalledWith(
+      { environment: "production", sha },
+      expect.any(Object),
+    );
+  });
+
+  it("keeps the default production path closed without complete environment setup", async () => {
+    await expect(
+      runReleaseCli(["production"], environment()),
+    ).rejects.toThrow();
   });
 });

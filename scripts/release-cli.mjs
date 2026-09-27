@@ -16,7 +16,7 @@ export async function runReleaseCli(
   const sha = env.GITHUB_SHA;
   if (
     args.length !== 1 ||
-    !["staging", "production"].includes(environment) ||
+    environment !== "production" ||
     env.GITHUB_ACTIONS !== "true" ||
     env.GITHUB_EVENT_NAME !== "push" ||
     env.GITHUB_REF !== "refs/heads/main" ||
@@ -29,16 +29,8 @@ export async function runReleaseCli(
       "Release invocation is not an exact-SHA protected main push",
     );
   }
-  if (environment === "staging" && env.STAGING_RELEASE_ENABLED !== "true") {
-    throw new Error("Automatic staging release is disabled");
-  }
-  if (environment === "production") {
-    if (env.PRODUCTION_RELEASE_ENABLED !== "true") {
-      throw new Error("Automatic production release is disabled");
-    }
-    if (env.RELEASE_STAGING_SHA !== sha) {
-      throw new Error("Exact-SHA staging acceptance is absent");
-    }
+  if (env.PRODUCTION_RELEASE_ENABLED !== "true") {
+    throw new Error("Automatic production release is disabled");
   }
   return driverFactory({ environment, sha }, env);
 }

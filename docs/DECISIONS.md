@@ -472,3 +472,28 @@ are proven. A migration that intentionally discards customer data remains
 outside automatic promotion and needs explicit owner approval plus a
 recovery plan. Revisit direct-push authority before granting another person
 write access.
+
+## ADR-029 — Direct production Worker release without staging promotion
+
+**Status:** Accepted (2026-09-27); supersedes the staging-promotion requirements in ADR-026 through ADR-028 for the first Worker installation
+
+The single hosted release workflow runs CI and disposable PostgreSQL tests for
+the protected, exact `main` SHA, then releases directly to production. Staging
+acceptance, staging jobs, and staging credentials are not release dependencies.
+Documentation-only changes stop after CI. Every application deployment builds
+the affected Worker artifacts first, closes the whole site, drains admitted
+work, applies reviewed migrations before deployment, privately smokes the
+selected Worker pair, reopens, and checks public behavior. Web-only and API-only
+changes retain the untouched Worker's exact published version; shared,
+migration, or uncertain changes deploy both. A failure after closure leaves
+maintenance active, and a failure after reopening recloses it.
+
+Only a breaking migration creates a new Neon recovery point, after drain and
+before SQL. This does not waive preservation of existing user data, a reviewed
+transformation, or a recovery procedure. The first publication is a separate
+closed-gate bootstrap because there is not yet a production Worker/version
+baseline. Keep `PRODUCTION_RELEASE_ENABLED` off until that installation and its
+private/public checks pass. Existing staging resources are not deleted by this
+release-policy decision. A returning browser tab checks the published SHA and
+reloads when a newer open release is available. Real-inbox receipt is excluded
+from the automatic gate for now, but must not be reported as tested.

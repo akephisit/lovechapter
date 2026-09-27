@@ -182,22 +182,24 @@ the other component. Shared code, migrations, or uncertain impact select both
 Workers; documentation-only changes neither deploy nor close the gate. Apply
 only reviewed migrations while drained. Privately verify the closed-gate
 pair, reopen atomically only with exact-SHA/version evidence, then run public
-and staging acceptance. A failure after reopen must reclose the gate; never
-automatically roll back a migrated schema. Production automation stays off
-until protected `main`, same-SHA staging acceptance, and a rehearsed
-production bootstrap/recovery path are proven. The temporary real-inbox email
-waiver must be recorded as `waived`, never `passed`.
+checks. A failure after reopen must reclose the gate; never automatically roll
+back a migrated schema. Production automation stays off until protected `main`,
+the first production Worker/Hyperdrive/gate installation, and the recovery path
+are verified. Create a new Neon recovery point only for a breaking migration,
+after drain and before SQL. Real-inbox receipt is temporarily excluded from
+the production gate; never report it as passed when it was not checked.
 
 For this first Worker installation, the owner may work in an isolated branch
 or worktree, commit, and push the candidate directly to protected `main` by a
 verified fast-forward update. No PR, independent reviewer, or hosted branch CI
 is required. Do not force-push or delete `main`; do not require pre-push status
 checks that would block this flow. The single push-to-`main` release workflow
-runs exact-SHA CI and disposable PostgreSQL checks before staging or production
+runs exact-SHA CI and disposable PostgreSQL checks before production
 can enter maintenance. A failed CI leaves its commit on `main` but must not
-deploy; fix with a forward commit. Keep environment secrets restricted to
-protected `main` and both release-enabled flags off until their live gates are
-proven. A migration that intentionally discards customer data still requires
+deploy; fix with a forward commit. Keep production secrets restricted to
+protected `main` and `PRODUCTION_RELEASE_ENABLED` off until first publication is
+verified. Staging is not a release dependency. A migration that intentionally
+discards customer data still requires
 separate explicit owner approval and a recovery plan.
 
 Authentication:

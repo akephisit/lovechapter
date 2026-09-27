@@ -39,24 +39,23 @@ describe("automatic Worker release workflow policy", () => {
     expect(source).toMatch(/group:\s*lovechapter-worker-release/u);
     expect(source).toMatch(/cancel-in-progress:\s*false/u);
     expect(source).toMatch(/queue:\s*max/u);
-    expect(source.match(/ref:\s*\$\{\{ github\.sha \}\}/gu)).toHaveLength(4);
+    expect(source.match(/ref:\s*\$\{\{ github\.sha \}\}/gu)).toHaveLength(3);
     expect(source).toMatch(/github\.ref == 'refs\/heads\/main'/u);
-    expect(source).toMatch(/vars\.STAGING_RELEASE_ENABLED == 'true'/u);
+    expect(source).not.toMatch(/STAGING_RELEASE_ENABLED/u);
   });
 
-  it("runs exact-SHA CI and PostgreSQL before staging, then gates production", () => {
+  it("runs exact-SHA CI and PostgreSQL before production without staging", () => {
     const source = readFileSync(workflowPath, "utf8");
     expect(source).toMatch(/ci:\s*\n[\s\S]*?run:\s*npm run ci/u);
     expect(source).toMatch(
       /postgres:\s*\n[\s\S]*?test:postgres --workspace @lovechapter\/database/u,
     );
-    expect(source).toMatch(/staging:\s*\n\s*needs:\s*\[ci, postgres\]/u);
-    expect(source).toMatch(/production:\s*\n\s*needs:\s*\[staging\]/u);
+    expect(source).not.toMatch(/^  staging:/mu);
+    expect(source).toMatch(/production:\s*\n\s*needs:\s*\[ci, postgres\]/u);
     expect(source).toMatch(/vars\.PRODUCTION_RELEASE_ENABLED == 'true'/u);
-    expect(source).toMatch(/environment:\s*staging/u);
     expect(source).toMatch(/environment:\s*production/u);
-    expect(source).toMatch(/node scripts\/release-cli\.mjs staging/u);
     expect(source).toMatch(/node scripts\/release-cli\.mjs production/u);
+    expect(source).not.toMatch(/RELEASE_STAGING_/u);
   });
 
   it("does not deploy outside the guarded CLI or expose release secrets to PRs", () => {
@@ -85,7 +84,7 @@ describe("automatic Worker release workflow policy", () => {
       "RELEASE_API_ORIGIN",
     ]) {
       const setting = `${name}: ` + "${{ vars." + name + " }}";
-      expect(source.split(setting)).toHaveLength(3);
+      expect(source.split(setting)).toHaveLength(2);
     }
     for (const name of [
       "RELEASE_DATABASE_URL",
@@ -96,31 +95,11 @@ describe("automatic Worker release workflow policy", () => {
       "RELEASE_PROBE_SECRET",
     ]) {
       const setting = `${name}: ` + "${{ secrets." + name + " }}";
-      expect(source.split(setting)).toHaveLength(3);
+      expect(source.split(setting)).toHaveLength(2);
     }
     expect(source).toMatch(
       /RELEASE_POSTGRES_JOB_RESULT: \$\{\{ needs\.postgres\.result \}\}/u,
     );
-    expect(source).toMatch(
-      /RELEASE_TEST_DATABASE_URL: \$\{\{ secrets\.RELEASE_TEST_DATABASE_URL \}\}/u,
-    );
-    expect(source).toMatch(
-      /RELEASE_TEST_MIGRATION_DATABASE_URL: \$\{\{ secrets\.RELEASE_TEST_MIGRATION_DATABASE_URL \}\}/u,
-    );
-    expect(source).toMatch(
-      /RELEASE_TEST_MIGRATION_DATABASE_ROLE: \$\{\{ vars\.RELEASE_TEST_MIGRATION_DATABASE_ROLE \}\}/u,
-    );
-    expect(source).toMatch(
-      /RELEASE_TEST_PASSWORD: \$\{\{ secrets\.RELEASE_TEST_PASSWORD \}\}/u,
-    );
-    expect(source).toMatch(
-      /RELEASE_TEST_BRANCH_ID: \$\{\{ vars\.RELEASE_TEST_BRANCH_ID \}\}/u,
-    );
-    expect(source).toMatch(
-      /acceptance: \$\{\{ steps\.release\.outputs\.acceptance \}\}/u,
-    );
-    expect(source).toMatch(
-      /RELEASE_STAGING_ACCEPTANCE: \$\{\{ needs\.staging\.outputs\.acceptance \}\}/u,
-    );
+    expect(source).not.toMatch(/RELEASE_TEST_|RELEASE_STAGING_/u);
   });
 });

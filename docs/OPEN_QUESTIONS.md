@@ -65,6 +65,8 @@ questions below apply only if a different installation chooses that option.
 ADR-028 replaces the independent-review requirement with owner-only direct
 pushes to protected `main`. If write access later expands, revisit that source
 authority before enabling automatic production release for additional writers.
+ADR-029 removes staging from production promotion. Existing staging resources
+remain in place until separately inventoried and explicitly retired.
 
 - Who owns creation and expiration of the fixed, disposable Neon query-plan
   branch? Release preflight now syncs its reviewed migrations automatically,
