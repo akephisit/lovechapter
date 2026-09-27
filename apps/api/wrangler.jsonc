@@ -11,7 +11,11 @@
   "hyperdrive": [
     { "binding": "HYPERDRIVE", "id": "1ab093151ae1492ea4c18d180637e23c" },
   ],
-  "vars": { "NODE_ENV": "production", "AUTH_MODE": "disabled" },
+  "vars": {
+    "NODE_ENV": "production",
+    "AUTH_MODE": "disabled",
+    "RESEND_FROM_EMAIL": "notifications@lovechapter.net",
+  },
   "triggers": { "crons": ["* * * * *", "*/15 * * * *"] },
   "env": {
     "staging": {

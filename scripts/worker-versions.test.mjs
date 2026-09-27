@@ -1,3 +1,8 @@
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -87,6 +92,21 @@ function input(impact) {
 }
 
 describe("selected Worker versions", () => {
+  it("keeps the production sender in checked-in Wrangler vars", () => {
+    const path = resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      "../apps/api/wrangler.jsonc",
+    );
+    const { config: apiConfig, error } = ts.parseConfigFileTextToJson(
+      path,
+      readFileSync(path, "utf8"),
+    );
+    expect(error).toBeUndefined();
+    expect(apiConfig.vars.RESEND_FROM_EMAIL).toBe(
+      "notifications@lovechapter.net",
+    );
+  });
+
   it("classifies Wrangler upload failures without exposing provider text", () => {
     expect(
       classifyUploadFailure({
