@@ -28,7 +28,7 @@ describe("web release proxy", () => {
 
   it("covers all user page families", async () => {
     const upstream = vi.fn<typeof fetch>(async () =>
-      Response.json({ mode: "maintenance" }),
+      Response.json({ mode: "maintenance", publishedSha: null }),
     );
     vi.stubGlobal("fetch", upstream);
     for (const path of [
@@ -72,7 +72,9 @@ describe("web release proxy", () => {
   it("rejects forged or mutating probes", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => Response.json({ mode: "maintenance" })),
+      vi.fn(async () =>
+        Response.json({ mode: "maintenance", publishedSha: null }),
+      ),
     );
     expect((await proxy(request("/sign-in", "GET", "forged"))).status).toBe(
       503,
@@ -90,9 +92,15 @@ describe("web release proxy", () => {
   });
 
   it("continues when open and skips only maintenance-safe paths", async () => {
-    const upstream = vi.fn(async () => Response.json({ mode: "open" }));
+    const upstream = vi.fn(async () =>
+      Response.json({ mode: "open", publishedSha: "a".repeat(40) }),
+    );
     vi.stubGlobal("fetch", upstream);
-    expect((await proxy(request("/sign-in"))).status).toBe(200);
+    const page = await proxy(request("/sign-in"));
+    expect(page.status).toBe(200);
+    expect(
+      page.headers.get("x-middleware-request-x-lovechapter-published-sha"),
+    ).toBe("a".repeat(40));
     expect(upstream).toHaveBeenCalledOnce();
     for (const path of [
       "/_next/static/chunk.js",
@@ -100,6 +108,7 @@ describe("web release proxy", () => {
       "/sw.js",
       "/manifest.webmanifest",
       "/health/live",
+      "/release-status",
     ]) {
       expect((await proxy(request(path))).status).toBe(200);
     }
@@ -109,7 +118,9 @@ describe("web release proxy", () => {
   it("never forwards probe secret", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => Response.json({ mode: "maintenance" })),
+      vi.fn(async () =>
+        Response.json({ mode: "maintenance", publishedSha: null }),
+      ),
     );
     const response = await proxy(request("/i/private", "GET", probeSecret));
     expect(JSON.stringify([...response.headers])).not.toContain(probeSecret);
@@ -132,5 +143,21 @@ describe("web release proxy", () => {
       },
     );
     expect(apiFetch).toHaveBeenCalledOnce();
+  });
+
+  it("does not trust a caller-supplied published SHA", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({ mode: "open", publishedSha: "a".repeat(40) }),
+      ),
+    );
+    const forged = new NextRequest("https://web.example.workers.dev/sign-in", {
+      headers: { "x-lovechapter-published-sha": "b".repeat(40) },
+    });
+    const response = await proxy(forged);
+    expect(
+      response.headers.get("x-middleware-request-x-lovechapter-published-sha"),
+    ).toBe("a".repeat(40));
   });
 });

@@ -1,9 +1,11 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import type { ReactNode } from "react";
 
 import { AuthErrorBoundary } from "../components/auth-error-boundary";
 import { AuthSessionProvider } from "../components/auth-session-provider";
 import { PwaRegister } from "../components/pwa-register";
+import { ReleaseRefresh } from "../components/release-refresh";
 
 import "./globals.css";
 
@@ -25,7 +27,12 @@ export const viewport: Viewport = {
   colorScheme: "light",
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const initialSha = (await headers()).get("x-lovechapter-published-sha");
   return (
     <html lang="en">
       <body>
@@ -33,6 +40,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <AuthSessionProvider>{children}</AuthSessionProvider>
         </AuthErrorBoundary>
         <PwaRegister />
+        <ReleaseRefresh initialSha={initialSha} />
       </body>
     </html>
   );

@@ -294,7 +294,10 @@ describe("Cloudflare API Worker", () => {
     );
     expect(state.status).toBe(200);
     expect(state.headers.get("cache-control")).toBe("no-store");
-    await expect(state.json()).resolves.toEqual({ mode: "maintenance" });
+    await expect(state.json()).resolves.toEqual({
+      mode: "maintenance",
+      publishedSha: null,
+    });
   });
 
   it("does not claim scheduled email jobs when maintenance is active", async () => {

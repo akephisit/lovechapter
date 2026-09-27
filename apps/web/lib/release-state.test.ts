@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { fetchReleaseMode } from "./release-state";
+import { fetchReleaseState } from "./release-state";
 
 const secret = Buffer.alloc(32, 7).toString("base64url");
 
@@ -16,26 +16,28 @@ describe("private release state", () => {
       expect(request.headers.get("x-lovechapter-proxy-secret")).toBe(secret);
       expect(request.headers.get("cache-control")).toBe("no-store");
       expect(request.headers.get("x-lovechapter-release-probe")).toBeNull();
-      return Response.json({ mode: "maintenance" });
+      return Response.json({ mode: "maintenance", publishedSha: null });
     });
     await expect(
-      fetchReleaseMode("https://web.example.workers.dev/i/private", {
+      fetchReleaseState("https://web.example.workers.dev/i/private", {
         apiUpstreamOrigin: "https://api.example.workers.dev",
         proxySharedSecret: secret,
         fetch: upstream,
       }),
-    ).resolves.toBe("maintenance");
+    ).resolves.toEqual({ mode: "maintenance", publishedSha: null });
     expect(upstream).toHaveBeenCalledOnce();
   });
 
   it.each([
-    { mode: "paused" },
-    { mode: "open", leases: [] },
-    { mode: null },
+    { mode: "paused", publishedSha: null },
+    { mode: "open", publishedSha: "short" },
+    { mode: "open", publishedSha: null, leases: [] },
+    { mode: "maintenance", publishedSha: "a".repeat(40) },
+    { mode: null, publishedSha: null },
     null,
   ])("rejects unexpected release-state payload %j", async (body) => {
     await expect(
-      fetchReleaseMode("https://web.example.workers.dev/", {
+      fetchReleaseState("https://web.example.workers.dev/", {
         apiUpstreamOrigin: "https://api.example.workers.dev",
         proxySharedSecret: secret,
         fetch: vi.fn(async () => Response.json(body)),
@@ -46,7 +48,7 @@ describe("private release state", () => {
   it("rejects a same-origin or invalid upstream before fetching", async () => {
     const upstream = vi.fn<typeof fetch>();
     await expect(
-      fetchReleaseMode("https://web.example.workers.dev/", {
+      fetchReleaseState("https://web.example.workers.dev/", {
         apiUpstreamOrigin: "https://web.example.workers.dev",
         proxySharedSecret: secret,
         fetch: upstream,
@@ -59,7 +61,7 @@ describe("private release state", () => {
     vi.useFakeTimers();
     try {
       let request: Request | undefined;
-      const pending = fetchReleaseMode("https://web.example.workers.dev/", {
+      const pending = fetchReleaseState("https://web.example.workers.dev/", {
         apiUpstreamOrigin: "https://api.example.workers.dev",
         proxySharedSecret: secret,
         fetch: vi.fn((input) => {
@@ -79,7 +81,7 @@ describe("private release state", () => {
   it("times out when the release-state response body never completes", async () => {
     vi.useFakeTimers();
     try {
-      const pending = fetchReleaseMode("https://web.example.workers.dev/", {
+      const pending = fetchReleaseState("https://web.example.workers.dev/", {
         apiUpstreamOrigin: "https://api.example.workers.dev",
         proxySharedSecret: secret,
         fetch: vi.fn(

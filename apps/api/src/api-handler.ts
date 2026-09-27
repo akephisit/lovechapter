@@ -41,7 +41,7 @@ export function createApiDependencies(
       await postgres.readiness();
       await postgres.releaseGateStore.readMode();
     },
-    releaseMode: () => postgres.releaseGateStore.readMode(),
+    releaseStatus: () => postgres.releaseGateStore.readPublicState(),
     run: (request, operation) =>
       operation(
         new LoveChapterService(

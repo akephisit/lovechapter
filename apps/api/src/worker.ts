@@ -41,7 +41,7 @@ const app = createApiApp({
     return currentDependencies().fingerprintKey;
   },
   readiness: () => currentDependencies().readiness(),
-  releaseMode: () => currentDependencies().releaseMode(),
+  releaseStatus: () => currentDependencies().releaseStatus(),
   run: (request, operation) => currentDependencies().run(request, operation),
 } satisfies ApiDependencies).compile();
 

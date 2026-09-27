@@ -1,7 +1,7 @@
 import { AuthServiceError, type AuthService } from "@lovechapter/auth";
 import type { GuestImportMapping } from "@lovechapter/contracts";
 import type { EnvelopeTemplateInput } from "@lovechapter/contracts";
-import type { ReleaseMode } from "@lovechapter/database";
+import type { ReleasePublicState } from "@lovechapter/database";
 import {
   AuthenticationRequiredError,
   ConflictError,
@@ -55,7 +55,7 @@ export type ApiDependencies = {
   proxyCredential: string;
   fingerprintKey: Uint8Array;
   readiness(): Promise<void>;
-  releaseMode(): Promise<ReleaseMode>;
+  releaseStatus(): Promise<ReleasePublicState>;
   run<T>(
     request: Request,
     operation: (service: LoveChapterService) => Promise<T>,
@@ -529,9 +529,12 @@ export function createApiApp(dependencies: ApiDependencies) {
     .get("/health/release-state", async ({ set }) => {
       set.headers["cache-control"] = "no-store";
       try {
-        return { mode: await dependencies.releaseMode() };
+        return await dependencies.releaseStatus();
       } catch {
-        return status(503, { mode: "maintenance" as const });
+        return status(503, {
+          mode: "maintenance" as const,
+          publishedSha: null,
+        });
       }
     })
     .post(

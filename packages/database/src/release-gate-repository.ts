@@ -5,6 +5,10 @@ import type { QueryExecutor } from "./repository";
 import type { WorkerVersion } from "./release-evidence";
 
 export type ReleaseMode = "open" | "maintenance";
+export type ReleasePublicState = {
+  mode: ReleaseMode;
+  publishedSha: string | null;
+};
 export type GateKind = "http" | "email" | "cleanup";
 
 export type ReleaseGateStore = {
@@ -33,6 +37,26 @@ export class PostgresReleaseGateStore implements ReleaseGateStore {
       sql`select mode from ops.release_control where id = 1`,
     );
     return modeFromRows(result.rows);
+  }
+
+  async readPublicState(): Promise<ReleasePublicState> {
+    const result = await this.executor.execute<{
+      mode: string;
+      published_sha: string | null;
+    }>(
+      sql`select mode,
+          case when mode = 'open' then target_sha else null end as published_sha
+          from ops.release_control where id = 1`,
+    );
+    const mode = modeFromRows(result.rows);
+    const publishedSha = result.rows[0]?.published_sha ?? null;
+    if (mode === "maintenance") {
+      return { mode, publishedSha: null };
+    }
+    if (publishedSha !== null && !/^[0-9a-f]{40}$/u.test(publishedSha)) {
+      throw new Error("Published release SHA is invalid");
+    }
+    return { mode, publishedSha };
   }
 
   async admit(kind: GateKind): Promise<string | null> {

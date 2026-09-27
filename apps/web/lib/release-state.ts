@@ -5,11 +5,15 @@ import {
 } from "./backend-proxy";
 
 export type ReleaseMode = "open" | "maintenance";
+export type ReleaseState = {
+  mode: ReleaseMode;
+  publishedSha: string | null;
+};
 
-export async function fetchReleaseMode(
+export async function fetchReleaseState(
   requestUrl: string,
   environment: ProxyEnvironment,
-): Promise<ReleaseMode> {
+): Promise<ReleaseState> {
   const upstreamOrigin = parseUpstreamOrigin(environment.apiUpstreamOrigin);
   if (upstreamOrigin === new URL(requestUrl).origin) {
     throw new Error("API_UPSTREAM_ORIGIN must differ from the frontend origin");
@@ -44,13 +48,21 @@ export async function fetchReleaseMode(
           !state ||
           typeof state !== "object" ||
           Array.isArray(state) ||
-          Object.keys(state).length !== 1 ||
+          Object.keys(state).length !== 2 ||
           !("mode" in state) ||
-          (state.mode !== "open" && state.mode !== "maintenance")
+          (state.mode !== "open" && state.mode !== "maintenance") ||
+          !("publishedSha" in state) ||
+          (state.publishedSha !== null &&
+            (typeof state.publishedSha !== "string" ||
+              !/^[0-9a-f]{40}$/u.test(state.publishedSha))) ||
+          (state.mode === "maintenance" && state.publishedSha !== null)
         ) {
           throw new Error("Release control state is invalid");
         }
-        return state.mode;
+        return {
+          mode: state.mode as ReleaseMode,
+          publishedSha: state.publishedSha as string | null,
+        };
       })(),
       deadline,
     ]);

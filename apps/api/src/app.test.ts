@@ -475,8 +475,10 @@ describe("LoveChapter API", () => {
     expect(readiness).toHaveBeenCalledOnce();
   });
 
-  it("serves protected release state without exposing lease details", async () => {
-    const fixture = testFixture({ releaseMode: async () => "maintenance" });
+  it("serves protected release state without exposing candidate SHA or lease details", async () => {
+    const fixture = testFixture({
+      releaseStatus: async () => ({ mode: "maintenance", publishedSha: null }),
+    });
     const rejected = await fixture.app.handle(
       new Request(`${apiOrigin}/health/release-state`),
     );
@@ -486,7 +488,23 @@ describe("LoveChapter API", () => {
     expect(rejected.status).toBe(403);
     expect(accepted.status).toBe(200);
     expect(accepted.headers.get("cache-control")).toBe("no-store");
-    await expect(accepted.json()).resolves.toEqual({ mode: "maintenance" });
+    await expect(accepted.json()).resolves.toEqual({
+      mode: "maintenance",
+      publishedSha: null,
+    });
+    const open = testFixture({
+      releaseStatus: async () => ({
+        mode: "open",
+        publishedSha: "a".repeat(40),
+      }),
+    });
+    const opened = await open.app.handle(
+      trustedRequest("/health/release-state"),
+    );
+    await expect(opened.json()).resolves.toEqual({
+      mode: "open",
+      publishedSha: "a".repeat(40),
+    });
   });
 
   it("returns generic 202 responses for sign-up, resend, and forgot password", async () => {
@@ -1107,7 +1125,10 @@ type Fixture = ReturnType<typeof testFixture>;
 function testFixture(
   options: {
     readiness?: () => Promise<void>;
-    releaseMode?: () => Promise<"open" | "maintenance">;
+    releaseStatus?: () => Promise<{
+      mode: "open" | "maintenance";
+      publishedSha: string | null;
+    }>;
     principal?: Principal;
     operationsRepository?: WeddingOperationsRepository;
   } = {},
@@ -1150,7 +1171,9 @@ function testFixture(
     proxyCredential,
     fingerprintKey,
     readiness: options.readiness ?? (async () => undefined),
-    releaseMode: options.releaseMode ?? (async () => "open"),
+    releaseStatus:
+      options.releaseStatus ??
+      (async () => ({ mode: "open", publishedSha: "a".repeat(40) })),
     run: (request, operation) =>
       operation(
         new LoveChapterService(

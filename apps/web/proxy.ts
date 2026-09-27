@@ -3,9 +3,10 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { maintenanceResponse } from "./lib/maintenance-response";
-import { fetchReleaseMode } from "./lib/release-state";
+import { fetchReleaseState, type ReleaseState } from "./lib/release-state";
 
 const probeHeader = "x-lovechapter-release-probe";
+const publishedHeader = "x-lovechapter-published-sha";
 const safePaths = new Set([
   "/icon.svg",
   "/sw.js",
@@ -13,6 +14,7 @@ const safePaths = new Set([
   "/favicon.ico",
   "/health/live",
   "/health/ready",
+  "/release-status",
 ]);
 
 export const config = {
@@ -26,23 +28,26 @@ export async function proxy(
   const pathname = request.nextUrl.pathname;
   const downstreamHeaders = new Headers(request.headers);
   downstreamHeaders.delete(probeHeader);
-  const continueResponse = () =>
-    NextResponse.next({ request: { headers: downstreamHeaders } });
+  downstreamHeaders.delete(publishedHeader);
+  const continueResponse = (publishedSha: string | null = null) => {
+    if (publishedSha) downstreamHeaders.set(publishedHeader, publishedSha);
+    return NextResponse.next({ request: { headers: downstreamHeaders } });
+  };
   if (pathname.startsWith("/_next/static/") || safePaths.has(pathname)) {
     return continueResponse();
   }
-  let mode: "open" | "maintenance";
+  let state: ReleaseState;
   try {
-    mode = await fetchReleaseMode(request.url, {
+    state = await fetchReleaseState(request.url, {
       apiUpstreamOrigin: process.env.API_UPSTREAM_ORIGIN ?? "",
       proxySharedSecret: process.env.WEB_PROXY_SHARED_SECRET ?? "",
       fetch,
     });
   } catch {
-    mode = "maintenance";
+    state = { mode: "maintenance", publishedSha: null };
   }
-  if (mode === "open" || isPresentationProbe(request)) {
-    return continueResponse();
+  if (state.mode === "open" || isPresentationProbe(request)) {
+    return continueResponse(state.mode === "open" ? state.publishedSha : null);
   }
   return maintenanceResponse(pathname, request.method);
 }

@@ -229,7 +229,7 @@ function flowFixture() {
     proxyCredential,
     fingerprintKey: new Uint8Array(32).fill(7),
     readiness: async () => undefined,
-    releaseMode: async () => "open",
+    releaseStatus: async () => ({ mode: "open", publishedSha: null }),
     run: (request, operation) =>
       operation(
         new LoveChapterService(identity, domainRepository, webOrigin, request),

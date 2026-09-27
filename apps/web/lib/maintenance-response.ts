@@ -15,7 +15,7 @@ const html = `<!doctype html>
   p { line-height: 1.6; }
 </style>
 </head>
-<body><main><h1>LoveChapter</h1><p>${message}. Please try again shortly.</p></main></body>
+<body><main><h1>LoveChapter</h1><p>${message}. Please try again shortly.</p><p>After the release, returning tabs reload automatically. Unsaved form input in this tab may be lost.</p></main></body>
 </html>`;
 
 export function maintenanceResponse(
