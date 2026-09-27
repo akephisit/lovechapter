@@ -145,6 +145,29 @@ const en = {
     chooseWedding: "Choose wedding",
     newWedding: "New wedding",
   },
+  overview: {
+    title: "At a glance",
+    description: "The essentials for your celebration, all in one place.",
+    planningTitle: "Planning progress",
+    planningCount: (completed: number, total: number) =>
+      `${new Intl.NumberFormat("en").format(completed)} of ${new Intl.NumberFormat("en").format(total)} tasks complete`,
+    noTasks: "No tasks yet. Start with one meaningful step.",
+    openPlanning: "Open planning",
+    rsvpTitle: "Guest replies",
+    guestParties: (count: number) =>
+      `${new Intl.NumberFormat("en").format(count)} guest ${count === 1 ? "party" : "parties"}`,
+    attending: (count: number) =>
+      `Attending · ${new Intl.NumberFormat("en").format(count)}`,
+    declined: (count: number) =>
+      `Declined · ${new Intl.NumberFormat("en").format(count)}`,
+    awaiting: (count: number) =>
+      `Awaiting reply · ${new Intl.NumberFormat("en").format(count)}`,
+    noGuests: "Add your first guest party to begin tracking replies.",
+    openGuests: "Open guests",
+    loading: "Loading your overview…",
+    error: "The overview couldn't be loaded. Your data has not been changed.",
+    retry: "Try again",
+  },
   workspace: {
     label: "Wedding workspace",
     signOut: "Sign out",
@@ -749,6 +772,29 @@ const th: UiCopy = {
     seating: "ผังที่นั่ง",
     chooseWedding: "เลือกงานแต่ง",
     newWedding: "สร้างงานแต่งใหม่",
+  },
+  overview: {
+    title: "ภาพรวมงานแต่ง",
+    description: "สิ่งสำคัญสำหรับวันพิเศษของคุณในที่เดียว",
+    planningTitle: "ความคืบหน้าการวางแผน",
+    planningCount: (completed: number, total: number) =>
+      `เสร็จแล้ว ${new Intl.NumberFormat("th").format(completed)} จาก ${new Intl.NumberFormat("th").format(total)} งาน`,
+    noTasks: "ยังไม่มีงานที่ต้องทำ เริ่มจากก้าวเล็ก ๆ กันเลย",
+    openPlanning: "ไปที่แผนงาน",
+    rsvpTitle: "คำตอบจากแขก",
+    guestParties: (count: number) =>
+      `${new Intl.NumberFormat("th").format(count)} กลุ่มแขก`,
+    attending: (count: number) =>
+      `มาร่วมงาน · ${new Intl.NumberFormat("th").format(count)}`,
+    declined: (count: number) =>
+      `ไม่มาร่วมงาน · ${new Intl.NumberFormat("th").format(count)}`,
+    awaiting: (count: number) =>
+      `รอคำตอบ · ${new Intl.NumberFormat("th").format(count)}`,
+    noGuests: "เพิ่มกลุ่มแขกกลุ่มแรกเพื่อติดตามคำตอบ",
+    openGuests: "ไปที่รายชื่อแขก",
+    loading: "กำลังโหลดภาพรวม…",
+    error: "ไม่สามารถโหลดภาพรวมได้ ข้อมูลของคุณยังไม่เปลี่ยนแปลง",
+    retry: "ลองอีกครั้ง",
   },
   workspace: {
     label: "พื้นที่งานแต่ง",

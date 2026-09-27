@@ -8,6 +8,8 @@ import type {
   GuestSummary,
   InvitationCreated,
   Page,
+  PlanningOverview,
+  RsvpSummary,
   UpdateGuestAffiliationInput,
   WeddingSummary,
 } from "@lovechapter/contracts";
@@ -50,6 +52,7 @@ import {
   WorkspaceNavigation,
   type WorkspaceSection,
 } from "./workspace/workspace-navigation";
+import { OverviewPanel } from "./workspace/overview-panel";
 
 export interface CoupleWorkspaceApi
   extends
@@ -58,6 +61,8 @@ export interface CoupleWorkspaceApi
     Partial<Omit<OperationsWorkspaceApi, "listGuests">> {
   listWeddings(cursor?: string): Promise<Page<WeddingSummary>>;
   createWedding(input: CreateWeddingInput): Promise<WeddingSummary>;
+  getPlanningOverview(weddingId: string): Promise<PlanningOverview>;
+  getRsvpSummary(weddingId: string): Promise<RsvpSummary>;
   listGuestAffiliations(weddingId: string): Promise<GuestAffiliation[]>;
   createGuestAffiliation(
     weddingId: string,
@@ -90,6 +95,7 @@ type Props = {
 
 export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
   const copy = useUiCopy();
+  const language = useUiLanguage();
   const copyRef = useRef(copy);
   copyRef.current = copy;
   const [weddings, setWeddings] = useState<WeddingSummary[]>([]);
@@ -660,8 +666,15 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
                     {selected.name}
                   </h1>
                   <p className="mt-1 text-sm text-[var(--rose-ink)]">
-                    {selected.weddingDate ?? copy.workspace.datePending} ·{" "}
-                    {selected.timeZone}
+                    {selected.weddingDate
+                      ? new Intl.DateTimeFormat(language, {
+                          dateStyle: "long",
+                          timeZone: "UTC",
+                        }).format(
+                          new Date(`${selected.weddingDate}T12:00:00.000Z`),
+                        )
+                      : copy.workspace.datePending}{" "}
+                    · {selected.timeZone}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -734,9 +747,11 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
                 className="min-w-0 space-y-5"
               >
                 {activeSection === "overview" ? (
-                  <Card className="p-6 text-[var(--rose-ink)]">
-                    {copy.workspaceNavigation.overview}
-                  </Card>
+                  <OverviewPanel
+                    wedding={selected}
+                    api={api}
+                    onNavigate={setActiveSection}
+                  />
                 ) : null}
                 {activeSection === "planning" && hasPlanningApi(api) ? (
                   <PlanningWorkspace
@@ -802,7 +817,6 @@ function hasPlanningApi(
 ): api is CoupleWorkspaceApi & PlanningWorkspaceApi {
   return Boolean(
     api.listPlanningTasks &&
-    api.getPlanningOverview &&
     api.createPlanningTask &&
     api.updatePlanningTask &&
     api.deletePlanningTask,

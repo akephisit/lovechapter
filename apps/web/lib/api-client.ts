@@ -38,6 +38,7 @@ import type {
   WeddingSummary,
   PlanningTask,
   PlanningOverview,
+  RsvpSummary,
   PlanningTaskFilter,
   CreatePlanningTaskInput,
   UpdatePlanningTaskInput,
@@ -165,6 +166,10 @@ export function createLoveChapterApi(
     getPlanningOverview: (weddingId: string) =>
       request<PlanningOverview>(
         `/v1/weddings/${encodeURIComponent(weddingId)}/planning-overview`,
+      ),
+    getRsvpSummary: (weddingId: string) =>
+      request<RsvpSummary>(
+        `/v1/weddings/${encodeURIComponent(weddingId)}/rsvp-summary`,
       ),
     listPlanningTasks: (
       weddingId: string,

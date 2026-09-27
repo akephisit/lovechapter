@@ -15,6 +15,27 @@ afterEach(() => {
 });
 
 describe("LoveChapter API client", () => {
+  it("reads the RSVP summary through the same-origin wedding route", async () => {
+    const response = {
+      totalActive: 2,
+      attending: 1,
+      declined: 0,
+      replied: 1,
+      awaiting: 1,
+    };
+    const clientFetch = vi.fn<typeof fetch>(async () => jsonResponse(response));
+    vi.stubGlobal("fetch", clientFetch);
+    await expect(
+      createLoveChapterApi(vi.fn()).getRsvpSummary("wed/one"),
+    ).resolves.toEqual(response);
+    expect(clientFetch.mock.calls[0]?.[0]).toBe(
+      "/api/v1/weddings/wed%2Fone/rsvp-summary",
+    );
+    expect(clientFetch.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({ credentials: "same-origin" }),
+    );
+  });
+
   it("routes budget, vendor, run sheet, and seating through the same origin", async () => {
     const clientFetch = vi.fn<typeof fetch>(async (_url, init) =>
       init?.method === "DELETE" ||

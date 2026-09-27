@@ -54,6 +54,48 @@ describe("CoupleWorkspace", () => {
     expect(listGuests).toHaveBeenCalledWith(wedding.id);
   });
 
+  it("reloads the bounded overview summaries after visiting Guests", async () => {
+    const wedding = weddingFixture();
+    const getRsvpSummary = vi
+      .fn()
+      .mockResolvedValueOnce({
+        totalActive: 0,
+        attending: 0,
+        declined: 0,
+        replied: 0,
+        awaiting: 0,
+      })
+      .mockResolvedValueOnce({
+        totalActive: 1,
+        attending: 0,
+        declined: 0,
+        replied: 0,
+        awaiting: 1,
+      });
+    const api: CoupleWorkspaceApi = {
+      ...affiliationApi(),
+      getRsvpSummary,
+      listWeddings: vi.fn(async () => page([wedding])),
+      createWedding: vi.fn(),
+      listGuests: vi.fn(async () => page([guestFixture()])),
+      addGuest: vi.fn(),
+      createInvitation: vi.fn(),
+    };
+    render(
+      <CoupleWorkspace
+        identity={userFixture()}
+        api={api}
+        onSignOut={vi.fn()}
+      />,
+    );
+    expect(await screen.findByText(/0 guest parties/i)).toBeVisible();
+    await openGuests();
+    expect(await screen.findByText("Nok")).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Overview" }));
+    expect(await screen.findByText(/1 guest party/i)).toBeVisible();
+    expect(getRsvpSummary).toHaveBeenCalledTimes(2);
+  });
+
   it("offers a compact wedding picker and bounded load-more", async () => {
     const first = weddingFixture();
     const second = { ...first, id: crypto.randomUUID(), name: "Dao & Lin" };
@@ -544,6 +586,7 @@ describe("CoupleWorkspace", () => {
       }),
     );
     const api: CoupleWorkspaceApi = {
+      ...affiliationApi(),
       listWeddings: vi.fn(async () => page([wedding])),
       createWedding: vi.fn(),
       listGuests: vi.fn(async () => page([])),
@@ -832,6 +875,8 @@ function affiliationFixture(): GuestAffiliation {
 
 function affiliationApi(): Pick<
   CoupleWorkspaceApi,
+  | "getPlanningOverview"
+  | "getRsvpSummary"
   | "listGuestAffiliations"
   | "createGuestAffiliation"
   | "updateGuestAffiliation"
@@ -840,6 +885,18 @@ function affiliationApi(): Pick<
   | "setGuestAffiliation"
 > {
   return {
+    getPlanningOverview: vi.fn(async () => ({
+      total: 0,
+      completed: 0,
+      upcoming: [],
+    })),
+    getRsvpSummary: vi.fn(async () => ({
+      totalActive: 0,
+      attending: 0,
+      declined: 0,
+      replied: 0,
+      awaiting: 0,
+    })),
     listGuestAffiliations: vi.fn(async () => []),
     createGuestAffiliation: vi.fn(async () => affiliationFixture()),
     updateGuestAffiliation: vi.fn(async () => affiliationFixture()),
