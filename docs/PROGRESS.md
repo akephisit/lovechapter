@@ -1432,3 +1432,15 @@ check found zero active sessions for the fixture account. No production
 account, Worker version, maintenance gate, or migration was changed. Hosted
 CI for the prior documentation commit `049fa81` passed CI/PostgreSQL and
 skipped both release jobs.
+
+With owner approval, a new Neon organization API key restricted to the
+LoveChapter project was created for the GitHub staging release. The CLI
+confirmed the requested project scope, and the new key successfully read
+the endpoint metadata for both `staging` and `staging-test`. Its value was
+sent directly to the GitHub `staging` environment secret
+`RELEASE_NEON_API_KEY`; secret-name readback succeeded without exposing the
+value. This scope still includes the project's `production` branch, so the
+credential remains sensitive and must not be repurposed outside release
+automation. No Neon branch/database, Worker, maintenance gate, migration,
+or release switch was changed. Hosted CI for the preceding documentation
+commit `1bc9e15` passed CI/PostgreSQL and skipped both release jobs.
