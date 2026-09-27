@@ -1526,3 +1526,21 @@ eligibility must be checked again during the cutover. The already migrated
 `0011` transition. After the documentation edit, local formatting and
 `npm test` passed (108 files / 675 tests). No staging or production gate,
 database, Worker, secret, or release switch was changed in this design step.
+
+## Read-only production resource inventory (2026-09-27)
+
+The existing Neon `production` branch is a root branch in project
+`icy-hat-79862899` (AWS Singapore), with the `neondb` database and only
+`neondb_owner` listed as a PostgreSQL role. The project reports a 24-hour
+history-retention window. A provider schema comparison against active
+`staging` showed that the production branch does not yet contain the
+LoveChapter application schemas/tables. Cloudflare returned Worker-not-found
+for both intended production names, `lovechapter-api` and `lovechapter-web`;
+its Hyperdrive inventory contained only the staging configuration. GitHub's
+`production` environment has no release variables or secrets, and neither
+repository-level release-enabled variable is set. These are metadata-only
+observations, not a production bootstrap or schema acceptance. Before any
+public release, provision and verify distinct production roles, cache-disabled
+Hyperdrive, both Workers and their secrets, an isolated recovery rehearsal,
+and exact-SHA staging acceptance. No provider resource was changed in this
+inventory step.
