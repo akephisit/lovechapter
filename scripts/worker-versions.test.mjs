@@ -112,7 +112,7 @@ describe("selected Worker versions", () => {
     );
   });
 
-  it("keeps the production API origin in checked-in web Wrangler vars", () => {
+  it("preserves the dashboard-managed API origin secret", () => {
     const path = resolve(
       dirname(fileURLToPath(import.meta.url)),
       "../apps/web/wrangler.jsonc",
@@ -122,9 +122,8 @@ describe("selected Worker versions", () => {
       readFileSync(path, "utf8"),
     );
     expect(error).toBeUndefined();
-    expect(webConfig.vars.API_UPSTREAM_ORIGIN).toBe(
-      "https://lovechapter-api.kruakemaths.workers.dev",
-    );
+    expect(webConfig.vars?.API_UPSTREAM_ORIGIN).toBeUndefined();
+    expect(webConfig.keep_vars).toBe(true);
   });
 
   it("classifies Wrangler upload failures without exposing provider text", () => {

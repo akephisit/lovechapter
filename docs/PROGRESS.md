@@ -28,10 +28,16 @@ repeated that partial web promotion at `c9f0b7c`, activating web version
 gate remains in maintenance at `c9f0b7c` with null version baseline; public
 web returns 503 and the active API Worker version is unchanged. The next
 retry must expect this closed gate target and active web version. The web
-release path is being changed to upload an inactive version before closure
-and promote that exact version under maintenance, avoiding route-setting
-operations during `wrangler deploy`. The generated web Wrangler config will
-carry the non-secret API origin. Command output and arguments are not logged.
+release path now uploads an inactive version before closure and promotes that
+exact version under maintenance, avoiding route-setting operations during
+`wrangler deploy`. A first local web upload was correctly rejected because
+`API_UPSTREAM_ORIGIN` is a Cloudflare Secret, not a plain var; declaring it
+in Wrangler would replace that secret. The config now leaves it
+dashboard-managed. A second inactive web upload with `--strict --keep-vars`
+succeeded; readback of its version showed `API_UPSTREAM_ORIGIN`,
+`RELEASE_PROBE_SECRET`, and `WEB_PROXY_SHARED_SECRET` retained as secret-text
+bindings. No route or active deployment was changed by that diagnostic
+upload. Command output and arguments are not logged.
 No release guard was relaxed. The gate role
 cannot read the migration ledger, so the one-time schema check uses the
 configured migration credential after checking it targets the same endpoint.
