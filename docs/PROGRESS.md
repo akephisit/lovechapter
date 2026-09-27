@@ -1655,3 +1655,30 @@ and `init_source=parent-data`; an existing isolated child branch readback
 exposed `parent_id` and `parent_lsn` metadata. The plan now names those exact
 checkpoint operations and requires provider readback. No branch was created,
 no staging data/schema or gate changed, and no Worker version was uploaded.
+
+## Production local-auth activation candidate (2026-09-27)
+
+The successful first-publication run left the API Worker at
+`AUTH_MODE=disabled`; a subsequent documentation push passed CI/PostgreSQL but
+skipped production because the release switch was temporarily off. The switch
+was restored to `true` after that run. The active API version still reports
+`disabled`, while its required auth, ingress, origin, Resend, and Hyperdrive
+binding names are present. Cloudflare reports the production API Worker's
+usage model as `standard`; the owner reports Workers Paid. The available OAuth
+credential cannot read Billing (`403`), so the subscription itself is not
+independently verified. Prior production-policy scrypt-path Worker invocations
+measured 128.2–148.9 ms CPU, far below Cloudflare's documented 30-second Paid
+default; sustained production-load behavior remains unmeasured.
+
+Before activating local auth, the existing production sign-up route created
+one test account. The deployed minute cron sent its verification job on the
+first attempt, and the account's email verification was completed. Read-only
+database counts found one verified account, one sent-first-try email job, and
+zero undelivered jobs; no email address, token, or password was printed. A new
+test failed on the checked-in production `AUTH_MODE=disabled`, then passed
+after changing it to `local`. Local CI passed 100 files / 655 tests, format,
+lint, typechecks, Bun API/job builds and smoke, Drizzle check, Next/vinext
+builds/check, and both Worker dry-runs. The first local CI attempt stopped
+only because Bun was absent from PATH; the full successful rerun injected
+Bun 1.4.2 with `npm exec`. Deployment and password-based sign-in remain to be
+verified by the subsequent production release and owner test.

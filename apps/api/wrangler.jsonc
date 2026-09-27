@@ -13,7 +13,7 @@
   ],
   "vars": {
     "NODE_ENV": "production",
-    "AUTH_MODE": "disabled",
+    "AUTH_MODE": "local",
     "RESEND_FROM_EMAIL": "notifications@lovechapter.net",
   },
   "triggers": { "crons": ["* * * * *", "*/15 * * * *"] },

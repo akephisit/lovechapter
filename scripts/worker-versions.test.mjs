@@ -112,6 +112,20 @@ describe("selected Worker versions", () => {
     );
   });
 
+  it("publishes the production API with local account sessions enabled", () => {
+    const path = resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      "../apps/api/wrangler.jsonc",
+    );
+    const { config: apiConfig, error } = ts.parseConfigFileTextToJson(
+      path,
+      readFileSync(path, "utf8"),
+    );
+    expect(error).toBeUndefined();
+    expect(apiConfig.vars.AUTH_MODE).toBe("local");
+    expect(apiConfig.triggers.crons).toEqual(["* * * * *", "*/15 * * * *"]);
+  });
+
   it("preserves the dashboard-managed API origin secret", () => {
     const path = resolve(
       dirname(fileURLToPath(import.meta.url)),

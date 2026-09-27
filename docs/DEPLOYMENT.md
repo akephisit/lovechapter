@@ -185,9 +185,14 @@ Web Worker: `API_UPSTREAM_ORIGIN`, `WEB_PROXY_SHARED_SECRET`, and
 `RELEASE_PROBE_SECRET`. The origins must match the generated production
 Worker URLs exactly. Generate unrelated 32-byte base64url values for each
 secret purpose. `AUTH_TOKEN_HMAC_KEYS` is a JSON map of numeric key versions.
-Keep `AUTH_MODE=disabled` until sender delivery, Worker CPU budget, and all
-local-auth dependencies are verified; `development` is forbidden in
-production.
+The first production publication kept `AUTH_MODE=disabled`. The checked-in
+production Worker config now selects `local` after the production verification
+email was sent by the scheduled Worker and its account was verified, the
+required binding names were confirmed, and the measured production-policy
+scrypt CPU cost was compared with the owner-confirmed Workers Paid/Standard
+budget. Do not deploy `local` if those prerequisites regress; `development` is
+forbidden in production. An automated release still marks real-inbox delivery
+as waived because inbox receipt is not part of its repeatable CI gate.
 
 ## Bun/VPS option for a different installation
 
