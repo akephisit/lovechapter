@@ -802,6 +802,45 @@ describe("LoveChapter API", () => {
     });
   });
 
+  it("updates wedding settings with a nullable date and rejects invalid input", async () => {
+    const fixture = testFixture({ principal: couple("settings-owner") });
+    const created = await fixture.app.handle(
+      jsonRequest("/v1/weddings", "POST", {
+        name: "Original",
+        weddingDate: "2027-02-14",
+        timeZone: "UTC",
+        locale: "en",
+      }),
+    );
+    const wedding = (await created.json()) as { id: string };
+    const path = `/v1/weddings/${wedding.id}`;
+    const updated = await fixture.app.handle(
+      jsonRequest(path, "PATCH", {
+        name: "Mali & Arun",
+        weddingDate: null,
+        timeZone: "Asia/Bangkok",
+        locale: "th-TH",
+      }),
+    );
+    expect(updated.status).toBe(200);
+    await expect(updated.json()).resolves.toMatchObject({
+      id: wedding.id,
+      name: "Mali & Arun",
+      timeZone: "Asia/Bangkok",
+      locale: "th-TH",
+      role: "owner",
+    });
+    const invalid = await fixture.app.handle(
+      jsonRequest(path, "PATCH", {
+        name: "Wedding",
+        weddingDate: "2027-02-30",
+        timeZone: "UTC",
+        locale: "en",
+      }),
+    );
+    expect(invalid.status).toBe(400);
+  });
+
   it("replaces an invitation over the protected API and rejects the old public link", async () => {
     const fixture = testFixture({ principal: couple("replacement-owner") });
     const weddingResponse = await fixture.app.handle(

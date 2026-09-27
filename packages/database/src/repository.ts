@@ -16,6 +16,7 @@ import type {
   SubmitRsvpInput,
   UpdateGuestAffiliationInput,
   UpdateProfileInput,
+  UpdateWeddingInput,
   WeddingSummary,
 } from "@lovechapter/contracts";
 import {
@@ -64,6 +65,7 @@ import {
   buildUpdateGuestAffiliationQuery,
   buildUpdateGuestQuery,
   buildUpdateUserProfileQuery,
+  buildUpdateWeddingQuery,
   buildUpsertRsvpQuery,
   buildUpsertGuestPostalAddressQuery,
   buildUnassignGuestAffiliationQuery,
@@ -139,6 +141,19 @@ export class PostgresLoveChapterRepository implements LoveChapterRepository {
       );
       return mapWedding({ ...row, role: "owner" });
     });
+  }
+
+  async updateWedding(
+    userId: string,
+    weddingId: string,
+    input: UpdateWeddingInput,
+  ): Promise<WeddingSummary> {
+    const result = await this.executor.execute<WeddingRow>(
+      buildUpdateWeddingQuery({ userId, weddingId, ...input }),
+    );
+    const row = result.rows[0];
+    if (!row) throw new NotFoundError("Wedding not found");
+    return mapWedding(row);
   }
 
   async getRsvpSummary(

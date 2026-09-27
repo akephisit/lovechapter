@@ -79,6 +79,60 @@ describe("PostgresLoveChapterRepository", () => {
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 
+  it("updates wedding settings in one role-guarded statement", async () => {
+    const userId = crypto.randomUUID();
+    const weddingId = crypto.randomUUID();
+    const executor = new FakeExecutor([
+      {
+        id: weddingId,
+        name: "Mali & Arun",
+        wedding_date: null,
+        time_zone: "Asia/Bangkok",
+        locale: "th-TH",
+        role: "planner",
+        created_at: "2026-09-28T00:00:00.000Z",
+      },
+    ]);
+    const repository = new PostgresLoveChapterRepository(executor);
+    const input = {
+      name: "Mali & Arun",
+      weddingDate: null,
+      timeZone: "Asia/Bangkok",
+      locale: "th-TH",
+    };
+    await expect(
+      repository.updateWedding(userId, weddingId, input),
+    ).resolves.toEqual({
+      id: weddingId,
+      name: "Mali & Arun",
+      timeZone: "Asia/Bangkok",
+      locale: "th-TH",
+      role: "planner",
+      createdAt: "2026-09-28T00:00:00.000Z",
+    });
+    expect(executor.executeCount).toBe(1);
+    const statement = new PgDialect().sqlToQuery(executor.queries[0]!);
+    expect(statement.sql).toMatch(/update "weddings"/i);
+    expect(statement.sql).toMatch(/"wedding_members"/);
+    expect(statement.sql).toMatch(/'owner','couple','planner'/);
+    expect(statement.sql).not.toMatch(/'collaborator'/);
+    expect(statement.params).toContain(userId);
+    expect(statement.params).toContain(weddingId);
+    expect(statement.params).toContain(null);
+  });
+
+  it("does not disclose wedding settings to a writer without the role", async () => {
+    const repository = new PostgresLoveChapterRepository(new FakeExecutor([]));
+    await expect(
+      repository.updateWedding(crypto.randomUUID(), crypto.randomUUID(), {
+        name: "Wrong",
+        weddingDate: null,
+        timeZone: "UTC",
+        locale: "en",
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
   it("synchronizes an external identity without exposing provider data", async () => {
     const executor = new FakeExecutor([
       {

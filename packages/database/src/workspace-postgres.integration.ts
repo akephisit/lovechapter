@@ -42,6 +42,81 @@ afterAll(async () => {
 });
 
 describe("PostgreSQL wedding workspace", () => {
+  it("allows owner, couple, and planner to edit settings but not a collaborator or outsider", async () => {
+    const repository = runtime.loveChapterRepository;
+    const makeUser = async (displayName: string) =>
+      repository.syncUser({
+        provider: "development",
+        subject: crypto.randomUUID(),
+        displayName,
+      });
+    const owner = await makeUser("Owner");
+    const couple = await makeUser("Couple");
+    const planner = await makeUser("Planner");
+    const collaborator = await makeUser("Collaborator");
+    const outsider = await makeUser("Outsider");
+    const wedding = await repository.createWedding(
+      owner.id,
+      crypto.randomUUID(),
+      {
+        name: "Original",
+        weddingDate: "2027-02-14",
+        timeZone: "UTC",
+        locale: "en",
+      },
+    );
+    for (const [user, role] of [
+      [couple, "couple"],
+      [planner, "planner"],
+      [collaborator, "collaborator"],
+    ] as const) {
+      await runtime.pool.query(
+        "insert into wedding_members (wedding_id,user_id,role) values ($1,$2,$3)",
+        [wedding.id, user.id, role],
+      );
+    }
+    for (const [user, role] of [
+      [owner, "owner"],
+      [couple, "couple"],
+      [planner, "planner"],
+    ] as const) {
+      await expect(
+        repository.updateWedding(user.id, wedding.id, {
+          name: `${role} wedding`,
+          weddingDate: null,
+          timeZone: "Asia/Bangkok",
+          locale: "th-TH",
+        }),
+      ).resolves.toMatchObject({
+        name: `${role} wedding`,
+        role,
+        timeZone: "Asia/Bangkok",
+        locale: "th-TH",
+      });
+    }
+    const visible = await repository.listWeddings(collaborator.id, {
+      limit: 20,
+    });
+    expect(visible.items).toMatchObject([
+      { id: wedding.id, role: "collaborator" },
+    ]);
+    for (const user of [collaborator, outsider]) {
+      await expect(
+        repository.updateWedding(user.id, wedding.id, {
+          name: "Unauthorized",
+          weddingDate: null,
+          timeZone: "UTC",
+          locale: "en",
+        }),
+      ).rejects.toBeInstanceOf(NotFoundError);
+    }
+    await expect(
+      repository.listWeddings(owner.id, { limit: 20 }),
+    ).resolves.toMatchObject({
+      items: [{ name: "planner wedding" }],
+    });
+  });
+
   it("counts only active guest parties and replaces a prior RSVP status", async () => {
     const repository = runtime.loveChapterRepository;
     const owner = await repository.syncUser({

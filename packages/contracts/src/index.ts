@@ -51,6 +51,13 @@ export type CreateWeddingInput = {
   locale: string;
 };
 
+export type UpdateWeddingInput = {
+  name: string;
+  weddingDate: string | null;
+  timeZone: string;
+  locale: string;
+};
+
 export type WeddingSummary = CreateWeddingInput & {
   id: string;
   role: MembershipRole;

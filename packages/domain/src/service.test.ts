@@ -48,6 +48,72 @@ function service(
 }
 
 describe("LoveChapterService", () => {
+  it("updates wedding identity and clears an optional date without changing its role", async () => {
+    const repository = new InMemoryLoveChapterRepository();
+    const owner = service(repository);
+    const wedding = await owner.createWedding({
+      name: "Original",
+      weddingDate: "2027-02-14",
+      timeZone: "UTC",
+      locale: "en",
+    });
+    const updated = await owner.updateWedding(wedding.id, {
+      name: "  Mali & Arun  ",
+      weddingDate: null,
+      timeZone: "Asia/Bangkok",
+      locale: "th-TH",
+    });
+    expect(updated).toEqual({
+      id: wedding.id,
+      name: "Mali & Arun",
+      timeZone: "Asia/Bangkok",
+      locale: "th-TH",
+      role: "owner",
+      createdAt: wedding.createdAt,
+    });
+    await expect(
+      service(repository, otherCouple).updateWedding(wedding.id, {
+        name: "Stolen",
+        weddingDate: null,
+        timeZone: "UTC",
+        locale: "en",
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("rejects an invalid wedding date, zone, or locale before writing", async () => {
+    const owner = service(new InMemoryLoveChapterRepository());
+    const wedding = await owner.createWedding({
+      name: "Original",
+      timeZone: "UTC",
+      locale: "en",
+    });
+    for (const patch of [
+      {
+        name: "Wedding",
+        weddingDate: "2027-02-30",
+        timeZone: "UTC",
+        locale: "en",
+      },
+      {
+        name: "Wedding",
+        weddingDate: null,
+        timeZone: "Nowhere/Invalid",
+        locale: "en",
+      },
+      {
+        name: "Wedding",
+        weddingDate: null,
+        timeZone: "UTC",
+        locale: "invalid_locale_",
+      },
+    ]) {
+      await expect(
+        owner.updateWedding(wedding.id, patch),
+      ).rejects.toBeInstanceOf(DomainValidationError);
+    }
+  });
+
   it("manages a wedding-scoped checklist and preserves completion when editing", async () => {
     const repository = new InMemoryLoveChapterRepository();
     const planning = new InMemoryPlanningRepository(repository);

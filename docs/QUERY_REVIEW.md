@@ -23,6 +23,13 @@ distribution. The 20,000 synthetic guests were inserted in a transaction and
 rolled back; readback showed the original three guest rows remained. These
 are local synthetic timings, not a production latency guarantee.
 
+`buildUpdateWeddingQuery` uses one parameterized `UPDATE ... FROM
+wedding_members` guarded by the selected wedding ID, current user ID, and
+membership role in `owner/couple/planner`. The membership composite primary
+key and wedding primary key support this single-row write. Collaborator and
+nonmember writes both return no row, mapped to a non-disclosing 404. Date
+clearing writes SQL `NULL`; no schema change or pre-read round trip is needed.
+
 **Review date:** 2026-09-22
 **Scope:** domain repositories, first-party auth, sessions, rate limits, and the
 auth-email outbox

@@ -184,3 +184,50 @@ describe("InMemoryLoveChapterRepository RSVP summary", () => {
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 });
+
+describe("InMemoryLoveChapterRepository wedding settings roles", () => {
+  it("shows a collaborator the wedding but permits edits only for owner, couple, and planner", async () => {
+    const repository = new InMemoryLoveChapterRepository();
+    const owner = await repository.syncUser({
+      provider: "development",
+      subject: "settings-owner",
+      displayName: "Owner",
+    });
+    const wedding = await repository.createWedding(
+      owner.id,
+      crypto.randomUUID(),
+      {
+        name: "Original",
+        timeZone: "UTC",
+        locale: "en",
+      },
+    );
+    for (const role of ["couple", "planner", "collaborator"] as const) {
+      const member = await repository.syncUser({
+        provider: "development",
+        subject: `settings-${role}`,
+        displayName: role,
+      });
+      repository.addWeddingMember(wedding.id, member.id, role);
+      expect(
+        (await repository.listWeddings(member.id, { limit: 20 })).items[0]
+          ?.role,
+      ).toBe(role);
+      const input = {
+        name: role,
+        weddingDate: null,
+        timeZone: "UTC",
+        locale: "en",
+      };
+      if (role === "collaborator") {
+        await expect(
+          repository.updateWedding(member.id, wedding.id, input),
+        ).rejects.toBeInstanceOf(NotFoundError);
+      } else {
+        await expect(
+          repository.updateWedding(member.id, wedding.id, input),
+        ).resolves.toMatchObject({ name: role, role });
+      }
+    }
+  });
+});

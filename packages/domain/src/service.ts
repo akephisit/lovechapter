@@ -28,6 +28,7 @@ import type {
   UpdateGuestAffiliationInput,
   UpdateGuestInput,
   UpdateProfileInput,
+  UpdateWeddingInput,
   WeddingSummary,
   CreatePlanningTaskInput,
   UpdatePlanningTaskInput,
@@ -471,6 +472,25 @@ export class LoveChapterService {
       crypto.randomUUID(),
       normalizeWedding(input),
     );
+  }
+
+  async updateWedding(
+    weddingId: string,
+    input: UpdateWeddingInput,
+  ): Promise<WeddingSummary> {
+    const user = await this.requireOnboardedUser();
+    const normalized = normalizeWedding({
+      name: input.name,
+      ...(input.weddingDate ? { weddingDate: input.weddingDate } : {}),
+      timeZone: input.timeZone,
+      locale: input.locale,
+    });
+    return this.repository.updateWedding(user.id, weddingId, {
+      name: normalized.name,
+      weddingDate: normalized.weddingDate ?? null,
+      timeZone: normalized.timeZone,
+      locale: normalized.locale,
+    });
   }
 
   async listWeddings(page: PageInput): Promise<Page<WeddingSummary>> {

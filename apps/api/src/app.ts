@@ -192,6 +192,18 @@ const weddingInput = t.Object(
   },
   { additionalProperties: false },
 );
+const weddingUpdateInput = t.Object(
+  {
+    name: t.String({ minLength: 1, maxLength: 120 }),
+    weddingDate: t.Union([
+      t.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" }),
+      t.Null(),
+    ]),
+    timeZone: t.String({ minLength: 1, maxLength: 64 }),
+    locale: t.String({ minLength: 2, maxLength: 35 }),
+  },
+  { additionalProperties: false },
+);
 const planningTaskCreateInput = t.Object(
   {
     title: t.String({ minLength: 1, maxLength: 180 }),
@@ -651,6 +663,14 @@ export function createApiApp(dependencies: ApiDependencies) {
           service.createWedding(body),
         ),
       ),
+    )
+    .patch(
+      "/v1/weddings/:weddingId",
+      { params: idParams, body: weddingUpdateInput },
+      ({ params, body, request }) =>
+        dependencies.run(request, (service) =>
+          service.updateWedding(params.weddingId, body),
+        ),
     )
     .get(
       "/v1/weddings/:weddingId/rsvp-summary",

@@ -26,6 +26,7 @@ import type {
   SubmitRsvpInput,
   UpdateGuestAffiliationInput,
   UpdateProfileInput,
+  UpdateWeddingInput,
   WeddingSummary,
   PlanningTask,
   PlanningOverview,
@@ -339,6 +340,11 @@ export interface LoveChapterRepository {
     userId: string,
     id: string,
     input: CreateWeddingInput,
+  ): Promise<WeddingSummary>;
+  updateWedding(
+    userId: string,
+    weddingId: string,
+    input: UpdateWeddingInput,
   ): Promise<WeddingSummary>;
   getRsvpSummary(userId: string, weddingId: string): Promise<RsvpSummary>;
   listGuestAffiliations(

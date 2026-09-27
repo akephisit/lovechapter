@@ -9,6 +9,7 @@ import type {
   GuestCsvRow,
   GuestSummary,
   InvitationCreated,
+  MembershipRole,
   Page,
   PublicInvitation,
   RsvpResponse,
@@ -16,6 +17,7 @@ import type {
   SubmitRsvpInput,
   UpdateGuestAffiliationInput,
   UpdateProfileInput,
+  UpdateWeddingInput,
   WeddingSummary,
 } from "@lovechapter/contracts";
 
@@ -39,7 +41,7 @@ import type {
 
 type WeddingRecord = {
   summary: WeddingSummary;
-  members: Set<string>;
+  members: Map<string, MembershipRole>;
 };
 
 type GuestRecord = {
@@ -125,7 +127,10 @@ export class InMemoryLoveChapterRepository implements LoveChapterRepository {
     return paginate(
       [...this.weddings.values()]
         .filter((record) => record.members.has(userId))
-        .map((record) => record.summary),
+        .map((record) => ({
+          ...record.summary,
+          role: record.members.get(userId)!,
+        })),
       page,
     );
   }
@@ -146,8 +151,41 @@ export class InMemoryLoveChapterRepository implements LoveChapterRepository {
           role: "owner",
           createdAt,
         };
-    this.weddings.set(id, { summary, members: new Set([userId]) });
+    this.weddings.set(id, { summary, members: new Map([[userId, "owner"]]) });
     return summary;
+  }
+
+  addWeddingMember(
+    weddingId: string,
+    userId: string,
+    role: MembershipRole,
+  ): void {
+    const record = this.weddings.get(weddingId);
+    if (!record) throw new NotFoundError("Wedding not found");
+    record.members.set(userId, role);
+  }
+
+  async updateWedding(
+    userId: string,
+    weddingId: string,
+    input: UpdateWeddingInput,
+  ): Promise<WeddingSummary> {
+    const record = this.requireMember(userId, weddingId);
+    const role = record.members.get(userId)!;
+    if (role === "collaborator") {
+      throw new NotFoundError("Wedding not found");
+    }
+    const summary: WeddingSummary = {
+      id: record.summary.id,
+      name: input.name,
+      ...(input.weddingDate ? { weddingDate: input.weddingDate } : {}),
+      timeZone: input.timeZone,
+      locale: input.locale,
+      role: record.summary.role,
+      createdAt: record.summary.createdAt,
+    };
+    record.summary = summary;
+    return { ...summary, role };
   }
 
   async getRsvpSummary(

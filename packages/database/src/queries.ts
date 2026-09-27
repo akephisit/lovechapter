@@ -83,6 +83,35 @@ export function buildCreateOwnerMembershipQuery(input: {
     values (${input.weddingId}, ${input.userId}, 'owner')`;
 }
 
+export function buildUpdateWeddingQuery(input: {
+  userId: string;
+  weddingId: string;
+  name: string;
+  weddingDate: string | null;
+  timeZone: string;
+  locale: string;
+}): SQL {
+  return sql`update ${weddings}
+    set ${sql.identifier(weddings.name.name)} = ${input.name},
+        ${sql.identifier(weddings.weddingDate.name)} = ${input.weddingDate},
+        ${sql.identifier(weddings.timeZone.name)} = ${input.timeZone},
+        ${sql.identifier(weddings.locale.name)} = ${input.locale},
+        ${sql.identifier(weddings.updatedAt.name)} = now()
+    from ${weddingMembers}
+    where ${weddings.id} = ${input.weddingId}
+      and ${weddingMembers.weddingId} = ${weddings.id}
+      and ${weddingMembers.userId} = ${input.userId}
+      and ${weddingMembers.role} in ('owner','couple','planner')
+    returning
+      ${weddings.id} as "id",
+      ${weddings.name} as "name",
+      ${weddings.weddingDate} as "wedding_date",
+      ${weddings.timeZone} as "time_zone",
+      ${weddings.locale} as "locale",
+      ${weddingMembers.role} as "role",
+      ${weddings.createdAt} as "created_at"`;
+}
+
 export function buildListWeddingsQuery(input: {
   userId: string;
   limit: number;
