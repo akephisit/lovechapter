@@ -50,7 +50,7 @@ describe("automatic Worker release workflow policy", () => {
     expect(source).toMatch(
       /postgres:\s*\n[\s\S]*?test:postgres --workspace @lovechapter\/database/u,
     );
-    expect(source).not.toMatch(/^  staging:/mu);
+    expect(source).not.toMatch(/^ {2}staging:/mu);
     expect(source).toMatch(/production:\s*\n\s*needs:\s*\[ci, postgres\]/u);
     expect(source).toMatch(/vars\.PRODUCTION_RELEASE_ENABLED == 'true'/u);
     expect(source).toMatch(/environment:\s*production/u);

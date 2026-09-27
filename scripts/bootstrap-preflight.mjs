@@ -1,18 +1,10 @@
-const sharedSecrets = [
+const releaseSecrets = [
   "RELEASE_DATABASE_URL",
   "RELEASE_MIGRATION_DATABASE_URL",
   "RELEASE_NEON_API_KEY",
   "RELEASE_CLOUDFLARE_API_TOKEN",
   "WEB_PROXY_SHARED_SECRET",
   "RELEASE_PROBE_SECRET",
-];
-const stagingSecrets = [
-  ...sharedSecrets,
-  "RELEASE_TEST_EMAIL",
-  "RELEASE_TEST_PASSWORD",
-  "RELEASE_VERIFICATION_EMAIL",
-  "RELEASE_TEST_DATABASE_URL",
-  "RELEASE_TEST_MIGRATION_DATABASE_URL",
 ];
 const webWorkerSecrets = [
   "API_UPSTREAM_ORIGIN",
@@ -45,10 +37,6 @@ function namesContain(names, required) {
   );
 }
 
-function distinct(...values) {
-  return values.every(configured) && new Set(values).size === values.length;
-}
-
 function safeHost(value) {
   return (
     configured(value) &&
@@ -72,11 +60,12 @@ export function checkBootstrapReadiness(input) {
   ) {
     issues.push("protected_source_incomplete");
   }
-  for (const name of ["staging", "production"]) {
-    const environment = github?.environments?.[name];
-    if (environment?.mainOnly !== true || environment.requiredReviewers !== 0) {
-      issues.push(`${name}_environment_unrestricted`);
-    }
+  const productionEnvironment = github?.environments?.production;
+  if (
+    productionEnvironment?.mainOnly !== true ||
+    productionEnvironment.requiredReviewers !== 0
+  ) {
+    issues.push("production_environment_unrestricted");
   }
   if (github?.cloudflareGitDeployEnabled !== false) {
     issues.push("independent_cloudflare_deploy_not_disabled");
@@ -85,18 +74,9 @@ export function checkBootstrapReadiness(input) {
   const neon = input?.neon;
   if (
     !configured(neon?.projectId) ||
-    !distinct(
-      neon?.stagingBranchId,
-      neon?.productionBranchId,
-      neon?.testBranchId,
-    ) ||
-    ![
-      neon?.stagingBranchId,
-      neon?.productionBranchId,
-      neon?.testBranchId,
-    ].every((value) => value?.startsWith("br-")) ||
-    !distinct(neon?.stagingHost, neon?.productionHost, neon?.testHost) ||
-    ![neon?.stagingHost, neon?.productionHost, neon?.testHost].every(safeHost)
+    !configured(neon?.productionBranchId) ||
+    !neon.productionBranchId.startsWith("br-") ||
+    !safeHost(neon?.productionHost)
   ) {
     issues.push("neon_branch_identity_incomplete");
   }
@@ -105,50 +85,23 @@ export function checkBootstrapReadiness(input) {
   if (!configured(cloudflare?.accountId)) {
     issues.push("cloudflare_account_unverified");
   }
-  if (
-    !distinct(
-      cloudflare?.staging?.hyperdriveId,
-      cloudflare?.production?.hyperdriveId,
-    )
-  ) {
+  if (!configured(cloudflare?.production?.hyperdriveId)) {
     issues.push("hyperdrive_identity_incomplete");
   }
-  for (const name of ["staging", "production"]) {
-    const target = cloudflare?.[name];
-    const suffix = name === "staging" ? "-staging" : "";
-    if (
-      target?.webName !== `lovechapter-web${suffix}` ||
-      target.apiName !== `lovechapter-api${suffix}` ||
-      target.hyperdriveHost !== neon?.[`${name}Host`] ||
-      target.cacheDisabled !== true ||
-      target.previewUrlsDisabled !== true ||
-      !namesContain(target.webSecretNames, webWorkerSecrets) ||
-      !namesContain(target.apiSecretNames, apiWorkerSecrets)
-    ) {
-      issues.push(`${name}_worker_target_incomplete`);
-    }
-    if (
-      !namesContain(
-        input?.secretsMetadata?.[name],
-        name === "staging" ? stagingSecrets : sharedSecrets,
-      )
-    ) {
-      issues.push(`${name}_release_secrets_missing`);
-    }
-  }
-
-  const recovery = input?.recoveryEvidence;
+  const target = cloudflare?.production;
   if (
-    !configured(recovery?.branchId) ||
-    [
-      neon?.stagingBranchId,
-      neon?.productionBranchId,
-      neon?.testBranchId,
-    ].includes(recovery.branchId) ||
-    recovery.retainedDataVerified !== true ||
-    !/^[0-9A-F]+\/[0-9A-F]+$/iu.test(recovery.checkpointLsn ?? "")
+    target?.webName !== "lovechapter-web" ||
+    target.apiName !== "lovechapter-api" ||
+    target.hyperdriveHost !== neon?.productionHost ||
+    target.cacheDisabled !== true ||
+    target.previewUrlsDisabled !== true ||
+    !namesContain(target.webSecretNames, webWorkerSecrets) ||
+    !namesContain(target.apiSecretNames, apiWorkerSecrets)
   ) {
-    issues.push("isolated_recovery_rehearsal_missing");
+    issues.push("production_worker_target_incomplete");
+  }
+  if (!namesContain(input?.secretsMetadata?.production, releaseSecrets)) {
+    issues.push("production_release_secrets_missing");
   }
   if (
     input?.productionGate?.mode !== "maintenance" ||

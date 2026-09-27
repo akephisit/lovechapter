@@ -25,7 +25,7 @@ async function readJson(fetcher, url, apiKey, method = "GET") {
         Authorization: `Bearer ${apiKey}`,
         Accept: "application/json",
       },
-      signal: AbortSignal.timeout(10_000),
+      signal: globalThis.AbortSignal.timeout(10_000),
     });
   } catch {
     throw new Error("Neon recovery-point request was ambiguous");
@@ -44,8 +44,8 @@ async function readJson(fetcher, url, apiKey, method = "GET") {
 export async function createNeonRecoveryPoint(
   input,
   {
-    fetcher = fetch,
-    wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    fetcher = globalThis.fetch,
+    wait = (ms) => new Promise((resolve) => globalThis.setTimeout(resolve, ms)),
     maxAttempts = 12,
   } = {},
 ) {

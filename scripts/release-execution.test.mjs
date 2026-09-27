@@ -86,6 +86,19 @@ describe("release execution from accepted baseline", () => {
       executeRelease({ environment: "production", sha }, context),
     ).rejects.toThrow();
     expect(context.createDriver).toHaveBeenCalledTimes(1);
+    expect(context.createDriver).toHaveBeenCalledWith(
+      expect.objectContaining({ baselineSha }),
+    );
+  });
+
+  it("does not enter production maintenance without the initial successful ledger record", async () => {
+    const context = fixture("production");
+    context.ledger.readProductionBaseline.mockResolvedValueOnce(null);
+    await expect(
+      executeRelease({ environment: "production", sha }, context),
+    ).rejects.toThrow();
+    expect(context.resolvePlan).not.toHaveBeenCalled();
+    expect(context.createDriver).not.toHaveBeenCalled();
   });
 
   it("stops a closed, incomplete, or inconsistent baseline before planning", async () => {

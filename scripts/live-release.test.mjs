@@ -3,181 +3,180 @@ import { Buffer } from "node:buffer";
 import { describe, expect, it, vi } from "vitest";
 
 import { runLiveRelease } from "./live-release.mjs";
-import { REQUIRED_STAGING_CHECKS } from "./release-orchestrator.mjs";
 
 const sha = "a".repeat(40);
+const prior = "b".repeat(40);
 const secret = Buffer.alloc(32, 1).toString("base64url");
 const otherSecret = Buffer.alloc(32, 2).toString("base64url");
 
-function environment() {
+function environment(overrides = {}) {
   return {
-    GITHUB_OUTPUT: "/tmp/github-release-output-test",
+    GITHUB_ACTIONS: "true",
+    GITHUB_EVENT_NAME: "push",
+    GITHUB_REF: "refs/heads/main",
+    GITHUB_REF_PROTECTED: "true",
+    GITHUB_REPOSITORY: "akephisit/lovechapter",
+    GITHUB_SHA: sha,
     GITHUB_TOKEN: "test-github-token",
-    RELEASE_ENVIRONMENT: "staging",
+    PRODUCTION_RELEASE_ENABLED: "true",
+    RELEASE_ENVIRONMENT: "production",
     RELEASE_POSTGRES_JOB_RESULT: "success",
     RELEASE_NEON_PROJECT_ID: "icy-hat-79862899",
-    RELEASE_NEON_BRANCH_ID: "br-staging-123",
+    RELEASE_NEON_BRANCH_ID: "br-production-456",
     RELEASE_DATABASE_NAME: "lovechapter",
     RELEASE_DATABASE_ROLE: "release",
     RELEASE_APP_DATABASE_ROLE: "app",
     RELEASE_MIGRATION_DATABASE_ROLE: "migrator",
     RELEASE_CLOUDFLARE_ACCOUNT_ID: "cf-account-123",
-    RELEASE_HYPERDRIVE_ID: "staging-hyperdrive-123",
-    RELEASE_WEB_ORIGIN: "https://lovechapter-web-staging.example.workers.dev",
-    RELEASE_API_ORIGIN: "https://lovechapter-api-staging.example.workers.dev",
+    RELEASE_HYPERDRIVE_ID: "production-hyperdrive-456",
+    RELEASE_WEB_ORIGIN: "https://lovechapter-web.example.workers.dev",
+    RELEASE_API_ORIGIN: "https://lovechapter-api.example.workers.dev",
     RELEASE_DATABASE_URL:
-      "postgresql://release:private-password@ep-staging.neon.tech/lovechapter?sslmode=require",
+      "postgresql://release:private-password@ep-production.neon.tech/lovechapter?sslmode=require",
     RELEASE_MIGRATION_DATABASE_URL:
-      "postgresql://migrator:private-password@ep-staging.neon.tech/lovechapter?sslmode=require",
+      "postgresql://migrator:private-password@ep-production.neon.tech/lovechapter?sslmode=require",
     RELEASE_NEON_API_KEY: "neon-test-secret",
     RELEASE_CLOUDFLARE_API_TOKEN: "cf-test-secret",
     WEB_PROXY_SHARED_SECRET: secret,
     RELEASE_PROBE_SECRET: otherSecret,
-    RELEASE_TEST_EMAIL: "verified@example.test",
-    RELEASE_TEST_PASSWORD: "private-test-password",
-    RELEASE_VERIFICATION_EMAIL: "verify@example.test",
-    RELEASE_FOREIGN_WEDDING_ID: "22222222-2222-4222-8222-222222222222",
-    RELEASE_TEST_DATABASE_URL:
-      "postgresql://tester:test-password@ep-test.neon.tech/lovechapter?sslmode=require",
-    RELEASE_TEST_MIGRATION_DATABASE_URL:
-      "postgresql://migrator:migration-password@ep-test.neon.tech/lovechapter?sslmode=require",
-    RELEASE_TEST_MIGRATION_DATABASE_ROLE: "migrator",
-    RELEASE_TEST_BRANCH_ID: "br-test-456",
-    RELEASE_TEST_DATABASE_CONFIRM: "lovechapter_test",
+    ...overrides,
   };
 }
 
-function services() {
-  const gate = { status: vi.fn() };
+function services({ head = sha, result = { status: "released", sha } } = {}) {
+  const gate = { status: vi.fn(async () => ({ targetSha: prior })) };
   const workerRunner = { label: "worker-runner" };
-  const githubRead = { readMainHead: vi.fn() };
+  const githubRead = { readMainHead: vi.fn(async () => head) };
+  const githubDeployment = { readProductionBaseline: vi.fn() };
   const migration = vi.fn();
-  const preflight = vi.fn(async () => ({ targetVerified: true }));
-  const acceptance = vi.fn();
-  const makeGate = vi.fn(() => gate);
-  const makeWorkerRunner = vi.fn(() => workerRunner);
-  const makeGitHubRead = vi.fn(() => githubRead);
-  const makeMigration = vi.fn(() => migration);
-  const makePreflight = vi.fn(() => preflight);
-  const makeAcceptance = vi.fn(() => acceptance);
   const makeReleaseDriver = vi.fn((config) => ({ config }));
-  const accepted = {
-    commitSha: sha,
-    checks: [...REQUIRED_STAGING_CHECKS],
-    inboxDelivery: "waived",
-  };
+  const makeRecoveryPoint = vi.fn(async () => ({
+    snapshotId: "snap-one",
+    sourceBranchId: "br-production-456",
+  }));
   const execute = vi.fn(async (_input, adapters) => {
     adapters.createDriver({
-      environment: "staging",
+      environment: "production",
       sha,
+      baselineSha: prior,
       impact: { web: true, backend: false, migrate: false },
       previous: {
-        web: { versionId: "web-old", sourceSha: "b".repeat(40) },
-        api: { versionId: "api-old", sourceSha: "b".repeat(40) },
+        web: { versionId: "web-old", sourceSha: prior },
+        api: { versionId: "api-old", sourceSha: prior },
       },
     });
-    return {
-      status: "released",
-      environment: "staging",
-      sha,
-      recorded: { stagingAcceptance: accepted },
-    };
+    return result;
   });
-  const writeOutput = vi.fn(async () => undefined);
   return {
-    makeGate,
-    makeWorkerRunner,
-    makeGitHubRead,
-    makeMigration,
-    makePreflight,
-    makeAcceptance,
+    makeGate: vi.fn(() => gate),
+    makeWorkerRunner: vi.fn(() => workerRunner),
+    makeGitHubRead: vi.fn(() => githubRead),
+    makeGitHubDeployment: vi.fn(() => githubDeployment),
+    makeMigration: vi.fn(() => migration),
+    makeRecoveryPoint,
     makeReleaseDriver,
     execute,
-    writeOutput,
     gate,
     workerRunner,
     githubRead,
+    githubDeployment,
     migration,
-    preflight,
-    acceptance,
   };
 }
 
-describe("default live release composition", () => {
-  it("connects staging preflight, migration, acceptance, and exact output", async () => {
+describe("direct production live release composition", () => {
+  it("wires the production gate, GitHub ledger, migration and recovery without staging inputs", async () => {
     const env = environment();
     const adapters = services();
-    const result = await runLiveRelease(
-      { environment: "staging", sha },
-      env,
-      adapters,
-    );
-    expect(result.status).toBe("released");
+    await expect(
+      runLiveRelease({ environment: "production", sha }, env, adapters),
+    ).resolves.toMatchObject({ status: "released" });
     expect(adapters.execute).toHaveBeenCalledWith(
-      { environment: "staging", sha },
-      expect.objectContaining({ gate: adapters.gate }),
+      { environment: "production", sha },
+      expect.objectContaining({
+        gate: adapters.gate,
+        ledger: adapters.githubDeployment,
+      }),
     );
     const config = adapters.makeReleaseDriver.mock.calls[0][0];
-    expect(config.workerRunner).toBe(adapters.workerRunner);
-    expect(config.githubRead).toBe(adapters.githubRead);
-    expect(config.verifyStaging).toBe(adapters.preflight);
-    expect(config.applyMigration).toBe(adapters.migration);
-    expect(config.acceptStaging).toBe(adapters.acceptance);
-    expect(config.proxySecret).toBe(secret);
-    expect(config.probeSecret).toBe(otherSecret);
-    expect(adapters.writeOutput).toHaveBeenCalledWith(
-      result,
-      env.GITHUB_OUTPUT,
-    );
+    expect(config).toMatchObject({
+      environment: "production",
+      sha,
+      githubRead: adapters.githubRead,
+      githubDeployment: adapters.githubDeployment,
+      workerRunner: adapters.workerRunner,
+      applyMigration: adapters.migration,
+    });
+    expect(config).not.toHaveProperty("stagingSha");
+    expect(config).not.toHaveProperty("acceptStaging");
+    await expect(config.verifyProduction()).resolves.toEqual({
+      releaseEnabled: true,
+      protectedMain: true,
+      targetVerified: true,
+      baseline: { expectedSha: prior, currentSha: prior },
+    });
+    await expect(
+      config.createRecoveryPoint(sha, {
+        closure: { changedAt: "2026-09-27T00:00:00.000Z" },
+      }),
+    ).resolves.toMatchObject({ snapshotId: "snap-one" });
+    expect(adapters.makeRecoveryPoint).toHaveBeenCalledWith({
+      projectId: env.RELEASE_NEON_PROJECT_ID,
+      branchId: env.RELEASE_NEON_BRANCH_ID,
+      sha,
+      closedAt: "2026-09-27T00:00:00.000Z",
+      apiKey: env.RELEASE_NEON_API_KEY,
+    });
   });
 
-  it("refuses incomplete staging setup before creating a gate or Worker runner", async () => {
-    for (const edit of [
-      { GITHUB_OUTPUT: "" },
-      { RELEASE_POSTGRES_JOB_RESULT: "skipped" },
-      { RELEASE_TEST_DATABASE_URL: "" },
-      { RELEASE_TEST_MIGRATION_DATABASE_URL: "" },
-      { RELEASE_TEST_MIGRATION_DATABASE_ROLE: "" },
-      { RELEASE_APP_DATABASE_ROLE: "" },
-      { RELEASE_PROBE_SECRET: "" },
-    ]) {
-      const adapters = services();
-      await expect(
-        runLiveRelease(
-          { environment: "staging", sha },
-          { ...environment(), ...edit },
-          adapters,
-        ),
-      ).rejects.toThrow();
-      expect(adapters.makeGate).not.toHaveBeenCalled();
-      expect(adapters.execute).not.toHaveBeenCalled();
-    }
-  });
-
-  it("leaves production unavailable until protected bootstrap exists", async () => {
-    const adapters = services();
+  it("rejects stale main before loading the gate or Worker runner", async () => {
+    const adapters = services({ head: prior });
     await expect(
       runLiveRelease(
         { environment: "production", sha },
         environment(),
         adapters,
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/superseded/u);
     expect(adapters.makeGate).not.toHaveBeenCalled();
+    expect(adapters.makeWorkerRunner).not.toHaveBeenCalled();
   });
 
-  it("does not write a staging acceptance output for a docs-only skip", async () => {
-    const adapters = services();
-    adapters.execute.mockResolvedValueOnce({
-      status: "skipped",
-      reason: "docs_only",
-      sha,
+  it("rejects staging, unprotected context, missing credentials, and skipped PostgreSQL CI", async () => {
+    for (const [selected, edit] of [
+      ["staging", {}],
+      ["production", { GITHUB_REF_PROTECTED: "false" }],
+      ["production", { RELEASE_POSTGRES_JOB_RESULT: "skipped" }],
+      ["production", { RELEASE_NEON_API_KEY: "" }],
+      ["production", { RELEASE_HYPERDRIVE_ID: "REPLACE_WITH_HYPERDRIVE_ID" }],
+      ["production", { WEB_PROXY_SHARED_SECRET: "" }],
+    ]) {
+      const adapters = services();
+      await expect(
+        runLiveRelease(
+          { environment: selected, sha },
+          environment(edit),
+          adapters,
+        ),
+      ).rejects.toThrow();
+      expect(adapters.makeGitHubRead).not.toHaveBeenCalled();
+      expect(adapters.makeGate).not.toHaveBeenCalled();
+    }
+  });
+
+  it("returns a docs-only skip without creating a deployment record", async () => {
+    const adapters = services({
+      result: { status: "skipped", reason: "docs_only", sha },
     });
-    await runLiveRelease(
-      { environment: "staging", sha },
-      environment(),
-      adapters,
-    );
-    expect(adapters.writeOutput).not.toHaveBeenCalled();
+    await expect(
+      runLiveRelease(
+        { environment: "production", sha },
+        environment(),
+        adapters,
+      ),
+    ).resolves.toEqual({ status: "skipped", reason: "docs_only", sha });
+    expect(
+      adapters.githubDeployment.readProductionBaseline,
+    ).not.toHaveBeenCalled();
   });
 });

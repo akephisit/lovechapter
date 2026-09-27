@@ -1,19 +1,15 @@
+import { createGitHubDeploymentClient } from "./github-deployments.mjs";
 import { createGitHubReadClient } from "./github-release-client.mjs";
+import { createNeonRecoveryPoint } from "./neon-recovery-point.mjs";
 import { createReleaseDriver } from "./release-driver.mjs";
 import { executeRelease } from "./release-execution.mjs";
 import { createReleaseGateCommand } from "./release-gate-command.mjs";
 import { createReleaseMigrationCommand } from "./release-migration-command.mjs";
 import { canonicalSecret } from "./release-smoke.mjs";
-import {
-  createStagingAcceptanceCommand,
-  createStagingAcceptancePreflightCommand,
-} from "./staging-acceptance-command.mjs";
-import { writeStagingOutput } from "./staging-output.mjs";
 import { createWorkerCommandRunner } from "./worker-versions.mjs";
 
 const shaPattern = /^[0-9a-f]{40}$/u;
-const requiredStaging = [
-  "GITHUB_OUTPUT",
+const requiredProduction = [
   "GITHUB_TOKEN",
   "RELEASE_NEON_PROJECT_ID",
   "RELEASE_NEON_BRANCH_ID",
@@ -29,17 +25,17 @@ const requiredStaging = [
   "RELEASE_MIGRATION_DATABASE_URL",
   "RELEASE_NEON_API_KEY",
   "RELEASE_CLOUDFLARE_API_TOKEN",
-  "RELEASE_TEST_EMAIL",
-  "RELEASE_TEST_PASSWORD",
-  "RELEASE_VERIFICATION_EMAIL",
-  "RELEASE_FOREIGN_WEDDING_ID",
-  "RELEASE_TEST_DATABASE_URL",
-  "RELEASE_TEST_MIGRATION_DATABASE_URL",
-  "RELEASE_TEST_MIGRATION_DATABASE_ROLE",
-  "RELEASE_TEST_BRANCH_ID",
 ];
 
-/** The staging-only live coordinator remains behind protected-main and flags. */
+function configured(value) {
+  return (
+    typeof value === "string" &&
+    value.trim() !== "" &&
+    !value.startsWith("REPLACE_WITH_")
+  );
+}
+
+/** Compose one direct production release after exact-main context checks. */
 export async function runLiveRelease(
   { environment, sha },
   env,
@@ -47,48 +43,50 @@ export async function runLiveRelease(
     makeGate = createReleaseGateCommand,
     makeWorkerRunner = createWorkerCommandRunner,
     makeGitHubRead = createGitHubReadClient,
+    makeGitHubDeployment = createGitHubDeploymentClient,
     makeMigration = createReleaseMigrationCommand,
-    makePreflight = createStagingAcceptancePreflightCommand,
-    makeAcceptance = createStagingAcceptanceCommand,
+    makeRecoveryPoint = createNeonRecoveryPoint,
     makeReleaseDriver = createReleaseDriver,
     execute = executeRelease,
-    writeOutput = writeStagingOutput,
   } = {},
 ) {
-  if (environment !== "staging") {
-    throw new Error("Production release bootstrap is not complete");
-  }
   if (
+    environment !== "production" ||
     !shaPattern.test(sha ?? "") ||
-    env?.RELEASE_ENVIRONMENT !== "staging" ||
+    env?.GITHUB_ACTIONS !== "true" ||
+    env.GITHUB_EVENT_NAME !== "push" ||
+    env.GITHUB_REF !== "refs/heads/main" ||
+    env.GITHUB_REF_PROTECTED !== "true" ||
+    env.GITHUB_REPOSITORY !== "akephisit/lovechapter" ||
+    env.GITHUB_SHA !== sha ||
+    env.RELEASE_ENVIRONMENT !== "production" ||
+    env.PRODUCTION_RELEASE_ENABLED !== "true" ||
     env.RELEASE_POSTGRES_JOB_RESULT !== "success" ||
-    env.RELEASE_TEST_DATABASE_CONFIRM !== "lovechapter_test" ||
-    requiredStaging.some(
-      (name) =>
-        typeof env[name] !== "string" ||
-        !env[name].trim() ||
-        env[name].startsWith("REPLACE_WITH_"),
-    ) ||
+    requiredProduction.some((name) => !configured(env[name])) ||
     !canonicalSecret(env.WEB_PROXY_SHARED_SECRET) ||
     !canonicalSecret(env.RELEASE_PROBE_SECRET) ||
     env.WEB_PROXY_SHARED_SECRET === env.RELEASE_PROBE_SECRET
   ) {
-    throw new Error("Staging release configuration is incomplete");
+    throw new Error("Production release configuration is incomplete");
   }
+
+  const githubRead = makeGitHubRead({ token: env.GITHUB_TOKEN });
+  if ((await githubRead.readMainHead()) !== sha) {
+    throw new Error("Release SHA was superseded on main");
+  }
+  const githubDeployment = makeGitHubDeployment({ token: env.GITHUB_TOKEN });
   const gate = makeGate({ env });
   const workerRunner = makeWorkerRunner({
     cloudflareAccountId: env.RELEASE_CLOUDFLARE_ACCOUNT_ID,
     cloudflareApiToken: env.RELEASE_CLOUDFLARE_API_TOKEN,
   });
-  const githubRead = makeGitHubRead({ token: env.GITHUB_TOKEN });
   const migration = makeMigration({ env });
-  const preflight = makePreflight({ env });
-  const acceptance = makeAcceptance({ env });
-  const result = await execute(
+  return execute(
     { environment, sha },
     {
       gate,
-      createDriver: ({ impact, previous }) =>
+      ledger: githubDeployment,
+      createDriver: ({ impact, previous, baselineSha }) =>
         makeReleaseDriver({
           environment,
           sha,
@@ -98,18 +96,30 @@ export async function runLiveRelease(
           workerRunner,
           gate,
           githubRead,
+          githubDeployment,
           webOrigin: env.RELEASE_WEB_ORIGIN,
           apiOrigin: env.RELEASE_API_ORIGIN,
           proxySecret: env.WEB_PROXY_SHARED_SECRET,
           probeSecret: env.RELEASE_PROBE_SECRET,
-          verifyStaging: preflight,
+          verifyProduction: async () => ({
+            releaseEnabled: true,
+            protectedMain: true,
+            targetVerified: true,
+            baseline: {
+              expectedSha: baselineSha,
+              currentSha: (await gate.status()).targetSha,
+            },
+          }),
           applyMigration: migration,
-          acceptStaging: acceptance,
+          createRecoveryPoint: async (candidate, { closure }) =>
+            makeRecoveryPoint({
+              projectId: env.RELEASE_NEON_PROJECT_ID,
+              branchId: env.RELEASE_NEON_BRANCH_ID,
+              sha: candidate,
+              closedAt: closure.changedAt,
+              apiKey: env.RELEASE_NEON_API_KEY,
+            }),
         }),
     },
   );
-  if (result?.status === "released") {
-    await writeOutput(result, env.GITHUB_OUTPUT);
-  }
-  return result;
 }

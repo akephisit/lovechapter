@@ -97,6 +97,7 @@ export async function executeRelease(
   const driver = createDriver({
     environment,
     sha,
+    baselineSha: baseline.sha,
     impact: plan.impact,
     previous: { web: baseline.web, api: baseline.api },
   });
