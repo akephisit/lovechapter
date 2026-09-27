@@ -9,7 +9,7 @@ const previous = {
   api: { versionId: "api-old", sourceSha: baselineSha },
 };
 
-function fixture(environment = "staging") {
+function fixture() {
   const gateState = {
     mode: "open",
     targetSha: baselineSha,
@@ -34,7 +34,7 @@ function fixture(environment = "staging") {
   const createDriver = vi.fn(() => ({ label: "guarded-driver" }));
   const runCutover = vi.fn(async () => ({ status: "released", sha }));
   return {
-    environment,
+    environment: "production",
     gateState,
     gate,
     ledger,
@@ -46,19 +46,21 @@ function fixture(environment = "staging") {
 }
 
 describe("release execution from accepted baseline", () => {
-  it("plans staging against its open gate Worker pair", async () => {
+  it("plans production against its accepted Worker pair", async () => {
     const context = fixture();
     await expect(
-      executeRelease({ environment: "staging", sha }, context),
+      executeRelease({ environment: "production", sha }, context),
     ).resolves.toEqual({
       status: "released",
       sha,
     });
     expect(context.resolvePlan).toHaveBeenCalledWith({ baselineSha, sha });
-    expect(context.ledger.readProductionBaseline).not.toHaveBeenCalled();
+    expect(context.ledger.readProductionBaseline).toHaveBeenCalledWith(
+      context.gateState,
+    );
     expect(context.createDriver).toHaveBeenCalledWith(
       expect.objectContaining({
-        environment: "staging",
+        environment: "production",
         sha,
         impact: context.plan.impact,
         previous,
@@ -66,7 +68,7 @@ describe("release execution from accepted baseline", () => {
     );
     expect(context.runCutover).toHaveBeenCalledWith(
       {
-        environment: "staging",
+        environment: "production",
         sha,
         impact: context.plan.impact,
         migration: context.plan.migration,
@@ -76,7 +78,7 @@ describe("release execution from accepted baseline", () => {
   });
 
   it("requires GitHub's production ledger to agree with the open gate", async () => {
-    const context = fixture("production");
+    const context = fixture();
     await executeRelease({ environment: "production", sha }, context);
     expect(context.ledger.readProductionBaseline).toHaveBeenCalledWith(
       context.gateState,
@@ -92,7 +94,7 @@ describe("release execution from accepted baseline", () => {
   });
 
   it("does not enter production maintenance without the initial successful ledger record", async () => {
-    const context = fixture("production");
+    const context = fixture();
     context.ledger.readProductionBaseline.mockResolvedValueOnce(null);
     await expect(
       executeRelease({ environment: "production", sha }, context),
@@ -114,7 +116,7 @@ describe("release execution from accepted baseline", () => {
         ...edit,
       });
       await expect(
-        executeRelease({ environment: "staging", sha }, context),
+        executeRelease({ environment: "production", sha }, context),
       ).rejects.toThrow();
       expect(context.resolvePlan).not.toHaveBeenCalled();
       expect(context.createDriver).not.toHaveBeenCalled();
@@ -128,7 +130,7 @@ describe("release execution from accepted baseline", () => {
       impact: { web: false, backend: false, migrate: false },
     });
     await expect(
-      executeRelease({ environment: "staging", sha }, context),
+      executeRelease({ environment: "production", sha }, context),
     ).resolves.toEqual({
       status: "skipped",
       reason: "docs_only",
@@ -146,7 +148,7 @@ describe("release execution from accepted baseline", () => {
       const context = fixture();
       context.resolvePlan.mockResolvedValueOnce({ ...context.plan, ...edit });
       await expect(
-        executeRelease({ environment: "staging", sha }, context),
+        executeRelease({ environment: "production", sha }, context),
       ).rejects.toThrow();
       expect(context.createDriver).not.toHaveBeenCalled();
     }
@@ -164,7 +166,7 @@ describe("release execution from accepted baseline", () => {
       const context = fixture();
       context.resolvePlan.mockResolvedValueOnce({ ...context.plan, ...edit });
       await expect(
-        executeRelease({ environment: "staging", sha }, context),
+        executeRelease({ environment: "production", sha }, context),
       ).rejects.toThrow();
       expect(context.createDriver).not.toHaveBeenCalled();
     }

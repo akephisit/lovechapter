@@ -11,42 +11,24 @@ const previous = {
   web: { versionId: "web-old", sourceSha: previousSha },
   api: { versionId: "api-old", sourceSha: previousSha },
 };
-const checks = [
-  "verification_outbox",
-  "reset_outbox",
-  "verified_session",
-  "tenant_isolation",
-  "guest_rsvp",
-  "csv_round_trip",
-  "session_revoked",
-  "scoped_cleanup",
-  "scheduled_email_provider",
-  "scheduled_cleanup",
-  "query_plans",
-  "postgres_retry",
-];
 const input = {
-  environment: "staging",
+  environment: "production",
   sha,
   impact: { web: true, backend: false, migrate: false },
   migration: { kind: "none", paths: [] },
 };
 
-function fixture({
-  acceptedChecks = checks,
-  driverOverrides = {},
-  baselineOverrides = {},
-} = {}) {
+function fixture({ driverOverrides = {}, baselineOverrides = {} } = {}) {
   const events = [];
   const versions = { web: "web-old", api: "api-old" };
   const workerRunner = {
     validateTarget: vi.fn(async () => ({
-      web: "lovechapter-web-staging",
-      api: "lovechapter-api-staging",
+      web: "lovechapter-web",
+      api: "lovechapter-api",
     })),
     readPreviewSettings: vi.fn(async () => ({ previewsEnabled: false })),
     readDeployment: vi.fn(async (component) => ({
-      workerName: `lovechapter-${component}-staging`,
+      workerName: `lovechapter-${component}`,
       versions: [{ version_id: versions[component], percentage: 100 }],
     })),
     buildWeb: vi.fn(async () => events.push("build_web")),
@@ -115,10 +97,13 @@ function fixture({
   const fetcher = vi.fn(async (url, options = {}) => {
     const parsed = new globalThis.URL(url);
     const headers = new globalThis.Headers(options.headers);
-    const isWeb = parsed.hostname.includes("-web-");
+    const isWeb = parsed.hostname.startsWith("lovechapter-web.");
     const path = parsed.pathname;
     if (!isWeb && path === "/health/release-state") {
-      return globalThis.Response.json({ mode: gateState.mode });
+      return globalThis.Response.json({
+        mode: gateState.mode,
+        publishedSha: gateState.mode === "open" ? gateState.targetSha : null,
+      });
     }
     if (!isWeb && ["/health/ready", "/health/live"].includes(path)) {
       return globalThis.Response.json({ status: "ok" });
@@ -139,27 +124,31 @@ function fixture({
     }
     return globalThis.Response.json({}, { status: 401 });
   });
-  const acceptStaging = vi.fn(async () => ({
-    commitSha: sha,
-    checks: acceptedChecks,
-    inboxDelivery: "waived",
-  }));
+  const githubDeployment = {
+    createDeployment: vi.fn(async () => ({ id: 42 })),
+    createDeploymentStatus: vi.fn(async () => ({ id: 43 })),
+  };
   const driver = createReleaseDriver({
-    environment: "staging",
+    environment: "production",
     sha,
     impact: input.impact,
     previous,
-    hyperdriveId: "staging-hyperdrive",
+    hyperdriveId: "production-hyperdrive",
     workerRunner,
     gate,
     githubRead: { readMainHead: vi.fn(async () => sha) },
-    webOrigin: "https://lovechapter-web-staging.example.workers.dev",
-    apiOrigin: "https://lovechapter-api-staging.example.workers.dev",
+    githubDeployment,
+    webOrigin: "https://lovechapter-web.example.workers.dev",
+    apiOrigin: "https://lovechapter-api.example.workers.dev",
     proxySecret: Buffer.alloc(32, 1).toString("base64url"),
     probeSecret: Buffer.alloc(32, 2).toString("base64url"),
-    verifyStaging: vi.fn(async () => ({ targetVerified: true })),
+    verifyProduction: vi.fn(async () => ({
+      releaseEnabled: true,
+      protectedMain: true,
+      targetVerified: true,
+      baseline: { expectedSha: previousSha, currentSha: previousSha },
+    })),
     applyMigration: vi.fn(async () => ({ status: "applied_and_validated" })),
-    acceptStaging,
     fetcher,
     now: () => new Date("2026-09-26T00:01:00.000Z"),
     ...driverOverrides,
@@ -169,7 +158,7 @@ function fixture({
     gate,
     workerRunner,
     events,
-    acceptStaging,
+    githubDeployment,
     getEvidence: () => evidence,
   };
 }
@@ -180,8 +169,8 @@ describe("concrete release driver composition", () => {
       { probeSecret: "not-canonical" },
       { proxySecret: "not-canonical" },
       { webOrigin: "https://unowned.example.com" },
-      { webOrigin: "https://lovechapter-web.example.workers.dev" },
-      { apiOrigin: "https://lovechapter-web-staging.example.workers.dev" },
+      { webOrigin: "https://lovechapter-web-staging.example.workers.dev" },
+      { apiOrigin: "https://lovechapter-web.example.workers.dev" },
     ]) {
       expect(() => fixture({ driverOverrides })).toThrow(
         /driver is incomplete/iu,
@@ -219,26 +208,20 @@ describe("concrete release driver composition", () => {
     expect(workerRunner.buildApi).not.toHaveBeenCalled();
     expect(gate.close).toHaveBeenCalledOnce();
     expect(getEvidence()).toMatchObject({
-      environment: "staging",
+      environment: "production",
       commitSha: sha,
       web: { versionId: "web-new", sourceSha: sha, changed: true },
       api: { versionId: "api-old", sourceSha: previousSha, changed: false },
       privateSmokePassed: true,
       inboxDelivery: "waived",
     });
-    expect(result.recorded.stagingAcceptance.checks).toEqual(checks);
+    expect(result.recorded).toBe(42);
   });
 
-  it("recloses after staging acceptance omits any required check", async () => {
-    const { driver, gate, acceptStaging, events } = fixture({
-      acceptedChecks: checks.slice(0, -1),
-    });
-    await expect(runCutover(input, driver)).rejects.toThrow(
-      /staging acceptance/iu,
-    );
-    expect(acceptStaging).toHaveBeenCalledOnce();
-    expect(gate.reclose).toHaveBeenCalledOnce();
-    expect(events.at(-1)).toBe("reclose");
+  it("rejects an obsolete staging driver before any release step", () => {
+    expect(() =>
+      fixture({ driverOverrides: { environment: "staging" } }),
+    ).toThrow(/driver is incomplete/iu);
   });
 
   it("records production success only for the opened exact Worker pair", async () => {

@@ -1,31 +1,5 @@
 const shaPattern = /^[0-9a-f]{40}$/u;
 
-export const REQUIRED_STAGING_CHECKS = Object.freeze([
-  "verification_outbox",
-  "reset_outbox",
-  "verified_session",
-  "tenant_isolation",
-  "guest_rsvp",
-  "csv_round_trip",
-  "session_revoked",
-  "scoped_cleanup",
-  "scheduled_email_provider",
-  "scheduled_cleanup",
-  "query_plans",
-  "postgres_retry",
-]);
-
-function assertAcceptedStaging(acceptance, sha) {
-  if (
-    acceptance?.commitSha !== sha ||
-    acceptance.inboxDelivery !== "waived" ||
-    !Array.isArray(acceptance.checks) ||
-    !REQUIRED_STAGING_CHECKS.every((check) => acceptance.checks.includes(check))
-  ) {
-    throw new Error("Exact-SHA staging acceptance is incomplete");
-  }
-}
-
 function assertProductionPreflight(preflight) {
   if (
     preflight?.releaseEnabled !== true ||
@@ -40,7 +14,7 @@ function assertProductionPreflight(preflight) {
 
 function assertInput({ environment, sha, impact, migration }) {
   if (
-    !["staging", "production"].includes(environment) ||
+    environment !== "production" ||
     !shaPattern.test(sha ?? "") ||
     typeof impact?.web !== "boolean" ||
     typeof impact?.backend !== "boolean" ||
@@ -86,13 +60,7 @@ export async function runCutover(input, driver) {
 
   await assertCurrentMain(sha, driver);
 
-  if (environment === "production") {
-    assertProductionPreflight(await driver.verifyProduction(sha, input));
-  } else if (
-    (await driver.verifyStaging(sha, input))?.targetVerified !== true
-  ) {
-    throw new Error("Staging release target is unverified");
-  }
+  assertProductionPreflight(await driver.verifyProduction(sha, input));
 
   const prepared = await driver.prepare(sha, {
     environment,
@@ -170,9 +138,6 @@ export async function runCutover(input, driver) {
     });
     if (publicResult?.passed !== true) {
       throw new Error("Post-open public check failed");
-    }
-    if (environment === "staging") {
-      assertAcceptedStaging(publicResult.stagingAcceptance, sha);
     }
     const recorded = await driver.record(sha, {
       environment,

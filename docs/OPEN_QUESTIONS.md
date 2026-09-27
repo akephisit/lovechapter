@@ -68,9 +68,12 @@ authority before enabling automatic production release for additional writers.
 ADR-029 removes staging from production promotion. Existing staging resources
 remain in place until separately inventoried and explicitly retired.
 
-- Who owns creation and expiration of the fixed, disposable Neon query-plan
-  branch? Release preflight now syncs its reviewed migrations automatically,
-  but intentionally does not reset, delete, or recreate the branch.
+- Who owns the first production Worker/Hyperdrive provisioning, initial
+  closed-gate publication, and the first successful GitHub deployment record?
+  The automatic production flag remains off until these are verified.
+- Which verified Neon recovery method is available on the actual production
+  branch before its first breaking migration? Do not infer snapshot support
+  from staging or from the existence of a branch alone.
 - For a future VPS installation: provider, region, sizing, backup, and recovery
   ownership; scrypt benchmark on that VPS class; stable HTTPS backend hostname,
   DNS, certificate, and reverse-proxy ownership; a separate Bun/VPS staging

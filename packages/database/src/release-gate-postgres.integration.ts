@@ -1,15 +1,3 @@
-import { randomUUID } from "node:crypto";
-import {
-  copyFile,
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Client, Pool } from "pg";
@@ -17,8 +5,6 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import * as database from "./index";
 import { createPostgresRuntime, type PostgresRuntime } from "./client";
-import { PostgresStagingBootstrapGate } from "./staging-bootstrap-gate";
-import { runStagingBootstrapMigrationCli } from "./staging-bootstrap-migration-cli";
 
 const connectionString = process.env.TEST_DATABASE_URL;
 const restrictedConnectionString = process.env.TEST_GATE_APP_DATABASE_URL;
@@ -29,11 +15,6 @@ if (
 ) {
   throw new Error("Release gate integration requires a disposable database");
 }
-const disposableUrl = new URL(connectionString);
-const localDisposable =
-  ["127.0.0.1", "localhost"].includes(disposableUrl.hostname) &&
-  disposableUrl.pathname === "/lovechapter_test";
-
 type GateStore = {
   readMode(): Promise<"open" | "maintenance">;
   admit(kind: "http" | "email" | "cleanup"): Promise<string | null>;
@@ -168,206 +149,6 @@ async function waitForLock(pid: number): Promise<void> {
 }
 
 describe("PostgreSQL release gate", () => {
-  it.skipIf(!localDisposable)(
-    "operates against an isolated database migrated only through 0010",
-    async () => {
-      const fixtureName = `lovechapter_gate_0010_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
-      const fixtureDirectory = await mkdtemp(
-        join(tmpdir(), "lovechapter-0010-"),
-      );
-      const admin = new Client({ connectionString });
-      const fixtureUrl = new URL(connectionString);
-      fixtureUrl.pathname = `/${fixtureName}`;
-      let fixture: Client | undefined;
-      let created = false;
-      await admin.connect();
-      try {
-        await admin.query(`create database ${fixtureName}`);
-        created = true;
-        await mkdir(join(fixtureDirectory, "meta"));
-        const source = new URL("../drizzle/", import.meta.url);
-        const journal = JSON.parse(
-          await readFile(new URL("meta/_journal.json", source), "utf8"),
-        ) as { entries: { tag: string }[] };
-        const entries = journal.entries.filter((entry) =>
-          /^00(?:0[0-9]|10)_/u.test(entry.tag),
-        );
-        expect(entries).toHaveLength(11);
-        await writeFile(
-          join(fixtureDirectory, "meta/_journal.json"),
-          JSON.stringify({ ...journal, entries }),
-        );
-        for (const entry of entries) {
-          await copyFile(
-            new URL(`${entry.tag}.sql`, source),
-            join(fixtureDirectory, `${entry.tag}.sql`),
-          );
-        }
-        fixture = new Client({ connectionString: fixtureUrl.toString() });
-        await fixture.connect();
-        await migrate(drizzle({ client: fixture }), {
-          migrationsFolder: fixtureDirectory,
-        });
-        const columns = await fixture.query<{ column_name: string }>(
-          `select column_name from information_schema.columns
-           where table_schema = 'ops' and table_name = 'release_control'`,
-        );
-        expect(columns.rows.map((row) => row.column_name)).not.toContain(
-          "web_version_id",
-        );
-        const gate = new PostgresStagingBootstrapGate(fixture);
-        expect((await gate.status()).mode).toBe("open");
-        await fixture.query(
-          "insert into ops.release_leases (id, kind) values (gen_random_uuid(), 'email')",
-        );
-        const closure = await gate.closeOnce("9".repeat(40));
-        expect(closure.activeCount).toBe(1);
-        await expect(gate.closeOnce("9".repeat(40))).rejects.toThrow();
-        expect((await gate.status()).changedAt).toBe(closure.changedAt);
-        await fixture.query("delete from ops.release_leases");
-        expect(
-          await gate.drain("9".repeat(40), closure.changedAt, {
-            deadlineMs: Date.now() + 2_000,
-          }),
-        ).toMatchObject({ mode: "maintenance", activeCount: 0 });
-        const retainedUserId = randomUUID();
-        await fixture.query(
-          `insert into users (id, auth_provider, auth_subject, display_name)
-           values ($1, 'local', $2, 'Retained fixture')`,
-          [retainedUserId, retainedUserId],
-        );
-        const stagingHost = "ep-fixture-staging.ap-southeast-1.aws.neon.tech";
-        const checkpointHost =
-          "ep-fixture-checkpoint.ap-southeast-1.aws.neon.tech";
-        const environment = {
-          RELEASE_ENVIRONMENT: "staging",
-          RELEASE_DATABASE_URL: `postgresql://release:gate-password@${stagingHost}/lovechapter?sslmode=require`,
-          RELEASE_DATABASE_ROLE: "release",
-          RELEASE_MIGRATION_DATABASE_URL: `postgresql://migrator:migration-password@${stagingHost}/lovechapter?sslmode=require`,
-          RELEASE_MIGRATION_DATABASE_ROLE: "migrator",
-          RELEASE_CHECKPOINT_DATABASE_URL: `postgresql://checkpoint:checkpoint-password@${checkpointHost}/lovechapter?sslmode=require`,
-          RELEASE_CHECKPOINT_DATABASE_ROLE: "checkpoint",
-          RELEASE_APP_DATABASE_ROLE: "app",
-          RELEASE_NEON_PROJECT_ID: "fixture-project",
-          RELEASE_NEON_BRANCH_ID: "br-staging-fixture",
-          RELEASE_DATABASE_NAME: "lovechapter",
-          RELEASE_CLOUDFLARE_ACCOUNT_ID: "fixture-account",
-          RELEASE_HYPERDRIVE_ID: "fixture-hyperdrive",
-          RELEASE_NEON_API_KEY: "fixture-neon-token",
-          RELEASE_CLOUDFLARE_API_TOKEN: "fixture-cloudflare-token",
-        };
-        const checkpointBranchId = "br-checkpoint-fixture";
-        const checkpointLsn = "0/1DE2850";
-        const fetcher = async (input: string | URL | Request) => {
-          const url = String(input);
-          if (url.endsWith(`/branches/${checkpointBranchId}`)) {
-            return new Response(
-              JSON.stringify({
-                branch: {
-                  id: checkpointBranchId,
-                  project_id: environment.RELEASE_NEON_PROJECT_ID,
-                  parent_id: environment.RELEASE_NEON_BRANCH_ID,
-                  parent_lsn: checkpointLsn,
-                  init_source: "parent-data",
-                },
-              }),
-            );
-          }
-          if (url.endsWith(`/branches/${checkpointBranchId}/endpoints`)) {
-            return new Response(
-              JSON.stringify({
-                endpoints: [
-                  {
-                    branch_id: checkpointBranchId,
-                    host: checkpointHost,
-                    type: "read_write",
-                  },
-                ],
-              }),
-            );
-          }
-          if (url.startsWith("https://console.neon.tech/")) {
-            return new Response(
-              JSON.stringify({
-                endpoints: [
-                  {
-                    branch_id: environment.RELEASE_NEON_BRANCH_ID,
-                    host: stagingHost,
-                    type: "read_write",
-                  },
-                ],
-              }),
-            );
-          }
-          return new Response(
-            JSON.stringify({
-              success: true,
-              result: {
-                id: environment.RELEASE_HYPERDRIVE_ID,
-                origin: {
-                  host: stagingHost,
-                  database: "lovechapter",
-                  user: "app",
-                },
-                caching: { disabled: true },
-              },
-            }),
-          );
-        };
-        const migrationArgs = [
-          "--sha",
-          "9".repeat(40),
-          "--closed-at",
-          closure.changedAt,
-          "--checkpoint-branch-id",
-          checkpointBranchId,
-          "--checkpoint-lsn",
-          checkpointLsn,
-        ];
-        const output: string[] = [];
-        const options = {
-          createClient: () =>
-            new Client({ connectionString: fixtureUrl.toString() }),
-          fetcher: fetcher as typeof fetch,
-          write: (line: string) => output.push(line),
-        };
-        await runStagingBootstrapMigrationCli(
-          migrationArgs,
-          environment,
-          options,
-        );
-        expect(output).toHaveLength(1);
-        expect(JSON.parse(output[0]!)).toMatchObject({
-          status: "applied_and_validated",
-          checkpointBranchId,
-        });
-        const retained = await fixture.query<{ id: string }>(
-          "select id from users where id = $1",
-          [retainedUserId],
-        );
-        expect(retained.rows).toEqual([{ id: retainedUserId }]);
-        expect(
-          (
-            await fixture.query(
-              "select 1 from ops.release_control where id = 1",
-            )
-          ).rowCount,
-        ).toBe(1);
-        await expect(
-          runStagingBootstrapMigrationCli(migrationArgs, environment, options),
-        ).rejects.toThrow();
-        expect(output).toHaveLength(1);
-      } finally {
-        await fixture?.end();
-        if (created)
-          await admin.query(`drop database ${fixtureName} with (force)`);
-        await admin.end();
-        await rm(fixtureDirectory, { recursive: true, force: true });
-      }
-    },
-    30_000,
-  );
-
   it.skipIf(!restrictedConnectionString)(
     "admits through a role with no control UPDATE privilege",
     async () => {

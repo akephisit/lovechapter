@@ -7,6 +7,7 @@ export default defineConfig({
     include: [
       "src/auth-postgres.integration.ts",
       "src/release-gate-postgres.integration.ts",
+      "src/production-bootstrap-postgres.integration.ts",
       "src/guest-affiliations-postgres.integration.ts",
       "src/guest-import-postgres.integration.ts",
       "src/envelope-postgres.integration.ts",

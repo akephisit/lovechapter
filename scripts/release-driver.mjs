@@ -37,19 +37,16 @@ export function createReleaseDriver(config) {
     apiOrigin,
     proxySecret,
     probeSecret,
-    verifyStaging,
     verifyProduction,
     applyMigration,
     createRecoveryPoint,
-    acceptStaging,
     fetcher = globalThis.fetch,
     now = () => new Date(),
   } = config ?? {};
   const acceptedWebOrigin = workerOrigin(webOrigin);
   const acceptedApiOrigin = workerOrigin(apiOrigin);
-  const workerSuffix = environment === "staging" ? "-staging" : "";
   if (
-    !["staging", "production"].includes(environment) ||
+    environment !== "production" ||
     !shaPattern.test(sha ?? "") ||
     typeof impact?.web !== "boolean" ||
     typeof impact?.backend !== "boolean" ||
@@ -71,20 +68,16 @@ export function createReleaseDriver(config) {
     acceptedWebOrigin === acceptedApiOrigin ||
     (acceptedWebOrigin &&
       new globalThis.URL(acceptedWebOrigin).hostname.split(".")[0] !==
-        `lovechapter-web${workerSuffix}`) ||
+        "lovechapter-web") ||
     (acceptedApiOrigin &&
       new globalThis.URL(acceptedApiOrigin).hostname.split(".")[0] !==
-        `lovechapter-api${workerSuffix}`) ||
+        "lovechapter-api") ||
     !canonicalSecret(proxySecret) ||
     !canonicalSecret(probeSecret) ||
     proxySecret === probeSecret ||
-    (environment === "staging" &&
-      (typeof verifyStaging !== "function" ||
-        typeof acceptStaging !== "function")) ||
-    (environment === "production" &&
-      (typeof verifyProduction !== "function" ||
-        typeof githubDeployment?.createDeployment !== "function" ||
-        typeof githubDeployment?.createDeploymentStatus !== "function"))
+    typeof verifyProduction !== "function" ||
+    typeof githubDeployment?.createDeployment !== "function" ||
+    typeof githubDeployment?.createDeploymentStatus !== "function"
   ) {
     throw new Error("Worker release driver is incomplete");
   }
@@ -104,10 +97,6 @@ export function createReleaseDriver(config) {
   }
   return {
     readMainHead: () => githubRead.readMainHead(),
-    async verifyStaging(candidate, input) {
-      await assertGateBaseline();
-      return verifyStaging(candidate, input);
-    },
     async verifyProduction(candidate, input) {
       await assertGateBaseline();
       return verifyProduction(candidate, input);
@@ -176,16 +165,9 @@ export function createReleaseDriver(config) {
         },
         { fetcher },
       );
-      if (environment === "production") return publicResult;
-      return {
-        ...publicResult,
-        stagingAcceptance: await acceptStaging(candidate),
-      };
+      return publicResult;
     },
     async record(candidate, { deployed, opened, publicResult }) {
-      if (environment === "staging") {
-        return { stagingAcceptance: publicResult.stagingAcceptance };
-      }
       return recordDeployment(
         {
           environment,

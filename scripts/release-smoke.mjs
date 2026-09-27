@@ -98,8 +98,9 @@ export async function runPrivateReleaseSmoke(
     const state = await response.json();
     if (
       !state ||
-      Object.keys(state).length !== 1 ||
-      state.mode !== "maintenance"
+      Object.keys(state).length !== 2 ||
+      state.mode !== "maintenance" ||
+      state.publishedSha !== null
     ) {
       throw new Error("gate opened unexpectedly");
     }
@@ -150,7 +151,7 @@ export async function runPrivateReleaseSmoke(
   }
 }
 
-/** Verify public ingress after reopen; staging's mutation checks run separately. */
+/** Verify public ingress and the published SHA after reopening. */
 export async function runPublicReleaseCheck(
   input,
   { fetcher = globalThis.fetch } = {},
@@ -201,7 +202,12 @@ export async function runPublicReleaseCheck(
       },
     );
     const state = await response.json();
-    if (!state || Object.keys(state).length !== 1 || state.mode !== "open") {
+    if (
+      !state ||
+      Object.keys(state).length !== 2 ||
+      state.mode !== "open" ||
+      state.publishedSha !== input.sha
+    ) {
       throw new Error("gate closed unexpectedly");
     }
   }

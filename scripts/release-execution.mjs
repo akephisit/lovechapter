@@ -56,22 +56,18 @@ export async function executeRelease(
   } = {},
 ) {
   if (
-    !["staging", "production"].includes(environment) ||
+    environment !== "production" ||
     !shaPattern.test(sha ?? "") ||
     typeof gate?.status !== "function" ||
     typeof resolvePlan !== "function" ||
     typeof runCutover !== "function" ||
-    (environment === "production" &&
-      typeof ledger?.readProductionBaseline !== "function")
+    typeof ledger?.readProductionBaseline !== "function"
   ) {
     throw new Error("Release execution inputs are incomplete");
   }
   const gateState = await gate.status();
   const gateBaseline = acceptedGate(gateState);
-  const baseline =
-    environment === "production"
-      ? await ledger.readProductionBaseline(gateState)
-      : gateBaseline;
+  const baseline = await ledger.readProductionBaseline(gateState);
   if (!sameBaseline(baseline, gateBaseline)) {
     throw new Error("Release baseline does not match the open gate");
   }

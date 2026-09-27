@@ -37,7 +37,10 @@ function mockFetch(overrides = {}) {
     const key = `${component}:${options.method ?? "GET"}:${path}:${headers.has("x-lovechapter-release-probe") ? "probe" : "plain"}`;
     if (overrides[key]) return overrides[key];
     if (component === "api" && path === "/health/release-state") {
-      return globalThis.Response.json({ mode: "maintenance" });
+      return globalThis.Response.json({
+        mode: "maintenance",
+        publishedSha: null,
+      });
     }
     if (component === "api" && path === "/health/ready") {
       return globalThis.Response.json({ status: "ok" });
@@ -136,6 +139,12 @@ describe("closed-gate private release smoke", () => {
         }),
       },
       {
+        "api:GET:/health/release-state:plain": globalThis.Response.json({
+          mode: "maintenance",
+          publishedSha: sha,
+        }),
+      },
+      {
         "web:GET:/api/v1/auth/session:probe": globalThis.Response.json(
           { user: null },
           { status: 200 },
@@ -223,7 +232,7 @@ describe("post-open public release check", () => {
       calls.push({ component, pathname, options });
       if (overrides[key]) return overrides[key];
       if (component === "api" && pathname === "/health/release-state") {
-        return globalThis.Response.json({ mode: "open" });
+        return globalThis.Response.json({ mode: "open", publishedSha: sha });
       }
       if (component === "api" && pathname === "/health/ready") {
         return globalThis.Response.json({ status: "ok" });
@@ -296,6 +305,12 @@ describe("post-open public release check", () => {
       {
         "api:/health/release-state": globalThis.Response.json({
           mode: "maintenance",
+        }),
+      },
+      {
+        "api:/health/release-state": globalThis.Response.json({
+          mode: "open",
+          publishedSha: "b".repeat(40),
         }),
       },
       {

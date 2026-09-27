@@ -1,5 +1,36 @@
 # LoveChapter — Progress
 
+## Current release status (2026-09-27)
+
+The direct-production Worker release implementation is on the isolated
+`codex/automatic-worker-release-implementation` branch. The protected-main
+workflow runs CI and disposable PostgreSQL integration, then enters the
+production cutover only when `PRODUCTION_RELEASE_ENABLED=true`. It no longer
+depends on staging acceptance. The release builds before closing the whole
+site, drains leases, migrates before deployment, and selectively deploys web
+and/or API; a breaking migration first creates one verified Neon recovery
+point. A returned web tab checks the published SHA and reloads after reopen.
+Old staging release workflows, acceptance scripts, and bootstrap helpers have
+been retired from the repository. Existing live staging resources were not
+deleted. A read-only inventory found the Neon `production` root branch ready,
+but its `neondb` has no application tables or migration ledger. Neon lists no
+snapshots. Cloudflare lists only the staging Hyperdrive and reports both
+production Worker names absent. The GitHub production environment exists but
+has no release variables or secrets. Production Hyperdrive, Workers, secrets,
+the first two-Worker publication, and the initial successful deployment ledger
+are therefore incomplete. No public production release is claimed.
+
+Local verification after the cleanup: format, lint, typecheck, 650 unit tests,
+the full `npm run ci` build/dry-run chain, 42 disposable database integration
+tests with the restricted gate role, and the scheduled-job PostgreSQL test all
+passed. The disposable PostgreSQL container was stopped after testing. The
+API dry-run still uses the placeholder production Hyperdrive ID until the
+production configuration is provisioned; passing a dry-run is not a deploy.
+
+The sections below record historical work. Where they describe a required
+staging-to-production promotion, ADR-029 and the current deployment runbook
+supersede that process.
+
 ## One-time staging baseline implementation (2026-09-27)
 
 Task 1 adds a pre-`0011` staging gate reader, open-only closure, and bounded

@@ -4,21 +4,6 @@ import { runCutover } from "./release-orchestrator.mjs";
 
 const sha = "a".repeat(40);
 const prior = "b".repeat(40);
-const acceptanceChecks = [
-  "verification_outbox",
-  "reset_outbox",
-  "verified_session",
-  "tenant_isolation",
-  "guest_rsvp",
-  "csv_round_trip",
-  "session_revoked",
-  "scoped_cleanup",
-  "scheduled_email_provider",
-  "scheduled_cleanup",
-  "query_plans",
-  "postgres_retry",
-];
-
 function fixture(overrides = {}) {
   const events = [];
   const method = (name, value) =>
@@ -33,7 +18,6 @@ function fixture(overrides = {}) {
   };
   const driver = {
     readMainHead: method("readMainHead", sha),
-    verifyStaging: method("verifyStaging", { targetVerified: true }),
     verifyProduction: method("verifyProduction", {
       releaseEnabled: true,
       protectedMain: true,
@@ -66,14 +50,7 @@ function fixture(overrides = {}) {
       targetSha: sha,
       ...deployed,
     }),
-    publicCheck: method("publicCheck", {
-      passed: true,
-      stagingAcceptance: {
-        commitSha: sha,
-        checks: acceptanceChecks,
-        inboxDelivery: "waived",
-      },
-    }),
+    publicCheck: method("publicCheck", { passed: true }),
     reclose: method("reclose", { mode: "maintenance", targetSha: sha }),
     record: method("record", { deploymentId: 42 }),
   };
@@ -81,7 +58,7 @@ function fixture(overrides = {}) {
 }
 
 const input = {
-  environment: "staging",
+  environment: "production",
   sha,
   impact: { web: true, backend: true, migrate: false },
   migration: { kind: "none", paths: [] },
@@ -94,11 +71,11 @@ describe("serial Worker cutover", () => {
     expect(result).toMatchObject({
       status: "released",
       sha,
-      environment: "staging",
+      environment: "production",
     });
     expect(events.map(([name]) => name)).toEqual([
       "readMainHead",
-      "verifyStaging",
+      "verifyProduction",
       "prepare",
       "readMainHead",
       "close",
@@ -340,21 +317,11 @@ describe("serial Worker cutover", () => {
     expect(events.map(([name]) => name)).not.toContain("verifyStaging");
   });
 
-  it("rejects skipped staging acceptance after reopening and recloses", async () => {
-    const { driver, events } = fixture({
-      values: {
-        publicCheck: {
-          passed: true,
-          stagingAcceptance: {
-            commitSha: sha,
-            checks: ["verified_session"],
-            inboxDelivery: "waived",
-          },
-        },
-      },
-    });
-    await expect(runCutover(input, driver)).rejects.toThrow();
-    expect(events.at(-1)[0]).toBe("reclose");
-    expect(driver.record).not.toHaveBeenCalled();
+  it("rejects an obsolete staging release before touching the gate", async () => {
+    const { driver, events } = fixture();
+    await expect(
+      runCutover({ ...input, environment: "staging" }, driver),
+    ).rejects.toThrow(/invalid/iu);
+    expect(events).toEqual([]);
   });
 });
