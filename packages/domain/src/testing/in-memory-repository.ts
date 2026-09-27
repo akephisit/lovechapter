@@ -12,6 +12,7 @@ import type {
   Page,
   PublicInvitation,
   RsvpResponse,
+  RsvpSummary,
   SubmitRsvpInput,
   UpdateGuestAffiliationInput,
   UpdateProfileInput,
@@ -147,6 +148,31 @@ export class InMemoryLoveChapterRepository implements LoveChapterRepository {
         };
     this.weddings.set(id, { summary, members: new Set([userId]) });
     return summary;
+  }
+
+  async getRsvpSummary(
+    userId: string,
+    weddingId: string,
+  ): Promise<RsvpSummary> {
+    this.requireMember(userId, weddingId);
+    let totalActive = 0;
+    let attending = 0;
+    let declined = 0;
+    for (const guest of this.guests.values()) {
+      if (guest.weddingId !== weddingId || guest.detail.archivedAt) continue;
+      totalActive += 1;
+      const attendance = this.rsvpsByGuest.get(guest.detail.id)?.attendance;
+      if (attendance === "attending") attending += 1;
+      if (attendance === "declined") declined += 1;
+    }
+    const replied = attending + declined;
+    return {
+      totalActive,
+      attending,
+      declined,
+      replied,
+      awaiting: totalActive - replied,
+    };
   }
 
   async listGuestAffiliations(

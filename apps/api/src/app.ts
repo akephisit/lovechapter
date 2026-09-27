@@ -653,6 +653,14 @@ export function createApiApp(dependencies: ApiDependencies) {
       ),
     )
     .get(
+      "/v1/weddings/:weddingId/rsvp-summary",
+      { params: idParams },
+      ({ params, request }) =>
+        dependencies.run(request, (service) =>
+          service.getRsvpSummary(params.weddingId),
+        ),
+    )
+    .get(
       "/v1/weddings/:weddingId/planning-overview",
       { params: idParams },
       ({ params, request }) =>

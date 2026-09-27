@@ -750,6 +750,58 @@ describe("LoveChapter API", () => {
     expect(rsvp.status).toBe(200);
   });
 
+  it("returns an authorized wedding RSVP party summary", async () => {
+    const fixture = testFixture({ principal: couple("summary-owner") });
+    const weddingResponse = await fixture.app.handle(
+      jsonRequest("/v1/weddings", "POST", {
+        name: "Mali & Arun",
+        timeZone: "UTC",
+        locale: "en",
+      }),
+    );
+    const wedding = (await weddingResponse.json()) as { id: string };
+    const path = `/v1/weddings/${wedding.id}/rsvp-summary`;
+    const empty = await fixture.app.handle(trustedRequest(path));
+    expect(empty.status).toBe(200);
+    await expect(empty.json()).resolves.toEqual({
+      totalActive: 0,
+      attending: 0,
+      declined: 0,
+      replied: 0,
+      awaiting: 0,
+    });
+    const guestResponse = await fixture.app.handle(
+      jsonRequest(`/v1/weddings/${wedding.id}/guests`, "POST", {
+        name: "Nok",
+        allowedPartySize: 2,
+      }),
+    );
+    const guest = (await guestResponse.json()) as { id: string };
+    const invitationResponse = await fixture.app.handle(
+      jsonRequest(
+        `/v1/weddings/${wedding.id}/guests/${guest.id}/invitations`,
+        "POST",
+        {},
+      ),
+    );
+    const invitation = (await invitationResponse.json()) as { token: string };
+    await fixture.app.handle(
+      jsonRequest(`/v1/public/invitations/${invitation.token}/rsvp`, "PUT", {
+        attendance: "attending",
+        partySize: 2,
+      }),
+    );
+    const replied = await fixture.app.handle(trustedRequest(path));
+    expect(replied.status).toBe(200);
+    await expect(replied.json()).resolves.toEqual({
+      totalActive: 1,
+      attending: 1,
+      declined: 0,
+      replied: 1,
+      awaiting: 0,
+    });
+  });
+
   it("replaces an invitation over the protected API and rejects the old public link", async () => {
     const fixture = testFixture({ principal: couple("replacement-owner") });
     const weddingResponse = await fixture.app.handle(

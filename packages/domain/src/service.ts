@@ -23,6 +23,7 @@ import type {
   PostalAddressInput,
   PublicInvitation,
   RsvpResponse,
+  RsvpSummary,
   SubmitRsvpInput,
   UpdateGuestAffiliationInput,
   UpdateGuestInput,
@@ -475,6 +476,11 @@ export class LoveChapterService {
   async listWeddings(page: PageInput): Promise<Page<WeddingSummary>> {
     const user = await this.requireOnboardedUser();
     return this.repository.listWeddings(user.id, normalizePage(page));
+  }
+
+  async getRsvpSummary(weddingId: string): Promise<RsvpSummary> {
+    const user = await this.requireOnboardedUser();
+    return this.repository.getRsvpSummary(user.id, weddingId);
   }
 
   async listGuestAffiliations(weddingId: string): Promise<GuestAffiliation[]> {

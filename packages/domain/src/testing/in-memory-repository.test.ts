@@ -99,3 +99,88 @@ describe("InMemoryLoveChapterRepository guest bulk actions", () => {
     ).resolves.not.toHaveProperty("archivedAt");
   });
 });
+
+describe("InMemoryLoveChapterRepository RSVP summary", () => {
+  it("counts active guest parties by latest response and rejects a nonmember", async () => {
+    const repository = new InMemoryLoveChapterRepository();
+    const owner = await repository.syncUser({
+      provider: "development",
+      subject: "summary-owner",
+      displayName: "Owner",
+    });
+    const outsider = await repository.syncUser({
+      provider: "development",
+      subject: "summary-outsider",
+      displayName: "Outsider",
+    });
+    const wedding = await repository.createWedding(
+      owner.id,
+      crypto.randomUUID(),
+      { name: "Wedding", timeZone: "UTC", locale: "en" },
+    );
+    await expect(
+      repository.getRsvpSummary(owner.id, wedding.id),
+    ).resolves.toEqual({
+      totalActive: 0,
+      attending: 0,
+      declined: 0,
+      replied: 0,
+      awaiting: 0,
+    });
+    const attending = await repository.createGuest(
+      owner.id,
+      wedding.id,
+      crypto.randomUUID(),
+      { name: "Attending party", allowedPartySize: 3 },
+    );
+    await repository.createGuest(owner.id, wedding.id, crypto.randomUUID(), {
+      name: "Awaiting party",
+      allowedPartySize: 1,
+    });
+    const archived = await repository.createGuest(
+      owner.id,
+      wedding.id,
+      crypto.randomUUID(),
+      { name: "Archived party", allowedPartySize: 1 },
+    );
+    for (const guest of [attending, archived]) {
+      await repository.createInvitation({
+        id: crypto.randomUUID(),
+        weddingId: wedding.id,
+        guestId: guest.id,
+        createdByUserId: owner.id,
+        tokenHash: guest.id,
+      });
+      await repository.upsertRsvp(guest.id, crypto.randomUUID(), {
+        attendance: "attending",
+        partySize: 1,
+      });
+    }
+    await repository.archiveGuest(owner.id, wedding.id, archived.id);
+    await expect(
+      repository.getRsvpSummary(owner.id, wedding.id),
+    ).resolves.toEqual({
+      totalActive: 2,
+      attending: 1,
+      declined: 0,
+      replied: 1,
+      awaiting: 1,
+    });
+    await repository.upsertRsvp(attending.id, crypto.randomUUID(), {
+      attendance: "declined",
+      partySize: 0,
+    });
+    await expect(
+      repository.getRsvpSummary(owner.id, wedding.id),
+    ).resolves.toEqual({
+      totalActive: 2,
+      attending: 0,
+      declined: 1,
+      replied: 1,
+      awaiting: 1,
+    });
+    await expect(
+      repository.getRsvpSummary(outsider.id, wedding.id),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+});

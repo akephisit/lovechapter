@@ -57,6 +57,14 @@ export type WeddingSummary = CreateWeddingInput & {
   createdAt: string;
 };
 
+export type RsvpSummary = {
+  totalActive: number;
+  attending: number;
+  declined: number;
+  replied: number;
+  awaiting: number;
+};
+
 export type PlanningTask = {
   id: string;
   title: string;

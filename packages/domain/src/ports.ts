@@ -22,6 +22,7 @@ import type {
   PostalAddressInput,
   PublicInvitation,
   RsvpResponse,
+  RsvpSummary,
   SubmitRsvpInput,
   UpdateGuestAffiliationInput,
   UpdateProfileInput,
@@ -339,6 +340,7 @@ export interface LoveChapterRepository {
     id: string,
     input: CreateWeddingInput,
   ): Promise<WeddingSummary>;
+  getRsvpSummary(userId: string, weddingId: string): Promise<RsvpSummary>;
   listGuestAffiliations(
     userId: string,
     weddingId: string,
