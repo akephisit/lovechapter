@@ -58,6 +58,10 @@ function fixture(overrides = {}) {
       activeCount: 0,
     }),
     migrate: method("migrate", { status: "applied_and_validated" }),
+    createRecoveryPoint: method("createRecoveryPoint", {
+      snapshotId: "snap-one",
+      sourceBranchId: "br-production",
+    }),
     deploy: method("deploy", deployed),
     privateSmoke: method("privateSmoke", {
       passed: true,
@@ -132,6 +136,89 @@ describe("serial Worker cutover", () => {
       ),
     ).resolves.toEqual({ status: "skipped", reason: "docs_only", sha });
     expect(events).toEqual([]);
+  });
+
+  it("takes a recovery point only for breaking SQL, after drain and before migrate", async () => {
+    const { driver, events } = fixture();
+    await runCutover(
+      {
+        ...input,
+        impact: { web: true, backend: true, migrate: true },
+        migration: { kind: "breaking", paths: ["0012.sql"] },
+      },
+      driver,
+    );
+    const order = events.map(([name]) => name);
+    expect(order.indexOf("close")).toBeLessThan(order.indexOf("drain"));
+    expect(order.indexOf("drain")).toBeLessThan(
+      order.indexOf("createRecoveryPoint"),
+    );
+    expect(order.indexOf("createRecoveryPoint")).toBeLessThan(
+      order.indexOf("migrate"),
+    );
+    expect(driver.createRecoveryPoint).toHaveBeenCalledWith(sha, {
+      closure: expect.objectContaining({ mode: "maintenance", targetSha: sha }),
+    });
+  });
+
+  it("does not create a recovery point for nonbreaking SQL or code-only changes", async () => {
+    for (const migration of [
+      { kind: "none", paths: [] },
+      { kind: "nonbreaking", paths: ["0012.sql"] },
+    ]) {
+      const { driver } = fixture();
+      await runCutover(
+        {
+          ...input,
+          impact: {
+            web: true,
+            backend: true,
+            migrate: migration.kind !== "none",
+          },
+          migration,
+        },
+        driver,
+      );
+      expect(driver.createRecoveryPoint).not.toHaveBeenCalled();
+    }
+  });
+
+  it("leaves maintenance closed and skips SQL when recovery is unverified", async () => {
+    for (const recovery of [
+      { snapshotId: "", sourceBranchId: "" },
+      { snapshotId: "snap-one" },
+    ]) {
+      const { driver } = fixture({ values: { createRecoveryPoint: recovery } });
+      await expect(
+        runCutover(
+          {
+            ...input,
+            impact: { web: true, backend: true, migrate: true },
+            migration: { kind: "breaking", paths: ["0012.sql"] },
+          },
+          driver,
+        ),
+      ).rejects.toThrow();
+      expect(driver.migrate).not.toHaveBeenCalled();
+      expect(driver.open).not.toHaveBeenCalled();
+      expect(driver.reclose).not.toHaveBeenCalled();
+    }
+  });
+
+  it("leaves maintenance closed and skips SQL when recovery creation fails", async () => {
+    const { driver } = fixture({ fail: "createRecoveryPoint" });
+    await expect(
+      runCutover(
+        {
+          ...input,
+          impact: { web: true, backend: true, migrate: true },
+          migration: { kind: "breaking", paths: ["0012.sql"] },
+        },
+        driver,
+      ),
+    ).rejects.toThrow();
+    expect(driver.migrate).not.toHaveBeenCalled();
+    expect(driver.open).not.toHaveBeenCalled();
   });
 
   it("rejects a superseded queued run before preparing or closing", async () => {

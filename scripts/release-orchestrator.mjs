@@ -117,6 +117,13 @@ export async function runCutover(input, driver) {
     throw new Error("Release gate still has active leases");
   }
 
+  if (migration.kind === "breaking") {
+    const point = await driver.createRecoveryPoint(sha, { closure });
+    if (!point?.snapshotId || !point?.sourceBranchId) {
+      throw new Error("Breaking migration recovery point is unverified");
+    }
+  }
+
   let migrationOutcome = "not_required";
   if (migration.kind !== "none") {
     const migrated = await driver.migrate(sha, { migration, closure });
