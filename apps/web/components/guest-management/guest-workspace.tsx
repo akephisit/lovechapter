@@ -17,6 +17,7 @@ import type {
 } from "@lovechapter/contracts";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { safeUiError } from "../../lib/ui-error";
 import {
   EnvelopeWorkspace,
   type EnvelopeApi,
@@ -27,6 +28,7 @@ import {
 } from "../guest-import/guest-import-workspace";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
+import { useUiCopy } from "../ui-language-provider";
 import { GuestDetailDialog } from "./guest-detail-dialog";
 import { GuestFiltersForm, type GuestFilters } from "./guest-filters";
 import { GuestForm } from "./guest-form";
@@ -109,6 +111,7 @@ function WeddingGuestWorkspace({
   api,
   onAffiliationCreated,
 }: GuestWorkspaceProps) {
+  const copy = useUiCopy();
   const [guests, setGuests] = useState(initialPage.items);
   const [nextCursor, setNextCursor] = useState(initialPage.nextCursor);
   const [filters, setFilters] = useState<GuestFilters>({
@@ -214,7 +217,7 @@ function WeddingGuestWorkspace({
         requestId.current === currentRequest &&
         mutationVersion.current === currentMutation
       ) {
-        setMessage(readableError(error, "We couldn't load guests."));
+        setMessage(safeUiError(error, copy, copy.guest.loadError));
       }
     } finally {
       if (requestId.current === currentRequest) setBusy(false);
@@ -247,7 +250,7 @@ function WeddingGuestWorkspace({
         }
       }
     } catch (error) {
-      setMessage(readableError(error, "We couldn't add that guest."));
+      setMessage(safeUiError(error, copy, copy.guest.addError));
       throw error;
     } finally {
       setBusy(false);
@@ -261,7 +264,7 @@ function WeddingGuestWorkspace({
     try {
       setDetail(await api.getGuest(weddingId, guest.id));
     } catch (error) {
-      setMessage(readableError(error, "We couldn't load that guest."));
+      setMessage(safeUiError(error, copy, copy.guest.detailError));
     } finally {
       setBusy(false);
     }
@@ -280,14 +283,18 @@ function WeddingGuestWorkspace({
       );
       setDetail(null);
     } catch (error) {
-      setMessage(readableError(error, "We couldn't save that guest."));
+      setMessage(safeUiError(error, copy, copy.guest.saveError));
     } finally {
       setBusy(false);
     }
   }
 
   async function archiveGuest(guest: GuestSummary) {
-    if (!api.archiveGuest || !window.confirm(`Archive ${guest.name}?`)) return;
+    if (
+      !api.archiveGuest ||
+      !window.confirm(copy.guest.archiveConfirm(guest.name))
+    )
+      return;
     setBusy(true);
     try {
       await api.archiveGuest(weddingId, guest.id);
@@ -300,7 +307,7 @@ function WeddingGuestWorkspace({
       });
       removeSelection(guest.id);
     } catch (error) {
-      setMessage(readableError(error, "We couldn't archive that guest."));
+      setMessage(safeUiError(error, copy, copy.guest.archiveError));
     } finally {
       setBusy(false);
     }
@@ -315,7 +322,7 @@ function WeddingGuestWorkspace({
       setGuests((current) => current.filter((item) => item.id !== guest.id));
       removeSelection(guest.id);
     } catch (error) {
-      setMessage(readableError(error, "We couldn't restore that guest."));
+      setMessage(safeUiError(error, copy, copy.guest.restoreError));
     } finally {
       setBusy(false);
     }
@@ -359,7 +366,7 @@ function WeddingGuestWorkspace({
       setSelection(new Set());
       await loadPage(requestFilters, false);
     } catch (error) {
-      setMessage(readableError(error, "Bulk affiliation failed."));
+      setMessage(safeUiError(error, copy, copy.guest.bulkAffiliationError));
     } finally {
       setBusy(false);
     }
@@ -367,12 +374,7 @@ function WeddingGuestWorkspace({
 
   async function bulkArchive() {
     if (!api.bulkArchiveGuests || selection.size === 0) return;
-    if (
-      !window.confirm(
-        `Archive ${selection.size} guest${selection.size === 1 ? "" : "s"}? Their invitation links will be revoked.`,
-      )
-    )
-      return;
+    if (!window.confirm(copy.guest.bulkArchiveConfirm(selection.size))) return;
     setBusy(true);
     setMessage(null);
     try {
@@ -388,7 +390,7 @@ function WeddingGuestWorkspace({
       );
       setSelection(new Set());
     } catch (error) {
-      setMessage(readableError(error, "Bulk archive failed."));
+      setMessage(safeUiError(error, copy, copy.guest.bulkArchiveError));
     } finally {
       setBusy(false);
     }
@@ -402,7 +404,7 @@ function WeddingGuestWorkspace({
       const invitation = await api.createInvitation(weddingId, guest.id);
       setInvitations((current) => ({ ...current, [guest.id]: invitation }));
     } catch (error) {
-      setMessage(readableError(error, "We couldn't create that invitation."));
+      setMessage(safeUiError(error, copy, copy.guest.invitationError));
     } finally {
       setBusy(false);
     }
@@ -411,9 +413,7 @@ function WeddingGuestWorkspace({
   async function replaceInvitation(guest: GuestSummary) {
     if (
       !api.replaceInvitation ||
-      !window.confirm(
-        `Issue a new invitation link for ${guest.name}? Any old link will stop working immediately. Share the new link with the guest.`,
-      )
+      !window.confirm(copy.guest.replaceConfirm(guest.name))
     )
       return;
     setBusy(true);
@@ -422,7 +422,7 @@ function WeddingGuestWorkspace({
       const invitation = await api.replaceInvitation(weddingId, guest.id);
       setInvitations((current) => ({ ...current, [guest.id]: invitation }));
     } catch (error) {
-      setMessage(readableError(error, "We couldn't replace that invitation."));
+      setMessage(safeUiError(error, copy, copy.guest.replaceError));
     } finally {
       setBusy(false);
     }
@@ -434,9 +434,7 @@ function WeddingGuestWorkspace({
     try {
       await navigator.clipboard.writeText(invitation.publicUrl);
     } catch {
-      setMessage(
-        "Copy failed. Select the invitation link and copy it manually.",
-      );
+      setMessage(copy.guest.copyError);
     }
   }
 
@@ -453,7 +451,7 @@ function WeddingGuestWorkspace({
         ...(filters.rsvp ? { rsvp: filters.rsvp } : {}),
       });
     } catch (error) {
-      setMessage(readableError(error, "We couldn't export the guest CSV."));
+      setMessage(safeUiError(error, copy, copy.guest.exportError));
     } finally {
       setDownloading(false);
     }
@@ -464,13 +462,13 @@ function WeddingGuestWorkspace({
       <Card className="overflow-hidden">
         <div className="bg-[#71384b] px-6 py-6 text-white">
           <p className="text-xs font-bold tracking-[0.2em] uppercase">
-            Currently planning
+            {copy.guest.current}
           </p>
           <h2 className="font-serif text-3xl font-semibold">{weddingName}</h2>
         </div>
         <div className="p-5 sm:p-6">
           <h3 className="mb-4 font-serif text-2xl font-semibold">
-            Add a guest
+            {copy.guest.addGuestTitle}
           </h3>
           <GuestForm
             affiliations={affiliations}
@@ -512,8 +510,7 @@ function WeddingGuestWorkspace({
       />
       {api.downloadGuestCsv ? (
         <div className="rounded-xl bg-[#fff9f3] p-3 text-sm text-[#806d70]">
-          Archived guests export only in Archived view. Invitation links are
-          never included.
+          {copy.guest.csvNotice}
           <Button
             className="ml-3"
             type="button"
@@ -521,7 +518,7 @@ function WeddingGuestWorkspace({
             disabled={downloading}
             onClick={() => void exportCsv()}
           >
-            Export filtered CSV
+            {copy.guest.exportCsv}
           </Button>
         </div>
       ) : null}
@@ -536,7 +533,9 @@ function WeddingGuestWorkspace({
             variant="secondary"
             onClick={() => setShowEnvelopes((value) => !value)}
           >
-            {showEnvelopes ? "Close envelope printing" : "Print envelopes"}
+            {showEnvelopes
+              ? copy.guest.closeEnvelopes
+              : copy.guest.printEnvelopes}
           </Button>
           {showEnvelopes ? (
             <EnvelopeWorkspace
@@ -554,7 +553,7 @@ function WeddingGuestWorkspace({
           disabled={busy}
           onClick={() => void loadPage(requestFilters, false)}
         >
-          Refresh responses
+          {copy.guest.refresh}
         </Button>
       </div>
       <GuestList
@@ -618,8 +617,4 @@ function appendUnique<T extends { id: string }>(
 ): T[] {
   const seen = new Set(current.map((item) => item.id));
   return [...current, ...incoming.filter((item) => !seen.has(item.id))];
-}
-
-function readableError(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
 }

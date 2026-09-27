@@ -9,6 +9,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select } from "../ui/select";
+import { useUiCopy } from "../ui-language-provider";
 
 export function GuestForm({
   affiliations,
@@ -19,6 +20,7 @@ export function GuestForm({
   busy: boolean;
   onCreate(input: CreateGuestInput): Promise<void>;
 }) {
+  const copy = useUiCopy();
   const [includeAddress, setIncludeAddress] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -48,15 +50,15 @@ export function GuestForm({
   return (
     <form onSubmit={(event) => void submit(event)} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Field label="Guest name" htmlFor="guest-name">
+        <Field label={copy.guest.guestName} htmlFor="guest-name">
           <Input id="guest-name" name="name" required maxLength={120} />
         </Field>
-        <Field label="Email (optional)" htmlFor="guest-email">
+        <Field label={copy.guest.emailOptional} htmlFor="guest-email">
           <Input id="guest-email" name="email" type="email" maxLength={320} />
         </Field>
-        <Field label="Guest affiliation" htmlFor="guest-affiliation">
+        <Field label={copy.guest.guestAffiliation} htmlFor="guest-affiliation">
           <Select id="guest-affiliation" name="affiliationId">
-            <option value="">No affiliation</option>
+            <option value="">{copy.guest.noAffiliation}</option>
             {affiliations.map((affiliation) => (
               <option key={affiliation.id} value={affiliation.id}>
                 {affiliation.name}
@@ -64,7 +66,7 @@ export function GuestForm({
             ))}
           </Select>
         </Field>
-        <Field label="Party allowance" htmlFor="party-allowance">
+        <Field label={copy.guest.partyAllowance} htmlFor="party-allowance">
           <Input
             id="party-allowance"
             name="allowedPartySize"
@@ -78,13 +80,13 @@ export function GuestForm({
       </div>
       <details className="rounded-xl border border-[#eadbd3] p-4">
         <summary className="cursor-pointer font-semibold text-[#60464d]">
-          Optional contact, envelope, and mailing details
+          {copy.guest.optionalDetails}
         </summary>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <Field label="Phone" htmlFor="guest-phone">
+          <Field label={copy.guest.phone} htmlFor="guest-phone">
             <Input id="guest-phone" name="phone" maxLength={40} />
           </Field>
-          <Field label="Envelope name" htmlFor="guest-envelope-name">
+          <Field label={copy.guest.envelopeName} htmlFor="guest-envelope-name">
             <Input
               id="guest-envelope-name"
               name="envelopeName"
@@ -92,7 +94,7 @@ export function GuestForm({
             />
           </Field>
           <div className="sm:col-span-2">
-            <Field label="Note" htmlFor="guest-note">
+            <Field label={copy.guest.note} htmlFor="guest-note">
               <textarea
                 id="guest-note"
                 name="note"
@@ -109,22 +111,26 @@ export function GuestForm({
                 setIncludeAddress(event.currentTarget.checked)
               }
             />
-            Include postal address
+            {copy.guest.includeAddress}
           </label>
           {includeAddress ? <AddressFields prefix="guest" /> : null}
         </div>
       </details>
       <Button type="submit" disabled={busy}>
-        {busy ? "Adding…" : "Add guest"}
+        {busy ? copy.guest.adding : copy.guest.addGuest}
       </Button>
     </form>
   );
 }
 
 export function AddressFields({ prefix }: { prefix: string }) {
+  const copy = useUiCopy();
   return (
     <>
-      <Field label="Address line 1" htmlFor={`${prefix}-address-line-1`}>
+      <Field
+        label={copy.guest.addressLine1}
+        htmlFor={`${prefix}-address-line-1`}
+      >
         <Input
           id={`${prefix}-address-line-1`}
           name="addressLine1"
@@ -132,18 +138,21 @@ export function AddressFields({ prefix }: { prefix: string }) {
           maxLength={180}
         />
       </Field>
-      <Field label="Address line 2" htmlFor={`${prefix}-address-line-2`}>
+      <Field
+        label={copy.guest.addressLine2}
+        htmlFor={`${prefix}-address-line-2`}
+      >
         <Input
           id={`${prefix}-address-line-2`}
           name="addressLine2"
           maxLength={180}
         />
       </Field>
-      <Field label="Locality" htmlFor={`${prefix}-locality`}>
+      <Field label={copy.guest.locality} htmlFor={`${prefix}-locality`}>
         <Input id={`${prefix}-locality`} name="locality" maxLength={120} />
       </Field>
       <Field
-        label="Administrative area"
+        label={copy.guest.administrativeArea}
         htmlFor={`${prefix}-administrative-area`}
       >
         <Input
@@ -152,10 +161,10 @@ export function AddressFields({ prefix }: { prefix: string }) {
           maxLength={120}
         />
       </Field>
-      <Field label="Postal code" htmlFor={`${prefix}-postal-code`}>
+      <Field label={copy.guest.postalCode} htmlFor={`${prefix}-postal-code`}>
         <Input id={`${prefix}-postal-code`} name="postalCode" maxLength={32} />
       </Field>
-      <Field label="Country code" htmlFor={`${prefix}-country-code`}>
+      <Field label={copy.guest.countryCode} htmlFor={`${prefix}-country-code`}>
         <Input
           id={`${prefix}-country-code`}
           name="countryCode"

@@ -9,6 +9,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { Select } from "../ui/select";
+import { useUiCopy } from "../ui-language-provider";
 
 export type GuestSelection = ReadonlySet<string>;
 
@@ -53,6 +54,7 @@ export function GuestList({
   onReplaceInvitation(guest: GuestSummary): void;
   onCopyInvitation(guest: GuestSummary): void;
 }) {
+  const copy = useUiCopy();
   const [bulkTarget, setBulkTarget] = useState("");
   return (
     <section aria-labelledby="guest-list-title" className="space-y-3">
@@ -62,24 +64,24 @@ export function GuestList({
             id="guest-list-title"
             className="font-serif text-2xl font-semibold text-[#432f35]"
           >
-            Guest list
+            {copy.guest.guestList}
           </h3>
           <p aria-live="polite" className="text-sm text-[#806d70]">
-            {guests.length} loaded · {selection.size} selected
+            {copy.guest.listCount(guests.length, selection.size)}
           </p>
         </div>
         {guests.length > 0 ? (
           <label className="flex items-center gap-2 text-sm font-semibold">
             <input
               type="checkbox"
-              aria-label="Select visible guests"
+              aria-label={copy.guest.selectVisible}
               checked={
                 guests.length > 0 &&
                 guests.slice(0, 200).every((guest) => selection.has(guest.id))
               }
               onChange={onSelectVisible}
             />
-            Select visible guests
+            {copy.guest.selectVisible}
           </label>
         ) : null}
       </div>
@@ -88,14 +90,14 @@ export function GuestList({
         <Card className="flex flex-wrap items-end gap-3 p-4">
           <label>
             <span className="mb-1 block text-sm font-semibold">
-              Bulk affiliation
+              {copy.guest.bulkAffiliation}
             </span>
             <Select
-              aria-label="Bulk affiliation"
+              aria-label={copy.guest.bulkAffiliation}
               value={bulkTarget}
               onChange={(event) => setBulkTarget(event.currentTarget.value)}
             >
-              <option value="">Unassigned</option>
+              <option value="">{copy.guest.unassigned}</option>
               {affiliations.map((affiliation) => (
                 <option key={affiliation.id} value={affiliation.id}>
                   {affiliation.name}
@@ -109,7 +111,7 @@ export function GuestList({
             disabled={busy}
             onClick={() => onBulkAffiliation(bulkTarget || null)}
           >
-            Assign selected
+            {copy.guest.assignSelected}
           </Button>
           {view === "active" ? (
             <Button
@@ -118,7 +120,7 @@ export function GuestList({
               disabled={busy}
               onClick={onBulkArchive}
             >
-              Archive selected
+              {copy.guest.archiveSelected}
             </Button>
           ) : null}
         </Card>
@@ -126,7 +128,7 @@ export function GuestList({
 
       {guests.length === 0 ? (
         <Card className="p-7 text-center text-[#806d70]">
-          No guests match these filters.
+          {copy.guest.noMatches}
         </Card>
       ) : (
         guests.map((guest) => (
@@ -136,7 +138,7 @@ export function GuestList({
                 <input
                   className="mt-1"
                   type="checkbox"
-                  aria-label={`Select ${guest.name}`}
+                  aria-label={copy.guest.select(guest.name)}
                   checked={selection.has(guest.id)}
                   onChange={() => onToggle(guest.id)}
                 />
@@ -151,7 +153,7 @@ export function GuestList({
                     ) : null}
                   </div>
                   <p className="text-sm text-[#806d70]">
-                    Up to {guest.allowedPartySize} attending
+                    {copy.guest.upTo(guest.allowedPartySize)}
                     {guest.email ? ` · ${guest.email}` : ""}
                     {guest.phone ? ` · ${guest.phone}` : ""}
                   </p>
@@ -161,28 +163,34 @@ export function GuestList({
                 <Button
                   type="button"
                   variant="ghost"
-                  aria-label={`Edit ${guest.name}`}
+                  aria-label={copy.guest.action(copy.guest.edit, guest.name)}
                   onClick={() => onEdit(guest)}
                 >
-                  Edit
+                  {copy.guest.edit}
                 </Button>
                 {view === "active" ? (
                   <Button
                     type="button"
                     variant="ghost"
-                    aria-label={`Archive ${guest.name}`}
+                    aria-label={copy.guest.action(
+                      copy.guest.archive,
+                      guest.name,
+                    )}
                     onClick={() => onArchive(guest)}
                   >
-                    Archive
+                    {copy.guest.archive}
                   </Button>
                 ) : (
                   <Button
                     type="button"
                     variant="ghost"
-                    aria-label={`Restore ${guest.name}`}
+                    aria-label={copy.guest.action(
+                      copy.guest.restore,
+                      guest.name,
+                    )}
                     onClick={() => onRestore(guest)}
                   >
-                    Restore
+                    {copy.guest.restore}
                   </Button>
                 )}
               </div>
@@ -196,7 +204,7 @@ export function GuestList({
                     disabled={busy}
                     onClick={() => onCreateInvitation(guest)}
                   >
-                    Create invitation
+                    {copy.guest.createInvitation}
                   </Button>
                 ) : null}
                 {canReplaceInvitation ? (
@@ -204,16 +212,15 @@ export function GuestList({
                     type="button"
                     variant="ghost"
                     disabled={busy}
-                    aria-label={`Issue a new link for ${guest.name}`}
+                    aria-label={copy.guest.issueNewLinkFor(guest.name)}
                     onClick={() => onReplaceInvitation(guest)}
                   >
-                    Issue new invitation link
+                    {copy.guest.issueNewLink}
                   </Button>
                 ) : null}
                 {canReplaceInvitation ? (
                   <p className="text-xs text-[#806d70]">
-                    If a link already exists, issuing a new one stops the old
-                    link from working.
+                    {copy.guest.replaceHint}
                   </p>
                 ) : null}
                 {invitations[guest.id] ? (
@@ -222,21 +229,18 @@ export function GuestList({
                       href={invitations[guest.id]!.publicUrl}
                       target="_blank"
                       rel="noreferrer"
-                      aria-label={`Open ${guest.name}'s invitation`}
+                      aria-label={copy.guest.openInvitation(guest.name)}
                       className="break-all text-[#71384b] underline"
                     >
                       {invitations[guest.id]!.publicUrl}
                     </a>
-                    <p className="text-xs">
-                      This secure link is shown only for this session. Copy it
-                      before leaving.
-                    </p>
+                    <p className="text-xs">{copy.guest.invitationNotice}</p>
                     <Button
                       type="button"
                       variant="ghost"
                       onClick={() => onCopyInvitation(guest)}
                     >
-                      Copy invitation link
+                      {copy.guest.copyInvitation}
                     </Button>
                   </div>
                 ) : null}
@@ -252,7 +256,7 @@ export function GuestList({
           disabled={busy}
           onClick={onLoadMore}
         >
-          {busy ? "Loading…" : "Load more guests"}
+          {busy ? copy.guest.loading : copy.guest.loadMore}
         </Button>
       ) : null}
     </section>
@@ -260,10 +264,11 @@ export function GuestList({
 }
 
 function RsvpBadge({ guest }: { guest: GuestSummary }) {
-  if (!guest.rsvp) return <Badge>Awaiting response</Badge>;
+  const copy = useUiCopy();
+  if (!guest.rsvp) return <Badge>{copy.guest.awaiting}</Badge>;
   return guest.rsvp.attendance === "attending" ? (
-    <Badge>Attending · {guest.rsvp.partySize}</Badge>
+    <Badge>{copy.guest.attendingCount(guest.rsvp.partySize)}</Badge>
   ) : (
-    <Badge>Declined</Badge>
+    <Badge>{copy.guest.declined}</Badge>
   );
 }

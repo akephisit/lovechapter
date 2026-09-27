@@ -7,6 +7,7 @@ import type {
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select } from "../ui/select";
+import { useUiCopy } from "../ui-language-provider";
 
 export type GuestFilters = {
   search: string;
@@ -24,22 +25,23 @@ export function GuestFiltersForm({
   affiliations: GuestAffiliation[];
   onChange(filters: GuestFilters): void;
 }) {
+  const copy = useUiCopy();
   return (
     <div className="grid gap-3 rounded-2xl border border-[#eadbd3] bg-white p-4 sm:grid-cols-2 xl:grid-cols-4">
       <div>
-        <Label htmlFor="guest-search">Search guests</Label>
+        <Label htmlFor="guest-search">{copy.guest.search}</Label>
         <Input
           id="guest-search"
           value={filters.search}
           maxLength={120}
-          placeholder="Name, email, or phone"
+          placeholder={copy.guest.searchPlaceholder}
           onChange={(event) =>
             onChange({ ...filters, search: event.currentTarget.value })
           }
         />
       </div>
       <div>
-        <Label htmlFor="guest-view">Guest view</Label>
+        <Label htmlFor="guest-view">{copy.guest.view}</Label>
         <Select
           id="guest-view"
           value={filters.view}
@@ -50,12 +52,14 @@ export function GuestFiltersForm({
             })
           }
         >
-          <option value="active">Active</option>
-          <option value="archived">Archived</option>
+          <option value="active">{copy.guest.active}</option>
+          <option value="archived">{copy.guest.archived}</option>
         </Select>
       </div>
       <div>
-        <Label htmlFor="guest-affiliation-filter">Affiliation</Label>
+        <Label htmlFor="guest-affiliation-filter">
+          {copy.guest.affiliation}
+        </Label>
         <Select
           id="guest-affiliation-filter"
           value={filters.affiliation ?? ""}
@@ -66,8 +70,8 @@ export function GuestFiltersForm({
             onChange(affiliation ? { ...remaining, affiliation } : remaining);
           }}
         >
-          <option value="">All affiliations</option>
-          <option value="unassigned">Unassigned</option>
+          <option value="">{copy.guest.allAffiliations}</option>
+          <option value="unassigned">{copy.guest.unassigned}</option>
           {affiliations.map((affiliation) => (
             <option key={affiliation.id} value={affiliation.id}>
               {affiliation.name}
@@ -76,7 +80,7 @@ export function GuestFiltersForm({
         </Select>
       </div>
       <div>
-        <Label htmlFor="guest-rsvp-filter">RSVP status</Label>
+        <Label htmlFor="guest-rsvp-filter">{copy.guest.rsvpStatus}</Label>
         <Select
           id="guest-rsvp-filter"
           value={filters.rsvp ?? ""}
@@ -91,10 +95,10 @@ export function GuestFiltersForm({
             );
           }}
         >
-          <option value="">All RSVP statuses</option>
-          <option value="pending">Pending</option>
-          <option value="attending">Attending</option>
-          <option value="declined">Declined</option>
+          <option value="">{copy.guest.allStatuses}</option>
+          <option value="pending">{copy.guest.pending}</option>
+          <option value="attending">{copy.guest.attending}</option>
+          <option value="declined">{copy.guest.declined}</option>
         </Select>
       </div>
     </div>

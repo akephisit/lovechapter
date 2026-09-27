@@ -8,6 +8,7 @@ import { useState, type FormEvent } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { useUiCopy } from "../ui-language-provider";
 import { AddressFields, addressFrom } from "./guest-form";
 
 export function GuestDetailDialog({
@@ -21,6 +22,7 @@ export function GuestDetailDialog({
   onClose(): void;
   onSave(input: UpdateGuestInput): Promise<void>;
 }) {
+  const copy = useUiCopy();
   const [includeAddress, setIncludeAddress] = useState(
     guest.postalAddress !== null,
   );
@@ -43,7 +45,7 @@ export function GuestDetailDialog({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={`Edit ${guest.name}`}
+      aria-label={copy.guest.editGuest(guest.name)}
       className="fixed inset-0 z-50 grid place-items-center bg-black/35 p-4"
     >
       <form
@@ -52,14 +54,14 @@ export function GuestDetailDialog({
       >
         <div className="mb-4 flex items-center justify-between gap-4">
           <h2 className="font-serif text-2xl font-semibold">
-            Edit {guest.name}
+            {copy.guest.editGuest(guest.name)}
           </h2>
           <Button type="button" variant="ghost" onClick={onClose}>
-            Close
+            {copy.guest.close}
           </Button>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Guest name" htmlFor="edit-guest-name">
+          <Field label={copy.guest.guestName} htmlFor="edit-guest-name">
             <Input
               id="edit-guest-name"
               name="name"
@@ -67,14 +69,17 @@ export function GuestDetailDialog({
               defaultValue={guest.name}
             />
           </Field>
-          <Field label="Email" htmlFor="edit-guest-email">
+          <Field label={copy.guest.email} htmlFor="edit-guest-email">
             <Input
               id="edit-guest-email"
               name="email"
               defaultValue={guest.email ?? ""}
             />
           </Field>
-          <Field label="Party allowance" htmlFor="edit-party-allowance">
+          <Field
+            label={copy.guest.partyAllowance}
+            htmlFor="edit-party-allowance"
+          >
             <Input
               id="edit-party-allowance"
               name="allowedPartySize"
@@ -88,17 +93,17 @@ export function GuestDetailDialog({
         </div>
         <details className="mt-4 rounded-xl border border-[#eadbd3] p-4">
           <summary className="cursor-pointer font-semibold text-[#60464d]">
-            Optional contact, envelope, and mailing details
+            {copy.guest.optionalDetails}
           </summary>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <Field label="Phone" htmlFor="edit-guest-phone">
+            <Field label={copy.guest.phone} htmlFor="edit-guest-phone">
               <Input
                 id="edit-guest-phone"
                 name="phone"
                 defaultValue={guest.phone ?? ""}
               />
             </Field>
-            <Field label="Envelope name" htmlFor="edit-envelope-name">
+            <Field label={copy.guest.envelopeName} htmlFor="edit-envelope-name">
               <Input
                 id="edit-envelope-name"
                 name="envelopeName"
@@ -106,7 +111,7 @@ export function GuestDetailDialog({
               />
             </Field>
             <div className="sm:col-span-2">
-              <Field label="Note" htmlFor="edit-note">
+              <Field label={copy.guest.note} htmlFor="edit-note">
                 <textarea
                   id="edit-note"
                   name="note"
@@ -123,7 +128,7 @@ export function GuestDetailDialog({
                   setIncludeAddress(event.currentTarget.checked)
                 }
               />
-              Include postal address
+              {copy.guest.includeAddress}
             </label>
             {includeAddress ? (
               <AddressDefaults address={guest.postalAddress} />
@@ -131,7 +136,7 @@ export function GuestDetailDialog({
           </div>
         </details>
         <Button className="mt-5" type="submit" disabled={busy}>
-          {busy ? "Saving…" : "Save guest"}
+          {busy ? copy.guest.saving : copy.guest.saveGuest}
         </Button>
       </form>
     </div>
@@ -139,11 +144,12 @@ export function GuestDetailDialog({
 }
 
 function AddressDefaults({ address }: { address: PostalAddressInput | null }) {
+  const copy = useUiCopy();
   if (!address) return <AddressFields prefix="edit" />;
   return (
     <>
       <label>
-        <Label htmlFor="edit-address-line-1">Address line 1</Label>
+        <Label htmlFor="edit-address-line-1">{copy.guest.addressLine1}</Label>
         <Input
           id="edit-address-line-1"
           name="addressLine1"
@@ -152,7 +158,7 @@ function AddressDefaults({ address }: { address: PostalAddressInput | null }) {
         />
       </label>
       <label>
-        <Label htmlFor="edit-address-line-2">Address line 2</Label>
+        <Label htmlFor="edit-address-line-2">{copy.guest.addressLine2}</Label>
         <Input
           id="edit-address-line-2"
           name="addressLine2"
@@ -160,7 +166,7 @@ function AddressDefaults({ address }: { address: PostalAddressInput | null }) {
         />
       </label>
       <label>
-        <Label htmlFor="edit-locality">Locality</Label>
+        <Label htmlFor="edit-locality">{copy.guest.locality}</Label>
         <Input
           id="edit-locality"
           name="locality"
@@ -168,7 +174,9 @@ function AddressDefaults({ address }: { address: PostalAddressInput | null }) {
         />
       </label>
       <label>
-        <Label htmlFor="edit-administrative-area">Administrative area</Label>
+        <Label htmlFor="edit-administrative-area">
+          {copy.guest.administrativeArea}
+        </Label>
         <Input
           id="edit-administrative-area"
           name="administrativeArea"
@@ -176,7 +184,7 @@ function AddressDefaults({ address }: { address: PostalAddressInput | null }) {
         />
       </label>
       <label>
-        <Label htmlFor="edit-postal-code">Postal code</Label>
+        <Label htmlFor="edit-postal-code">{copy.guest.postalCode}</Label>
         <Input
           id="edit-postal-code"
           name="postalCode"
@@ -184,7 +192,7 @@ function AddressDefaults({ address }: { address: PostalAddressInput | null }) {
         />
       </label>
       <label>
-        <Label htmlFor="edit-country-code">Country code</Label>
+        <Label htmlFor="edit-country-code">{copy.guest.countryCode}</Label>
         <Input
           id="edit-country-code"
           name="countryCode"

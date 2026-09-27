@@ -6,6 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { GuestWorkspace, type GuestWorkspaceApi } from "./guest-workspace";
+import { UiLanguageProvider } from "../ui-language-provider";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -13,6 +14,87 @@ afterEach(() => {
 });
 
 describe("GuestWorkspace", () => {
+  it("uses Thai guest filters and reveals a private link only after creation", async () => {
+    const api = apiFixture();
+    api.createInvitation = vi.fn(async () => ({
+      id: "invitation",
+      guestId: guest().id,
+      token: "private-token",
+      publicUrl: "https://web.example.test/i/private-token",
+    }));
+    render(
+      <UiLanguageProvider language="th">
+        <GuestWorkspace
+          weddingId={weddingId}
+          weddingName="Mali & Arun"
+          affiliations={[]}
+          initialPage={page([guest()])}
+          api={api}
+        />
+      </UiLanguageProvider>,
+    );
+    expect(screen.getByLabelText("ค้นหาแขก")).toBeVisible();
+    expect(
+      screen.getByRole("option", { name: "เก็บถาวร" }),
+    ).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent("private-token");
+    await userEvent.click(screen.getByRole("button", { name: "สร้างคำเชิญ" }));
+    expect(
+      await screen.findByRole("link", { name: "เปิดคำเชิญของ Nok" }),
+    ).toHaveAttribute("href", "https://web.example.test/i/private-token");
+  });
+
+  it("hides unknown backend errors behind Thai fallback copy", async () => {
+    const api = apiFixture();
+    api.downloadGuestCsv = vi.fn(async () => {
+      throw new Error("raw English detail");
+    });
+    render(
+      <UiLanguageProvider language="th">
+        <GuestWorkspace
+          weddingId={weddingId}
+          weddingName="Mali & Arun"
+          affiliations={[]}
+          initialPage={page([])}
+          api={api}
+        />
+      </UiLanguageProvider>,
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "ส่งออก CSV ตามตัวกรอง" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "ไม่สามารถส่งออก CSV ได้",
+    );
+    expect(screen.queryByText(/raw English/)).not.toBeInTheDocument();
+  });
+
+  it("keeps edit and archived-view actions available in Thai", async () => {
+    const api = apiFixture();
+    render(
+      <UiLanguageProvider language="th">
+        <GuestWorkspace
+          weddingId={weddingId}
+          weddingName="Mali & Arun"
+          affiliations={[]}
+          initialPage={page([guest()])}
+          api={api}
+        />
+      </UiLanguageProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "แก้ไข Nok" }));
+    const dialog = await screen.findByRole("dialog", { name: "แก้ไข Nok" });
+    expect(within(dialog).getByLabelText("ชื่อแขก")).toHaveValue("Nok");
+    await userEvent.click(within(dialog).getByRole("button", { name: "ปิด" }));
+    await userEvent.selectOptions(
+      screen.getByLabelText("มุมมองแขก"),
+      "archived",
+    );
+    expect(api.listGuestManagement).toHaveBeenCalledWith(
+      weddingId,
+      expect.objectContaining({ view: "archived" }),
+    );
+  });
   it("confirms replacement and shows only the newly issued invitation link", async () => {
     const api = apiFixture();
     const original = {
@@ -97,7 +179,7 @@ describe("GuestWorkspace", () => {
       await failure.promise.catch(() => {});
     });
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Download failed",
+      "We couldn't export the guest CSV.",
     );
     expect(screen.getByText(/1 selected/i)).toBeVisible();
   });
@@ -297,7 +379,9 @@ describe("GuestWorkspace", () => {
     );
     expect(screen.getByText(/200 selected/i)).toBeVisible();
     await user.click(screen.getByRole("button", { name: /archive selected/i }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Bulk failed");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Bulk archive failed.",
+    );
     expect(screen.getByText(/200 selected/i)).toBeVisible();
     expect(screen.getByText("Guest 0")).toBeVisible();
   }, 10_000);
