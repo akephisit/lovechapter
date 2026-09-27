@@ -1475,3 +1475,18 @@ not prove the token can upload or deploy Worker versions. Hosted Worker
 release CI for `32b5a33` passed with staging and production release jobs
 skipped. No Worker version, database, maintenance gate, production setting,
 or release switch was changed.
+
+The next staging audit filled the three missing non-secret GitHub `staging`
+environment variables: `RELEASE_WEB_ORIGIN` was checked against the actual
+Cloudflare account subdomain and a successful staging web HEAD request;
+`RELEASE_TEST_BRANCH_ID` was checked against Neon's `staging-test` branch;
+and `RELEASE_TEST_MIGRATION_DATABASE_ROLE` was checked against that branch's
+role inventory. A paginated GitHub variables readback confirmed all three.
+No secret, Worker, release flag, or production setting changed. Read-only
+database inspection found that both active `staging` and `staging-test` still
+lack the four columns from reviewed migration `0011_release_versions`.
+Active staging's gate is open at SHA `2ff3b62b88bf5f44e04a74cac8cdf74a57db6b63`
+with zero leases, but has no accepted Worker-version baseline. The current
+release executor therefore rejects an automatic staging cutover before any
+deployment. A one-time, guarded staging baseline/rehearsal remains required;
+the release flags stay unset.
