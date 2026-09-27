@@ -1544,3 +1544,24 @@ public release, provision and verify distinct production roles, cache-disabled
 Hyperdrive, both Workers and their secrets, an isolated recovery rehearsal,
 and exact-SHA staging acceptance. No provider resource was changed in this
 inventory step.
+
+## Staging baseline plan and production-role credential rotation (2026-09-27)
+
+The owner approved the one-time staging Worker baseline **written spec for
+planning**, not active staging cutover. The implementation plan is
+`docs/superpowers/plans/2026-09-27-staging-worker-baseline.md`; it separates
+pre-schema gate/migration code, isolated recovery rehearsal, a disabled-by-default
+manual coordinator, a separately approved live staging cutover, and removal of
+the one-time adapter. The owner previously chose Native execution one task at
+a time. Both automatic release switches remain unset.
+
+During the earlier read-only production inventory, a local tool error exposed
+the `production` branch's `neondb_owner` connection credential in tool output.
+With explicit owner approval, only that role on branch
+`br-dawn-paper-azsknf1y` was rotated via the Neon API. The final reset
+operation finished, and a new connection authenticated to the `neondb`
+database as `neondb_owner`; neither old nor new credential was placed in Git,
+chat, or this progress log. Any previously held production connection URL for
+that role is invalid and must be refreshed before future use. No staging role,
+production schema, Worker, Hyperdrive, release gate, or release flag was
+changed by this rotation.
