@@ -14,6 +14,13 @@ They await written-spec review before implementation planning. No application
 code, database schema, deployment, or production resource changed in this
 design step.
 
+The owner then approved the written specifications and requested
+implementation. The first implementation plan, for bilingual website copy and
+controlled standard-code inputs, is at
+`docs/superpowers/plans/2026-09-27-bilingual-web-and-controlled-inputs.md`
+for plan review before product-code changes. The subsequent workspace redesign
+will have its own implementation plan after this prerequisite slice.
+
 ## Current release status (2026-09-27)
 
 The first public Cloudflare Worker installation is live on the generated
