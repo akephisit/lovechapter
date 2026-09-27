@@ -27,5 +27,6 @@ describe("root UI language", () => {
     expect(metadata.title).toMatchObject({
       default: "LoveChapter — วางแผนงานแต่งและตอบรับคำเชิญ",
     });
+    expect(metadata.description).toContain("พื้นที่วางแผนงานแต่ง");
   });
 });

@@ -172,7 +172,17 @@ describe("PublicRsvp", () => {
       <UiLanguageProvider language="th">
         <PublicRsvp
           token="safe-token"
-          api={{ getInvitation: async () => invitationFixture(), submitRsvp }}
+          api={{
+            getInvitation: async () => ({
+              ...invitationFixture(),
+              wedding: {
+                ...invitationFixture().wedding,
+                locale: "en-US",
+                timeZone: "America/New_York",
+              },
+            }),
+            submitRsvp,
+          }}
         />
       </UiLanguageProvider>,
     );
@@ -180,6 +190,7 @@ describe("PublicRsvp", () => {
       await screen.findByRole("heading", { name: /ขอเชิญคุณ/ }),
     ).toBeVisible();
     expect(screen.getByText("February 14, 2027")).toBeVisible();
+    expect(screen.getByText(/America\/New_York/)).toBeVisible();
     expect(screen.getByRole("combobox", { name: "ภาษา" })).toBeVisible();
     expect(screen.queryByText("safe-token")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "ส่งคำตอบ" }));

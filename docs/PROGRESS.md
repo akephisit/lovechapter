@@ -1,5 +1,34 @@
 # LoveChapter — Progress
 
+## Bilingual website implementation candidate (2026-09-28)
+
+The approved English/Thai website and controlled-input plan is implemented on
+the isolated `codex/bilingual-wedding-workspace` branch. The UI language is a
+separate, server-readable preference; it changes browser copy, auth and
+workspace screens, RSVP, CSV import, envelope printing, maintenance HTML, page
+metadata, and the PWA manifest without changing wedding locale, time zone, or
+currency. The language setter preserves invitation URLs and remains the sole
+preference-only maintenance exception. Guest content, CSV headers, invitation
+tokens, and API contracts remain unchanged.
+
+Wedding locale, IANA time zone, ISO currency, and ISO country inputs now use
+searchable, keyboard-operable selections that submit only selected codes. The
+country data and country-language locale candidates are checked in from
+`countries-list@3.4.1` with its MIT notice. Shared domain validation rejects
+unknown country codes such as `ZZ`. Existing valid stored locale values remain
+selectable. No schema migration was introduced.
+
+Local verification passed: format, lint, all workspace typechecks, 113 test
+files / 712 tests, Drizzle migration check, Bun API/jobs builds and Bun runtime
+smoke, API Worker Wrangler dry-run, Next and vinext builds, vinext compatibility
+check, web Worker dry-run, and `git diff --check`. A local production-build
+server returned Thai and English manifest descriptions according to the
+language cookie and rendered `<html lang="th">` for Thai sign-in. These are
+local checks only: no live Neon, email, RSVP, CSV, print, or production Worker
+acceptance was run for this branch. The branch has not been pushed or deployed.
+The separate compact rose workspace redesign remains a written design and
+needs its own reviewed implementation plan.
+
 ## Bilingual UI and workspace redesign specifications (2026-09-27)
 
 The owner approved two sequential design directions: an English/Thai switch

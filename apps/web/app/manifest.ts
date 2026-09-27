@@ -1,10 +1,12 @@
 import type { MetadataRoute } from "next";
+import { getServerUiCopy } from "../lib/server-ui-copy";
 
-export default function manifest(): MetadataRoute.Manifest {
+export default async function manifest(): Promise<MetadataRoute.Manifest> {
+  const copy = await getServerUiCopy();
   return {
     name: "LoveChapter",
     short_name: "LoveChapter",
-    description: "A calm wedding planning and RSVP workspace.",
+    description: copy.metadata.description,
     start_url: "/",
     display: "standalone",
     background_color: "#fbf6ef",
