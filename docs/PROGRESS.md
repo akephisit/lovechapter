@@ -8,24 +8,20 @@ custom-domain web route/TLS is not yet verified. Both production Workers now
 exist with Preview URLs disabled, production origins/secrets have been
 configured, and the release gate remains in maintenance with no accepted
 Worker-version baseline or active leases. The automatic release flag remains
-`false`. A one-time, manually dispatched protected-main workflow has been
-prepared to rerun CI and disposable PostgreSQL tests, build both Workers,
-retarget only the unpublished drained gate to its exact SHA, privately smoke,
-open, check public behavior, and record the first deployment. Its first run
-stopped before any gate or Worker change; no public production release is
-claimed. Its focused
-tests and local CI passed (101 files / 660 tests, Bun API/jobs builds and
-smoke, Worker dry-run, Next/vinext builds/check). The gate role cannot read
-the migration ledger, so this one-time schema check uses the already
-configured migration credential after checking it targets the same endpoint.
-Two manual runs passed CI and disposable PostgreSQL jobs but stopped inside
-publication before gate retarget or Worker version upload. Readback confirmed
-maintenance still targets the old SHA, has zero leases and null version
-baseline, and both active Worker versions are unchanged. Fixed, non-secret
-phase markers show that context, exact main SHA, gate baseline, and migration
-ledger checks passed; the failure is within Worker preparation. More granular
-fixed Worker phase markers are now being added to isolate that failure without
-logging arguments or relaxing any release guard. No public release is claimed.
+`false`. A one-time, manually dispatched protected-main workflow reruns CI
+and disposable PostgreSQL tests, builds both Workers, retargets only the
+unpublished drained gate to its exact SHA, privately smokes, opens, checks
+public behavior, and records the first deployment. Its first two runs passed
+CI and PostgreSQL integration but stopped before gate retarget. A third run
+passed target and Preview URL checks, both Worker builds and dry-runs, then
+stopped at API version upload before gate retarget. Readback after the first
+two runs confirmed maintenance still targets the old SHA, has zero leases
+and null version baseline, and active Worker versions were unchanged. The
+upload path is being instrumented to emit only a fixed failure category or
+numeric provider code, not command output or arguments. This does not relax
+any release guard. The gate role cannot read the migration ledger, so the
+one-time schema check uses the configured migration credential after
+checking it targets the same endpoint. No public release is claimed.
 
 The direct-production Worker release implementation was fast-forwarded from
 the isolated `codex/automatic-worker-release-implementation` worktree to

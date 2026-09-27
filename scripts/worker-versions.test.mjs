@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   assertClientBundleClean,
+  classifyUploadFailure,
   createWorkerCommandRunner,
   deployPreparedVersions,
   prepareWorkerVersions,
@@ -86,6 +87,23 @@ function input(impact) {
 }
 
 describe("selected Worker versions", () => {
+  it("classifies Wrangler upload failures without exposing provider text", () => {
+    expect(
+      classifyUploadFailure({
+        type: "command-failed",
+        code: 10000,
+        message: "Permission denied for secret token ABCDEFGHIJ",
+      }),
+    ).toBe("authorization (code 10000)");
+    expect(
+      classifyUploadFailure({
+        type: "command-failed",
+        message: "Strict mode cannot inherit remote binding",
+      }),
+    ).toBe("strict bindings");
+    expect(classifyUploadFailure(undefined)).toBe("unknown");
+  });
+
   it("recognizes the checked-in staging targets with Version URLs disabled", async () => {
     const commands = createWorkerCommandRunner({
       cloudflareAccountId: "test-account",

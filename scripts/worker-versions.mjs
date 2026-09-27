@@ -260,37 +260,73 @@ async function emittedFiles(directory, relative = "") {
   return files;
 }
 
+/** Only a fixed category and numeric provider code may reach release logs. */
+export function classifyUploadFailure(event) {
+  if (event?.type !== "command-failed") return "unknown";
+  const message = String(event.message ?? "");
+  const category = /permission|unauthori[sz]ed|authentication|api token/iu.test(
+    message,
+  )
+    ? "authorization"
+    : /strict|inherit|remote binding/iu.test(message)
+      ? "strict bindings"
+      : /hyperdrive|binding/iu.test(message)
+        ? "binding"
+        : /size|limit|exceed/iu.test(message)
+          ? "limit"
+          : "unknown";
+  const code = event.code;
+  return Number.isSafeInteger(code) && code >= 1000 && code <= 999999
+    ? `${category} (code ${code})`
+    : category;
+}
+
+async function readWranglerEvents(path) {
+  try {
+    return (await readFile(path, "utf8"))
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+  } catch {
+    return [];
+  }
+}
+
 async function uploadVersion(environment, name, sha) {
   const temporaryDirectory = await mkdtemp(
     join(tmpdir(), "lc-wrangler-output-"),
   );
   const outputPath = join(temporaryDirectory, "upload.ndjson");
   try {
-    await runCommand(
-      process.execPath,
-      [
-        wrangler,
-        "versions",
-        "upload",
-        "--config",
-        "wrangler.jsonc",
-        ...(environment === "staging" ? ["--env", "staging"] : []),
-        "--name",
-        name,
-        "--keep-vars",
-        "--strict",
-        "--tag",
-        sha,
-      ],
-      {
-        cwd: apiDirectory,
-        env: { ...process.env, WRANGLER_OUTPUT_FILE_PATH: outputPath },
-      },
-    );
-    const events = (await readFile(outputPath, "utf8"))
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => JSON.parse(line));
+    try {
+      await runCommand(
+        process.execPath,
+        [
+          wrangler,
+          "versions",
+          "upload",
+          "--config",
+          "wrangler.jsonc",
+          ...(environment === "staging" ? ["--env", "staging"] : []),
+          "--name",
+          name,
+          "--keep-vars",
+          "--strict",
+          "--tag",
+          sha,
+        ],
+        {
+          cwd: apiDirectory,
+          env: { ...process.env, WRANGLER_OUTPUT_FILE_PATH: outputPath },
+        },
+      );
+    } catch {
+      const failure = (await readWranglerEvents(outputPath)).find(
+        (event) => event.type === "command-failed",
+      );
+      throw new Error(`API upload failed: ${classifyUploadFailure(failure)}`);
+    }
+    const events = await readWranglerEvents(outputPath);
     const upload = events.find((event) => event.type === "version-upload");
     if (
       upload?.worker_name !== name ||

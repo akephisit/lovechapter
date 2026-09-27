@@ -446,6 +446,20 @@ if (
     });
     console.log("first_production_publication_passed");
   } catch (error) {
+    const uploadDiagnosis =
+      error instanceof Error
+        ? /^API upload failed: (?:authorization|strict bindings|binding|limit|unknown)(?: \(code [0-9]{4,6}\))?$/u.exec(
+            error.message,
+          )
+        : null;
+    if (uploadDiagnosis) {
+      console.error(`first_production_${uploadDiagnosis[0]}`);
+    } else if (
+      error instanceof Error &&
+      error.message === "API upload receipt does not match Worker name"
+    ) {
+      console.error("first_production_upload_receipt_mismatch");
+    }
     console.error(
       error instanceof Error &&
         error.message ===
