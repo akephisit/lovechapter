@@ -10,12 +10,14 @@ import { CalendarDays, Check, Heart, MapPin } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { ApiError, loveChapterPublicApi } from "../lib/api-client";
+import { LanguageSwitcher } from "./language-switcher";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Label } from "./ui/label";
 import { Select } from "./ui/select";
 import { Textarea } from "./ui/textarea";
+import { useUiCopy } from "./ui-language-provider";
 
 export interface PublicRsvpApi {
   getInvitation(token: string): Promise<PublicInvitation>;
@@ -29,6 +31,7 @@ export function PublicRsvp({
   token: string;
   api?: PublicRsvpApi;
 }) {
+  const copy = useUiCopy();
   const [invitation, setInvitation] = useState<PublicInvitation | null>(null);
   const [attendance, setAttendance] = useState<Attendance>("attending");
   const [partySize, setPartySize] = useState(1);
@@ -63,13 +66,13 @@ export function PublicRsvp({
           setState("unavailable");
           return;
         }
-        setError("We couldn't load this invitation. Please try again.");
+        setError(copy.rsvp.loadError);
         setState("load-error");
       });
     return () => {
       current = false;
     };
-  }, [api, loadAttempt, token]);
+  }, [api, copy, loadAttempt, token]);
 
   async function saveRsvp(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -97,9 +100,9 @@ export function PublicRsvp({
         return;
       }
       setError(
-        caught instanceof Error && caught.message
-          ? caught.message
-          : "We couldn't save your RSVP. Please try again.",
+        caught instanceof ApiError && caught.code === "validation_error"
+          ? copy.rsvp.invalidInput
+          : copy.rsvp.saveError,
       );
       setState("ready");
     }
@@ -111,7 +114,7 @@ export function PublicRsvp({
   }
 
   if (state === "loading") {
-    return <CenteredMessage>Opening your invitation…</CenteredMessage>;
+    return <CenteredMessage>{copy.rsvp.opening}</CenteredMessage>;
   }
 
   if (state === "load-error") {
@@ -119,7 +122,7 @@ export function PublicRsvp({
       <CenteredMessage>
         <Heart className="mx-auto mb-5 size-8 text-[#9d6471]" />
         <h1 className="font-serif text-3xl font-semibold text-[#432f35]">
-          We couldn&apos;t open this invitation
+          {copy.rsvp.loadTitle}
         </h1>
         <p className="mt-3 leading-7 text-[#786568]">{error}</p>
         <Button
@@ -131,7 +134,7 @@ export function PublicRsvp({
             setLoadAttempt((attempt) => attempt + 1);
           }}
         >
-          Try again
+          {copy.rsvp.retry}
         </Button>
       </CenteredMessage>
     );
@@ -142,11 +145,10 @@ export function PublicRsvp({
       <CenteredMessage>
         <Heart className="mx-auto mb-5 size-8 text-[#9d6471]" />
         <h1 className="font-serif text-3xl font-semibold text-[#432f35]">
-          Invitation unavailable
+          {copy.rsvp.unavailableTitle}
         </h1>
         <p className="mt-3 leading-7 text-[#786568]">
-          This invitation may have expired or been replaced. Please ask the
-          couple for a new link.
+          {copy.rsvp.unavailableDescription}
         </p>
       </CenteredMessage>
     );
@@ -161,11 +163,14 @@ export function PublicRsvp({
     <main className="relative min-h-screen overflow-hidden px-4 py-8 sm:px-6 sm:py-12">
       <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_12%_12%,rgba(199,147,142,0.3),transparent_32%),radial-gradient(circle_at_88%_24%,rgba(173,142,167,0.24),transparent_34%)]" />
       <div className="mx-auto max-w-5xl">
-        <header className="mb-8 flex items-center justify-center gap-2 text-[#71384b]">
-          <Heart aria-hidden="true" className="size-4" fill="currentColor" />
-          <span className="text-sm font-bold tracking-[0.16em] uppercase">
-            LoveChapter
-          </span>
+        <header className="mb-8 flex items-center justify-between gap-2 text-[#71384b]">
+          <div className="flex items-center gap-2">
+            <Heart aria-hidden="true" className="size-4" fill="currentColor" />
+            <span className="text-sm font-bold tracking-[0.16em] uppercase">
+              LoveChapter
+            </span>
+          </div>
+          <LanguageSwitcher />
         </header>
         <Card className="overflow-hidden">
           <div className="grid lg:grid-cols-[1.05fr_0.95fr]">
@@ -173,15 +178,15 @@ export function PublicRsvp({
               <div className="absolute -top-20 -right-20 size-64 rounded-full border border-white/10" />
               <div className="absolute -right-12 -bottom-20 size-52 rounded-full bg-white/5" />
               <p className="mb-5 text-xs font-bold tracking-[0.24em] text-[#f1d7d8] uppercase">
-                A celebration of love
+                {copy.rsvp.celebration}
               </p>
               <h1 className="font-serif text-4xl leading-tight font-semibold sm:text-5xl">
-                You&apos;re invited,
+                {copy.rsvp.invited}
                 <br />
                 {invitation.guest.name}.
               </h1>
               <p className="mt-6 text-lg leading-8 text-white/75">
-                Join us as we begin a beautiful new chapter together.
+                {copy.rsvp.welcome}
               </p>
               <div className="mt-12 border-t border-white/15 pt-8">
                 <p className="font-serif text-3xl font-semibold">
@@ -190,33 +195,33 @@ export function PublicRsvp({
                 <div className="mt-5 space-y-3 text-sm text-white/75">
                   <p className="flex items-center gap-3">
                     <CalendarDays aria-hidden="true" className="size-4" />
-                    {formatWeddingDate(invitation)}
+                    {formatWeddingDate(invitation, copy.rsvp.datePending)}
                   </p>
                   <p className="flex items-center gap-3">
                     <MapPin aria-hidden="true" className="size-4" />
-                    Times shown in {invitation.wedding.timeZone}
+                    {copy.rsvp.timeZone(invitation.wedding.timeZone)}
                   </p>
                 </div>
               </div>
             </section>
 
             <section className="px-6 py-9 sm:px-10 sm:py-12 lg:px-12 lg:py-16">
-              <Badge className="mb-4">Private RSVP</Badge>
+              <Badge className="mb-4">{copy.rsvp.badge}</Badge>
               <h2 className="font-serif text-3xl font-semibold text-[#432f35]">
-                Will you join us?
+                {copy.rsvp.heading}
               </h2>
               <p className="mt-2 leading-7 text-[#7c686b]">
-                Your response can be updated later using this same invitation.
+                {copy.rsvp.editable}
               </p>
 
               <form onSubmit={saveRsvp} className="mt-8 space-y-6">
                 <fieldset>
                   <legend className="mb-3 text-sm font-semibold text-[#574248]">
-                    Your response
+                    {copy.rsvp.response}
                   </legend>
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                     <ResponseChoice
-                      label="Joyfully accept"
+                      label={copy.rsvp.attending}
                       value="attending"
                       checked={attendance === "attending"}
                       onChange={() => {
@@ -226,7 +231,7 @@ export function PublicRsvp({
                       }}
                     />
                     <ResponseChoice
-                      label="Regretfully decline"
+                      label={copy.rsvp.declined}
                       value="declined"
                       checked={attendance === "declined"}
                       onChange={() => {
@@ -240,7 +245,7 @@ export function PublicRsvp({
 
                 {attendance === "attending" ? (
                   <div>
-                    <Label htmlFor="party-size">Party size</Label>
+                    <Label htmlFor="party-size">{copy.rsvp.partySize}</Label>
                     <Select
                       id="party-size"
                       value={partySize}
@@ -251,19 +256,18 @@ export function PublicRsvp({
                     >
                       {options.map((size) => (
                         <option key={size} value={size}>
-                          {size} {size === 1 ? "guest" : "guests"}
+                          {copy.rsvp.partySizeOption(size)}
                         </option>
                       ))}
                     </Select>
                     <p className="mt-1.5 text-xs text-[#8b7779]">
-                      This invitation welcomes up to{" "}
-                      {invitation.guest.allowedPartySize}.
+                      {copy.rsvp.partyLimit(invitation.guest.allowedPartySize)}
                     </p>
                   </div>
                 ) : null}
 
                 <div>
-                  <Label htmlFor="rsvp-note">Note (optional)</Label>
+                  <Label htmlFor="rsvp-note">{copy.rsvp.note}</Label>
                   <Textarea
                     id="rsvp-note"
                     value={note}
@@ -272,7 +276,7 @@ export function PublicRsvp({
                       markEdited();
                       setNote(event.target.value);
                     }}
-                    placeholder="Share a warm note with the couple…"
+                    placeholder={copy.rsvp.notePlaceholder}
                   />
                 </div>
 
@@ -290,7 +294,7 @@ export function PublicRsvp({
                   type="submit"
                   disabled={state === "saving"}
                 >
-                  {state === "saving" ? "Saving…" : "Save RSVP"}
+                  {state === "saving" ? copy.rsvp.saving : copy.rsvp.submit}
                 </Button>
 
                 {state === "saved" ? (
@@ -299,7 +303,7 @@ export function PublicRsvp({
                     className="flex items-center justify-center gap-2 text-sm font-semibold text-[#456648]"
                   >
                     <Check aria-hidden="true" className="size-4" />
-                    Your RSVP is saved.
+                    {copy.rsvp.saved}
                   </p>
                 ) : null}
               </form>
@@ -307,8 +311,7 @@ export function PublicRsvp({
           </div>
         </Card>
         <p className="mt-6 text-center text-xs leading-5 text-[#8b7779]">
-          No account or password is needed. Keep this private invitation link
-          safe.
+          {copy.rsvp.privateLink}
         </p>
       </div>
     </main>
@@ -344,13 +347,21 @@ function ResponseChoice({
 function CenteredMessage({ children }: { children: React.ReactNode }) {
   return (
     <main className="grid min-h-screen place-items-center px-4 py-10">
-      <Card className="max-w-lg p-8 text-center sm:p-10">{children}</Card>
+      <Card className="max-w-lg p-8 text-center sm:p-10">
+        <div className="mb-4 flex justify-end">
+          <LanguageSwitcher />
+        </div>
+        {children}
+      </Card>
     </main>
   );
 }
 
-function formatWeddingDate(invitation: PublicInvitation): string {
-  if (!invitation.wedding.weddingDate) return "Date to be announced";
+function formatWeddingDate(
+  invitation: PublicInvitation,
+  pending: string,
+): string {
+  if (!invitation.wedding.weddingDate) return pending;
   return new Intl.DateTimeFormat(invitation.wedding.locale, {
     dateStyle: "long",
     timeZone: "UTC",

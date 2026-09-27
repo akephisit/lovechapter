@@ -11,6 +11,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../lib/api-client";
 import { PublicRsvp, type PublicRsvpApi } from "./public-rsvp";
+import { UiLanguageProvider } from "./ui-language-provider";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 describe("PublicRsvp", () => {
   it("shows an unavailable invitation when the link is replaced during RSVP", async () => {
@@ -155,6 +158,77 @@ describe("PublicRsvp", () => {
       await screen.findByRole("heading", { name: /you're invited/i }),
     ).toBeVisible();
     expect(getInvitation).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows Thai RSVP controls without changing the stored wedding locale or guest contract", async () => {
+    window.history.replaceState(null, "", "/i/safe-token");
+    const submitRsvp = vi.fn(
+      async (_token: string, input: SubmitRsvpInput) => ({
+        ...input,
+        updatedAt: "2026-09-23T10:00:00.000Z",
+      }),
+    );
+    render(
+      <UiLanguageProvider language="th">
+        <PublicRsvp
+          token="safe-token"
+          api={{ getInvitation: async () => invitationFixture(), submitRsvp }}
+        />
+      </UiLanguageProvider>,
+    );
+    expect(
+      await screen.findByRole("heading", { name: /ขอเชิญคุณ/ }),
+    ).toBeVisible();
+    expect(screen.getByText("February 14, 2027")).toBeVisible();
+    expect(screen.getByRole("combobox", { name: "ภาษา" })).toBeVisible();
+    expect(screen.queryByText("safe-token")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "ส่งคำตอบ" }));
+    expect(submitRsvp).toHaveBeenCalledWith("safe-token", {
+      attendance: "attending",
+      partySize: 1,
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "บันทึกคำตอบแล้ว",
+    );
+    expect(window.location.pathname).toBe("/i/safe-token");
+  });
+
+  it("keeps unavailable and unexpected invitation errors in Thai", async () => {
+    const unavailable = render(
+      <UiLanguageProvider language="th">
+        <PublicRsvp
+          token="expired"
+          api={{
+            getInvitation: async () => {
+              throw new ApiError("raw English", 410);
+            },
+            submitRsvp: vi.fn(),
+          }}
+        />
+      </UiLanguageProvider>,
+    );
+    expect(
+      await screen.findByRole("heading", { name: "คำเชิญนี้ไม่พร้อมใช้งาน" }),
+    ).toBeVisible();
+    unavailable.unmount();
+
+    render(
+      <UiLanguageProvider language="th">
+        <PublicRsvp
+          token="network"
+          api={{
+            getInvitation: async () => {
+              throw new ApiError("raw English", 500);
+            },
+            submitRsvp: vi.fn(),
+          }}
+        />
+      </UiLanguageProvider>,
+    );
+    expect(
+      await screen.findByRole("heading", { name: "ไม่สามารถเปิดคำเชิญนี้ได้" }),
+    ).toBeVisible();
+    expect(screen.queryByText(/raw English/)).not.toBeInTheDocument();
   });
 });
 
