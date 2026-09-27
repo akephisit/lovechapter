@@ -1415,3 +1415,20 @@ private maintenance smoke test. No Cloudflare secret was changed, no Worker
 version was uploaded or deployed, and no maintenance transition occurred.
 The hosted CI for fixture documentation commit `d96bcdb` passed its CI and
 PostgreSQL jobs, with staging and production skipped.
+
+The owner approved setting a fresh random password only for the existing,
+verified and onboarded staging test account. The account was uniquely
+identified on the active `staging` branch, its password was hashed in the
+application's scrypt format and verified with the application hasher, and a
+transaction incremented its credential version, revoked old sessions, and
+consumed outstanding reset tokens. The password was sent directly to GitHub
+staging secret `RELEASE_TEST_PASSWORD` without appearing in chat, logs, or
+Git. A first live sign-in and session check succeeded, but the operator's
+sign-out probe returned 400 because it omitted the API-required JSON content
+type and `{}` body. The account was reset once more to rerun the full probe;
+sign-in, authenticated session, JSON sign-out, and rejection of the revoked
+session then all passed through the deployed staging web proxy. A database
+check found zero active sessions for the fixture account. No production
+account, Worker version, maintenance gate, or migration was changed. Hosted
+CI for the prior documentation commit `049fa81` passed CI/PostgreSQL and
+skipped both release jobs.
