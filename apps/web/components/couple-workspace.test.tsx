@@ -879,10 +879,12 @@ describe("CoupleWorkspace", () => {
 
     expect(deleteGuestAffiliation).toHaveBeenCalledWith(wedding.id, family.id);
     expect(screen.getByText("Nok")).toBeVisible();
-    expect(screen.queryByText("Family")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "Family" }),
-    ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText("Family")).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("option", { name: "Family" }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("assigns an affiliation to an existing guest", async () => {

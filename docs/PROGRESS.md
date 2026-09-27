@@ -1,5 +1,35 @@
 # LoveChapter — Progress
 
+## Compact wedding workspace implementation (2026-09-28)
+
+The approved modern rose workspace is implemented on the isolated
+`codex/modern-wedding-workspace` branch, pending whole-branch review and
+protected-`main` publication. One wedding opens directly in a compact
+English/Thai shell; other weddings remain selectable with bounded pagination.
+Only the active section loads. The overview uses the existing planning summary
+and a new membership-scoped aggregate of active guest-party RSVP replies; it
+does not extrapolate from a guest page or show a percentage for zero parties.
+The aggregate excludes archived guests. The selected wedding's settings form
+edits name, nullable date, IANA time zone, and locale using controlled code
+selectors. The shared API/repository authorizes Owner, Couple, and Planner
+edits; Collaborator remains read-only. UI language remains independent of
+wedding locale. The single current guest editor retains CSV, envelope,
+invitation, and individual affiliation controls; the duplicate old editor was
+removed. Unsaved forms prompt before section/wedding navigation. No schema
+migration was added.
+
+Local verification passed: `npm run ci` with pinned Bun 1.4.2 (format, lint,
+typecheck, 116 test files / 748 tests, Bun API/jobs builds and runtime smoke,
+Drizzle snapshot check, API Worker Wrangler dry-run, Next and vinext builds,
+vinext compatibility check, and web Worker dry-run). The disposable local
+PostgreSQL 16 integration suites passed 43 database cases (one existing skip)
+and one jobs case. The exact RSVP SQL and a rolled-back 20,002-party query plan
+are recorded in `docs/QUERY_REVIEW.md`; the role-guarded settings update uses
+one parameterized statement. `git diff --check` passed. No live Worker,
+Neon-production, email, RSVP, CSV, envelope-print, or 320px visual acceptance
+has been claimed for this candidate. Publication will use the protected-main
+whole-site-maintenance paired-Worker flow, with no migration for this slice.
+
 ## Bilingual website implementation candidate (2026-09-28)
 
 The approved English/Thai website and controlled-input plan is implemented on
