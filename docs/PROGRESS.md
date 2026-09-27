@@ -1403,3 +1403,15 @@ GitHub staging variable `RELEASE_FOREIGN_WEDDING_ID`; no production data was
 changed. The fixture remains intentionally persistent for future negative
 authorization probes and can be identified by its provider/subject and
 `Release isolation fixture` wedding name.
+
+The existing `RELEASE_PROBE_SECRET` was recovered from a mode-`0600`,
+Git-ignored local staging web probe file in the earlier worktree. It passed
+the canonical 32-byte base64url check and differs from the existing proxy
+secret. The same stored value was added to the GitHub `staging` environment
+as `RELEASE_PROBE_SECRET`; readback confirmed the secret name, while the
+deployed web Worker still lists that binding name. Cloudflare does not reveal
+the deployed secret value, so an exact remote-value match remains for the
+private maintenance smoke test. No Cloudflare secret was changed, no Worker
+version was uploaded or deployed, and no maintenance transition occurred.
+The hosted CI for fixture documentation commit `d96bcdb` passed its CI and
+PostgreSQL jobs, with staging and production skipped.
