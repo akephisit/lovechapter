@@ -128,6 +128,28 @@ function fixture(overrides = {}) {
 }
 
 describe("one-time production publication", () => {
+  it("resumes a closed bootstrap gate without changing the old Worker source SHA", async () => {
+    const gateSha = "c".repeat(40);
+    const { env, adapters } = fixture({
+      env: {
+        BOOTSTRAP_GATE_SHA: gateSha,
+        BOOTSTRAP_PREVIOUS_WEB_SHA: gateSha,
+      },
+    });
+    adapters.gate.status.mockResolvedValueOnce({
+      ...closure,
+      targetSha: gateSha,
+    });
+    await expect(runFirstProductionPublication(env, adapters)).resolves.toBe(1);
+    expect(adapters.prepare.mock.calls[0][0].previous.web.sourceSha).toBe(
+      gateSha,
+    );
+    expect(adapters.prepare.mock.calls[0][0].previous.api.sourceSha).toBe(
+      oldSha,
+    );
+    expect(adapters.retarget.mock.calls[0][0].targetSha).toBe(gateSha);
+  });
+
   it("reports only fixed Worker preparation phase names", async () => {
     const phases = [];
     const runner = instrumentWorkerRunner(

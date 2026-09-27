@@ -227,10 +227,47 @@ async function runCommand(executable, args, options) {
       timeout: 120_000,
       maxBuffer: 4 * 1024 * 1024,
     });
-  } catch {
+  } catch (error) {
+    if (options.failureKind === "web-promotion") {
+      throw new Error(
+        `Web promotion failed: ${classifyWebPromotionFailure(error)}`,
+        { cause: error },
+      );
+    }
     // Child output can include provider details; never surface it in release logs.
-    throw new Error("Worker preparation/deployment command failed");
+    throw new Error("Worker preparation/deployment command failed", {
+      cause: error,
+    });
   }
+}
+
+/** Report only a fixed class of failure, never the child process output. */
+export function classifyWebPromotionFailure(error) {
+  const output = `${String(error?.stderr ?? "")}\n${String(error?.stdout ?? "")}`;
+  if (
+    /permission|unauthori[sz]ed|authentication|api token|forbidden/iu.test(
+      output,
+    )
+  ) {
+    return "authorization";
+  }
+  if (/workers\.dev|subdomain|route|trigger|custom domain/iu.test(output)) {
+    return "route";
+  }
+  if (/asset|static content/iu.test(output)) return "assets";
+  if (/binding|hyperdrive|secret/iu.test(output)) return "binding";
+  if (/conflict|remote configuration|strict/iu.test(output)) {
+    return "configuration conflict";
+  }
+  if (
+    /unknown argument|unexpected argument|unrecognized option/iu.test(output)
+  ) {
+    return "argument";
+  }
+  if (/timeout|timed out|fetch failed|network/iu.test(output)) {
+    return "network";
+  }
+  return "unknown";
 }
 
 async function readJsonc(path) {
@@ -497,7 +534,7 @@ export function createWorkerCommandRunner({
           "--name",
           name,
         ],
-        { cwd: root },
+        { cwd: root, failureKind: "web-promotion" },
       );
     },
     async promoteApi(environment, name, versionId) {

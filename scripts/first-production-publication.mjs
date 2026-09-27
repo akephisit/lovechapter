@@ -143,6 +143,11 @@ function assertContext(env) {
     env.RELEASE_ENVIRONMENT !== "production" ||
     !shaPattern.test(env.BOOTSTRAP_PREVIOUS_SHA ?? "") ||
     env.BOOTSTRAP_PREVIOUS_SHA === env.GITHUB_SHA ||
+    (env.BOOTSTRAP_GATE_SHA &&
+      (!shaPattern.test(env.BOOTSTRAP_GATE_SHA) ||
+        env.BOOTSTRAP_GATE_SHA === env.GITHUB_SHA)) ||
+    (env.BOOTSTRAP_PREVIOUS_WEB_SHA &&
+      !shaPattern.test(env.BOOTSTRAP_PREVIOUS_WEB_SHA)) ||
     !versionPattern.test(env.BOOTSTRAP_PREVIOUS_WEB_VERSION_ID ?? "") ||
     !versionPattern.test(env.BOOTSTRAP_PREVIOUS_API_VERSION_ID ?? "") ||
     required.some((name) => !configured(env[name])) ||
@@ -264,7 +269,7 @@ export async function runFirstProductionPublication(env, adapters = {}) {
   const previous = {
     web: {
       versionId: env.BOOTSTRAP_PREVIOUS_WEB_VERSION_ID,
-      sourceSha: env.BOOTSTRAP_PREVIOUS_SHA,
+      sourceSha: env.BOOTSTRAP_PREVIOUS_WEB_SHA ?? env.BOOTSTRAP_PREVIOUS_SHA,
     },
     api: {
       versionId: env.BOOTSTRAP_PREVIOUS_API_VERSION_ID,
@@ -303,7 +308,7 @@ export async function runFirstProductionPublication(env, adapters = {}) {
   const old = await gate.status();
   if (
     old.mode !== "maintenance" ||
-    old.targetSha !== env.BOOTSTRAP_PREVIOUS_SHA ||
+    old.targetSha !== (env.BOOTSTRAP_GATE_SHA ?? env.BOOTSTRAP_PREVIOUS_SHA) ||
     old.activeCount !== 0 ||
     old.web !== null ||
     old.api !== null
@@ -459,6 +464,13 @@ if (
       error.message === "API upload receipt does not match Worker name"
     ) {
       console.error("first_production_upload_receipt_mismatch");
+    } else if (
+      error instanceof Error &&
+      /^Web promotion failed: (?:authorization|route|assets|binding|configuration conflict|argument|network|unknown)$/u.test(
+        error.message,
+      )
+    ) {
+      console.error(`first_production_${error.message}`);
     }
     console.error(
       error instanceof Error &&

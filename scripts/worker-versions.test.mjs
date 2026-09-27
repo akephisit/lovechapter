@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   assertClientBundleClean,
   classifyUploadFailure,
+  classifyWebPromotionFailure,
   createWorkerCommandRunner,
   deployPreparedVersions,
   prepareWorkerVersions,
@@ -122,6 +123,22 @@ describe("selected Worker versions", () => {
       }),
     ).toBe("strict bindings");
     expect(classifyUploadFailure(undefined)).toBe("unknown");
+  });
+
+  it("classifies a web deploy failure using only fixed labels", () => {
+    expect(
+      classifyWebPromotionFailure({
+        stderr: "Could not update workers.dev subdomain for private-token-123",
+      }),
+    ).toBe("route");
+    expect(
+      classifyWebPromotionFailure({
+        stderr: "Missing permission for asset upload private-token-123",
+      }),
+    ).toBe("authorization");
+    expect(classifyWebPromotionFailure({ stderr: "unclassified stuff" })).toBe(
+      "unknown",
+    );
   });
 
   it("recognizes the checked-in staging targets with Version URLs disabled", async () => {

@@ -18,11 +18,16 @@ then stopped at API version upload. A local exact Wrangler upload reproduced
 the conflict: production had a dashboard-managed `RESEND_FROM_EMAIL` var that
 was absent from checked-in Wrangler config; `--strict` refused to override
 the remote configuration. This non-secret sender is now declared in the
-production config. The upload command has not yet been rerun with this fix.
-Readback confirmed maintenance targets the old SHA with zero leases and null
-version baseline, and the active API Worker version is unchanged. The upload
-diagnostic emits only a fixed failure category or numeric provider code, not
-command output or arguments. No release guard was relaxed. The gate role
+production config. A local inactive version upload then succeeded with strict
+mode. The fifth hosted run uploaded its API version, retargeted the gate to
+`a62cc796`, and drained leases. The web deploy command exited nonzero after
+Cloudflare had already activated web version `ae1a0065`; the workflow
+reclosed maintenance and did not deploy the API version. Readback confirmed
+maintenance still has a null version baseline, public web returns 503, and
+the active API Worker version is unchanged. The next retry must expect this
+new closed gate target and active web version. Safe, fixed web-deploy error
+classification is being added; command output and arguments are not logged.
+No release guard was relaxed. The gate role
 cannot read the migration ledger, so the one-time schema check uses the
 configured migration credential after checking it targets the same endpoint.
 No public release is claimed.
