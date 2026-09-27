@@ -38,6 +38,47 @@ class FakeExecutor implements QueryExecutor {
 }
 
 describe("PostgresLoveChapterRepository", () => {
+  it("reads an authorized RSVP summary in one parameterized aggregate", async () => {
+    const userId = crypto.randomUUID();
+    const weddingId = crypto.randomUUID();
+    const executor = new FakeExecutor([
+      {
+        total_active: 3,
+        attending: 1,
+        declined: 1,
+      },
+    ]);
+    const repository = new PostgresLoveChapterRepository(executor);
+
+    await expect(repository.getRsvpSummary(userId, weddingId)).resolves.toEqual(
+      {
+        totalActive: 3,
+        attending: 1,
+        declined: 1,
+        replied: 2,
+        awaiting: 1,
+      },
+    );
+    expect(executor.executeCount).toBe(1);
+    const statement = new PgDialect().sqlToQuery(executor.queries[0]!);
+    expect(statement.sql).toMatch(/"wedding_members"/);
+    expect(statement.sql).toMatch(/"guests"/);
+    expect(statement.sql).toMatch(/"rsvps"/);
+    expect(statement.sql).toMatch(/"archived_at" is null/);
+    expect(statement.sql).not.toMatch(/select \*/i);
+    expect(statement.params).toContain(userId);
+    expect(statement.params).toContain(weddingId);
+    expect(statement.sql).not.toContain(userId);
+    expect(statement.sql).not.toContain(weddingId);
+  });
+
+  it("does not disclose the RSVP summary without wedding membership", async () => {
+    const repository = new PostgresLoveChapterRepository(new FakeExecutor([]));
+    await expect(
+      repository.getRsvpSummary(crypto.randomUUID(), crypto.randomUUID()),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
   it("synchronizes an external identity without exposing provider data", async () => {
     const executor = new FakeExecutor([
       {

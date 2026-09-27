@@ -109,6 +109,31 @@ export function buildListWeddingsQuery(input: {
     limit ${input.limit + 1}`;
 }
 
+export function buildRsvpSummaryQuery(input: {
+  userId: string;
+  weddingId: string;
+}): SQL {
+  return sql`with "authorized_wedding" as (
+      select ${weddingMembers.weddingId} as "wedding_id"
+      from ${weddingMembers}
+      where ${weddingMembers.weddingId} = ${input.weddingId}
+        and ${weddingMembers.userId} = ${input.userId}
+      limit 1
+    )
+    select
+      count(${guests.id})::integer as "total_active",
+      count(${guests.id}) filter (where ${rsvps.attendance} = 'attending')::integer as "attending",
+      count(${guests.id}) filter (where ${rsvps.attendance} = 'declined')::integer as "declined"
+    from "authorized_wedding"
+    left join ${guests}
+      on ${guests.weddingId} = "authorized_wedding"."wedding_id"
+     and ${guests.archivedAt} is null
+    left join ${rsvps}
+      on ${rsvps.weddingId} = ${guests.weddingId}
+     and ${rsvps.guestId} = ${guests.id}
+    group by "authorized_wedding"."wedding_id"`;
+}
+
 export function buildListGuestsQuery(
   input: GuestListRepositoryInput & { userId: string; weddingId: string },
 ): SQL {

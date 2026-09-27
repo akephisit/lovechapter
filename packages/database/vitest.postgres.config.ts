@@ -13,6 +13,7 @@ export default defineConfig({
       "src/envelope-postgres.integration.ts",
       "src/planning-postgres.integration.ts",
       "src/wedding-operations-postgres.integration.ts",
+      "src/workspace-postgres.integration.ts",
     ],
   },
 });

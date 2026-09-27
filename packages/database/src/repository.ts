@@ -12,6 +12,7 @@ import type {
   Page,
   PublicInvitation,
   RsvpResponse,
+  RsvpSummary,
   SubmitRsvpInput,
   UpdateGuestAffiliationInput,
   UpdateProfileInput,
@@ -52,6 +53,7 @@ import {
   buildListGuestsQuery,
   buildListGuestExportPageQuery,
   buildListWeddingsQuery,
+  buildRsvpSummaryQuery,
   buildPublicInvitationQuery,
   buildLockGuestAffiliationScopeQuery,
   buildReorderGuestAffiliationsQuery,
@@ -137,6 +139,27 @@ export class PostgresLoveChapterRepository implements LoveChapterRepository {
       );
       return mapWedding({ ...row, role: "owner" });
     });
+  }
+
+  async getRsvpSummary(
+    userId: string,
+    weddingId: string,
+  ): Promise<RsvpSummary> {
+    const result = await this.executor.execute<{
+      total_active: number;
+      attending: number;
+      declined: number;
+    }>(buildRsvpSummaryQuery({ userId, weddingId }));
+    const row = result.rows[0];
+    if (!row) throw new NotFoundError("Wedding not found");
+    const replied = row.attending + row.declined;
+    return {
+      totalActive: row.total_active,
+      attending: row.attending,
+      declined: row.declined,
+      replied,
+      awaiting: row.total_active - replied,
+    };
   }
 
   async listGuests(

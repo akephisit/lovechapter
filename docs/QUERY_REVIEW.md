@@ -1,5 +1,28 @@
 # LoveChapter — Query and index review
 
+## Wedding RSVP overview aggregate (2026-09-28)
+
+`buildRsvpSummaryQuery` generates one parameterized SELECT. A one-row
+membership CTE scopes the wedding, followed by a left join to non-archived
+guest parties and a left join to the unique `(wedding_id, guest_id)` RSVP row.
+It selects only three integer aggregates; `replied` and `awaiting` are derived
+from those values in the repository. The membership composite primary key,
+guest partial active index, and RSVP unique index already support this access
+path; no migration or new index is needed. An unauthorized wedding returns no
+aggregate row, while an authorized empty wedding returns zero counts.
+
+On a disposable local PostgreSQL 16 database, `EXPLAIN (ANALYZE, BUFFERS)`
+used the exact generated SELECT with one membership, 20,002 active guest
+parties in that wedding, one archived party, and two RSVP rows. It returned
+one row in 7.093 ms with 270 shared buffer hits. The plan used an index-only
+membership PK scan, a sequential guest scan (nearly all rows belonged to the
+selected wedding), a tiny RSVP hash, and a final hash aggregate. This
+single-wedding synthetic shape makes the sequential scan reasonable; it is
+not evidence that the partial guest index is ineffective for a multi-wedding
+distribution. The 20,000 synthetic guests were inserted in a transaction and
+rolled back; readback showed the original three guest rows remained. These
+are local synthetic timings, not a production latency guarantee.
+
 **Review date:** 2026-09-22
 **Scope:** domain repositories, first-party auth, sessions, rate limits, and the
 auth-email outbox
