@@ -15,8 +15,97 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { CoupleWorkspace, type CoupleWorkspaceApi } from "./couple-workspace";
+import { UiLanguageProvider } from "./ui-language-provider";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 describe("CoupleWorkspace", () => {
+  it("uses Thai for an empty wedding workspace without changing submitted locale or time zone", async () => {
+    const created = {
+      ...weddingFixture(),
+      locale: "en-US",
+      timeZone: "Europe/London",
+    };
+    const createWedding = vi.fn(async (_input: CreateWeddingInput) => created);
+    const api: CoupleWorkspaceApi = {
+      ...affiliationApi(),
+      listWeddings: async () => page([]),
+      createWedding,
+      listGuests: async () => page([]),
+      addGuest: vi.fn(),
+      createInvitation: vi.fn(),
+    };
+    render(
+      <UiLanguageProvider language="th">
+        <CoupleWorkspace
+          identity={userFixture()}
+          api={api}
+          onSignOut={vi.fn()}
+        />
+      </UiLanguageProvider>,
+    );
+    expect(
+      await screen.findByRole("heading", { name: "เริ่มจากวันสำคัญ" }),
+    ).toBeVisible();
+    await userEvent.type(screen.getByLabelText("ชื่องานแต่ง"), "Mali & Arun");
+    await userEvent.clear(screen.getByLabelText("เขตเวลา"));
+    await userEvent.type(screen.getByLabelText("เขตเวลา"), "Europe/London");
+    await userEvent.clear(screen.getByLabelText("ภาษาของงานแต่ง"));
+    await userEvent.type(screen.getByLabelText("ภาษาของงานแต่ง"), "en-US");
+    await userEvent.click(screen.getByRole("button", { name: "สร้างงานแต่ง" }));
+    expect(createWedding).toHaveBeenCalledWith({
+      name: "Mali & Arun",
+      timeZone: "Europe/London",
+      locale: "en-US",
+    });
+  });
+
+  it("does not reset the selected wedding or refetch it when UI language changes", async () => {
+    const first = weddingFixture();
+    const second = {
+      ...first,
+      id: crypto.randomUUID(),
+      name: "Dao & Lin",
+      locale: "en-US",
+      timeZone: "Europe/London",
+    };
+    const listWeddings = vi.fn(async () =>
+      page([first, second], "next-weddings"),
+    );
+    const api: CoupleWorkspaceApi = {
+      ...affiliationApi(),
+      listWeddings,
+      createWedding: vi.fn(),
+      listGuests: vi.fn(async () => page([])),
+      addGuest: vi.fn(),
+      createInvitation: vi.fn(),
+    };
+    const { rerender } = render(
+      <UiLanguageProvider language="en">
+        <CoupleWorkspace
+          identity={userFixture()}
+          api={api}
+          onSignOut={vi.fn()}
+        />
+      </UiLanguageProvider>,
+    );
+    await screen.findByRole("heading", { name: "Mali & Arun" });
+    await userEvent.click(screen.getByRole("button", { name: "Dao & Lin" }));
+    expect(
+      await screen.findByRole("heading", { name: "Dao & Lin" }),
+    ).toBeVisible();
+    rerender(
+      <UiLanguageProvider language="th">
+        <CoupleWorkspace
+          identity={userFixture()}
+          api={api}
+          onSignOut={vi.fn()}
+        />
+      </UiLanguageProvider>,
+    );
+    expect(screen.getByRole("heading", { name: "Dao & Lin" })).toBeVisible();
+    expect(listWeddings).toHaveBeenCalledOnce();
+  });
   it("shows the selected wedding's planning checklist", async () => {
     const wedding = weddingFixture();
     const api: CoupleWorkspaceApi = {

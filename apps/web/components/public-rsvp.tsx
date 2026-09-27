@@ -32,6 +32,8 @@ export function PublicRsvp({
   api?: PublicRsvpApi;
 }) {
   const copy = useUiCopy();
+  const copyRef = useRef(copy);
+  copyRef.current = copy;
   const [invitation, setInvitation] = useState<PublicInvitation | null>(null);
   const [attendance, setAttendance] = useState<Attendance>("attending");
   const [partySize, setPartySize] = useState(1);
@@ -66,13 +68,13 @@ export function PublicRsvp({
           setState("unavailable");
           return;
         }
-        setError(copy.rsvp.loadError);
+        setError(copyRef.current.rsvp.loadError);
         setState("load-error");
       });
     return () => {
       current = false;
     };
-  }, [api, copy, loadAttempt, token]);
+  }, [api, loadAttempt, token]);
 
   async function saveRsvp(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

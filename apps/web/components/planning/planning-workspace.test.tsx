@@ -9,6 +9,7 @@ import {
   PlanningWorkspace,
   type PlanningWorkspaceApi,
 } from "./planning-workspace";
+import { UiLanguageProvider } from "../ui-language-provider";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -25,6 +26,32 @@ const task: PlanningTask = {
 };
 
 describe("PlanningWorkspace", () => {
+  it("renders Thai planning controls while retaining the wedding date format", async () => {
+    const api: PlanningWorkspaceApi = {
+      listPlanningTasks: async () => ({ items: [task], nextCursor: null }),
+      getPlanningOverview: async () => ({
+        total: 1,
+        completed: 0,
+        upcoming: [task],
+      }),
+      createPlanningTask: vi.fn(),
+      updatePlanningTask: vi.fn(),
+      deletePlanningTask: vi.fn(),
+    };
+    render(
+      <UiLanguageProvider language="th">
+        <PlanningWorkspace
+          wedding={{ ...wedding, locale: "en-US", timeZone: "Europe/London" }}
+          api={api}
+        />
+      </UiLanguageProvider>,
+    );
+    expect(
+      await screen.findByRole("heading", { name: "รายการเตรียมงาน" }),
+    ).toBeVisible();
+    expect(screen.getByLabelText("แสดงงาน")).toHaveValue("all");
+    expect(screen.getByText("Dec 1, 2026")).toBeVisible();
+  });
   it("loads real totals, creates, edits, completes and confirms removal", async () => {
     let tasks = [task];
     const api: PlanningWorkspaceApi = {

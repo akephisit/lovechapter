@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
+import { safeUiError } from "../lib/ui-error";
 import {
   GuestWorkspace,
   type GuestWorkspaceApi,
@@ -41,6 +42,8 @@ import { Card } from "./ui/card";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Select } from "./ui/select";
+import { useUiCopy } from "./ui-language-provider";
+import { LanguageSwitcher } from "./language-switcher";
 
 export interface CoupleWorkspaceApi
   extends
@@ -80,6 +83,9 @@ type Props = {
 };
 
 export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
+  const copy = useUiCopy();
+  const copyRef = useRef(copy);
+  copyRef.current = copy;
   const [weddings, setWeddings] = useState<WeddingSummary[]>([]);
   const [weddingCursor, setWeddingCursor] = useState<string | null>(null);
   const [selected, setSelected] = useState<WeddingSummary | null>(null);
@@ -128,9 +134,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
       })
       .catch(() => {
         if (current) {
-          setMessage(
-            "The planning workspace is not connected yet. Please try again.",
-          );
+          setMessage(copyRef.current.workspace.disconnected);
         }
       })
       .finally(() => {
@@ -167,7 +171,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
       setInvitations({});
       form.reset();
     } catch (error) {
-      setMessage(readableError(error, "We couldn't create that wedding."));
+      setMessage(safeUiError(error, copy, copy.workspace.createError));
     } finally {
       setBusy(null);
     }
@@ -203,7 +207,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
         weddingGeneration.current === generation &&
         guestRequestId.current === requestId
       ) {
-        setMessage(readableError(error, "We couldn't load this guest list."));
+        setMessage(safeUiError(error, copy, copy.workspace.guestListError));
       }
     } finally {
       if (
@@ -240,7 +244,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
       }
     } catch (error) {
       if (weddingGeneration.current === generation) {
-        setMessage(readableError(error, "We couldn't add that guest."));
+        setMessage(safeUiError(error, copy, copy.workspace.addGuestError));
       }
     } finally {
       if (weddingGeneration.current === generation) setBusy(null);
@@ -268,7 +272,9 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
       }
     } catch (error) {
       if (weddingGeneration.current === generation) {
-        setMessage(readableError(error, "We couldn't add that affiliation."));
+        setMessage(
+          safeUiError(error, copy, copy.workspace.addAffiliationError),
+        );
       }
     } finally {
       if (weddingGeneration.current === generation) setBusy(null);
@@ -311,7 +317,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
     } catch (error) {
       if (weddingGeneration.current === generation) {
         setMessage(
-          readableError(error, "We couldn't update that affiliation."),
+          safeUiError(error, copy, copy.workspace.updateAffiliationError),
         );
       }
     } finally {
@@ -345,7 +351,9 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
       }
     } catch (error) {
       if (weddingGeneration.current === generation) {
-        setMessage(readableError(error, "We couldn't reorder affiliations."));
+        setMessage(
+          safeUiError(error, copy, copy.workspace.reorderAffiliationError),
+        );
       }
     } finally {
       if (weddingGeneration.current === generation) setBusy(null);
@@ -355,9 +363,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
   async function deleteGuestAffiliation(affiliation: GuestAffiliation) {
     if (!selected) return;
     if (
-      !window.confirm(
-        `Delete “${affiliation.name}”? Guests in this affiliation will become unassigned.`,
-      )
+      !window.confirm(copy.workspace.deleteAffiliationConfirm(affiliation.name))
     ) {
       return;
     }
@@ -383,7 +389,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
     } catch (error) {
       if (weddingGeneration.current === generation) {
         setMessage(
-          readableError(error, "We couldn't delete that affiliation."),
+          safeUiError(error, copy, copy.workspace.deleteAffiliationError),
         );
       }
     } finally {
@@ -413,7 +419,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
     } catch (error) {
       if (weddingGeneration.current === generation) {
         setMessage(
-          readableError(error, "We couldn't change that guest affiliation."),
+          safeUiError(error, copy, copy.workspace.setAffiliationError),
         );
       }
     } finally {
@@ -437,7 +443,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
       }
     } catch (error) {
       if (weddingGeneration.current === generation) {
-        setMessage(readableError(error, "We couldn't create that invitation."));
+        setMessage(safeUiError(error, copy, copy.workspace.invitationError));
       }
     } finally {
       if (weddingGeneration.current === generation) setBusy(null);
@@ -453,7 +459,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
       setWeddings((current) => appendUnique(current, page.items));
       setWeddingCursor(page.nextCursor);
     } catch (error) {
-      setMessage(readableError(error, "We couldn't load more weddings."));
+      setMessage(safeUiError(error, copy, copy.workspace.moreWeddingsError));
     } finally {
       setBusy(null);
     }
@@ -483,7 +489,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
         guestRequestId.current === requestId &&
         workspaceMutationVersion.current === mutationVersion
       ) {
-        setMessage(readableError(error, "We couldn't load more guests."));
+        setMessage(safeUiError(error, copy, copy.workspace.moreGuestsError));
       }
     } finally {
       if (
@@ -519,7 +525,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
         guestRequestId.current === requestId &&
         workspaceMutationVersion.current === mutationVersion
       ) {
-        setMessage(readableError(error, "We couldn't refresh responses."));
+        setMessage(safeUiError(error, copy, copy.workspace.refreshError));
       }
     } finally {
       if (
@@ -538,9 +544,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
       await navigator.clipboard.writeText(invitation.publicUrl);
       setCopiedGuestId(guest.id);
     } catch {
-      setMessage(
-        "Copy failed. Select the invitation link and copy it manually.",
-      );
+      setMessage(copy.workspace.copyError);
     }
   }
 
@@ -562,30 +566,30 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
                 LoveChapter
               </p>
               <p className="text-xs tracking-[0.18em] text-[#8c7478] uppercase">
-                Wedding workspace
+                {copy.workspace.label}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <LanguageSwitcher />
             <span className="text-sm font-semibold text-[#574248]">
               {identity.displayName}
             </span>
             <Button variant="ghost" onClick={onSignOut}>
-              Sign out
+              {copy.workspace.signOut}
             </Button>
           </div>
         </header>
 
         <section className="mb-8 max-w-3xl">
           <p className="mb-3 text-sm font-bold tracking-[0.22em] text-[#925c68] uppercase">
-            Your story, thoughtfully gathered
+            {copy.workspace.eyebrow}
           </p>
           <h1 className="font-serif text-4xl leading-[1.05] font-semibold text-[#3e2d31] sm:text-5xl lg:text-6xl">
-            Plan the chapter everyone will remember.
+            {copy.workspace.title}
           </h1>
           <p className="mt-4 max-w-2xl text-base leading-7 text-[#725f62] sm:text-lg">
-            Start with one wedding, welcome your guests, and keep every reply in
-            one calm place.
+            {copy.workspace.description}
           </p>
         </section>
 
@@ -600,7 +604,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
 
         {loading ? (
           <Card className="p-8 text-center text-[#725f62]" aria-live="polite">
-            Opening your workspace…
+            {copy.workspace.opening}
           </Card>
         ) : (
           <div className="grid items-start gap-6 lg:grid-cols-[minmax(18rem,0.72fr)_minmax(0,1.45fr)]">
@@ -609,7 +613,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
               {weddings.length > 0 ? (
                 <Card className="p-5">
                   <h2 className="mb-3 text-sm font-bold tracking-[0.16em] text-[#806a6d] uppercase">
-                    Your weddings
+                    {copy.workspace.weddings}
                   </h2>
                   <div className="space-y-2">
                     {weddings.map((wedding) => (
@@ -621,7 +625,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
                       >
                         {wedding.name}
                         {selected?.id === wedding.id ? (
-                          <Badge>Open</Badge>
+                          <Badge>{copy.workspace.open}</Badge>
                         ) : null}
                       </button>
                     ))}
@@ -634,8 +638,8 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
                       onClick={() => void loadMoreWeddings()}
                     >
                       {busy === "more-weddings"
-                        ? "Loading…"
-                        : "Load more weddings"}
+                        ? copy.workspace.loading
+                        : copy.workspace.loadMoreWeddings}
                     </Button>
                   ) : null}
                 </Card>
@@ -687,11 +691,10 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
                 <div className="absolute top-0 right-0 size-44 translate-x-16 -translate-y-16 rounded-full bg-[#e7d2cb]/60" />
                 <CalendarDays className="mb-5 size-8 text-[#8c5261]" />
                 <h2 className="font-serif text-3xl font-semibold text-[#432f35]">
-                  Begin with the day
+                  {copy.workspace.beginTitle}
                 </h2>
                 <p className="mt-3 max-w-xl leading-7 text-[#756266]">
-                  Create your wedding to unlock the guest list and private RSVP
-                  invitations. You can keep the date open for now.
+                  {copy.workspace.beginDescription}
                 </p>
               </Card>
             )}
@@ -747,6 +750,7 @@ function WeddingForm({
   busy: boolean;
   onSubmit(event: FormEvent<HTMLFormElement>): void;
 }) {
+  const copy = useUiCopy();
   return (
     <Card className="p-5 sm:p-6">
       <div className="mb-5 flex items-center gap-3">
@@ -755,20 +759,22 @@ function WeddingForm({
         </span>
         <div>
           <h2 className="font-serif text-2xl font-semibold text-[#432f35]">
-            Create a wedding
+            {copy.workspace.createTitle}
           </h2>
-          <p className="text-sm text-[#806d70]">A home for this celebration.</p>
+          <p className="text-sm text-[#806d70]">
+            {copy.workspace.createDescription}
+          </p>
         </div>
       </div>
       <form onSubmit={onSubmit} className="space-y-4">
-        <Field label="Wedding name" htmlFor="wedding-name">
+        <Field label={copy.workspace.weddingName} htmlFor="wedding-name">
           <Input id="wedding-name" name="name" required maxLength={120} />
         </Field>
-        <Field label="Wedding date (optional)" htmlFor="wedding-date">
+        <Field label={copy.workspace.weddingDate} htmlFor="wedding-date">
           <Input id="wedding-date" name="weddingDate" type="date" />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-          <Field label="Time zone" htmlFor="wedding-time-zone">
+          <Field label={copy.workspace.timeZone} htmlFor="wedding-time-zone">
             <Input
               id="wedding-time-zone"
               name="timeZone"
@@ -776,7 +782,7 @@ function WeddingForm({
               required
             />
           </Field>
-          <Field label="Locale" htmlFor="wedding-locale">
+          <Field label={copy.workspace.locale} htmlFor="wedding-locale">
             <Input
               id="wedding-locale"
               name="locale"
@@ -786,7 +792,7 @@ function WeddingForm({
           </Field>
         </div>
         <Button className="w-full" type="submit" disabled={busy}>
-          {busy ? "Creating…" : "Create wedding"}
+          {busy ? copy.workspace.creating : copy.workspace.create}
         </Button>
       </form>
     </Card>
@@ -811,18 +817,18 @@ function GuestAffiliationManager({
   onMove(affiliationId: string, direction: -1 | 1): Promise<void>;
   onDelete(affiliation: GuestAffiliation): Promise<void>;
 }) {
+  const copy = useUiCopy();
   return (
     <Card className="p-5 sm:p-7">
       <div className="mb-5">
         <p className="text-xs font-bold tracking-[0.18em] text-[#925c68] uppercase">
-          Organize your guests
+          {copy.workspace.affiliationEyebrow}
         </p>
         <h3 className="font-serif text-2xl font-semibold text-[#432f35]">
-          Guest affiliations
+          {copy.workspace.affiliationTitle}
         </h3>
         <p className="mt-1 text-sm leading-6 text-[#806d70]">
-          Create the affiliations that fit this wedding. Nothing is predefined,
-          and deleting one keeps its guests as unassigned.
+          {copy.workspace.affiliationDescription}
         </p>
       </div>
 
@@ -830,7 +836,10 @@ function GuestAffiliationManager({
         className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end"
         onSubmit={onCreate}
       >
-        <Field label="New affiliation name" htmlFor="new-affiliation-name">
+        <Field
+          label={copy.workspace.newAffiliation}
+          htmlFor="new-affiliation-name"
+        >
           <Input
             id="new-affiliation-name"
             name="name"
@@ -838,24 +847,26 @@ function GuestAffiliationManager({
             maxLength={80}
           />
         </Field>
-        <Field label="Color" htmlFor="new-affiliation-color">
+        <Field label={copy.workspace.color} htmlFor="new-affiliation-color">
           <Input
             className="w-20 px-2"
             id="new-affiliation-color"
             name="color"
             type="color"
             defaultValue="#8c5261"
-            aria-label="New affiliation color"
+            aria-label={copy.workspace.color}
           />
         </Field>
         <Button type="submit" disabled={busy === "affiliation:create"}>
-          {busy === "affiliation:create" ? "Adding…" : "Add affiliation"}
+          {busy === "affiliation:create"
+            ? copy.workspace.adding
+            : copy.workspace.addAffiliation}
         </Button>
       </form>
 
       {affiliations.length === 0 ? (
         <p className="mt-4 rounded-xl bg-[#f8f1ed] px-4 py-3 text-sm text-[#806d70]">
-          No affiliations yet. Guests can still be added without one.
+          {copy.workspace.noAffiliations}
         </p>
       ) : (
         <div className="mt-5 space-y-3">
@@ -870,10 +881,10 @@ function GuestAffiliationManager({
                 name="color"
                 type="color"
                 defaultValue={affiliation.color}
-                aria-label={`${affiliation.name} color`}
+                aria-label={copy.workspace.affiliationColor(affiliation.name)}
               />
               <Field
-                label={`${affiliation.name} name`}
+                label={copy.workspace.affiliationName(affiliation.name)}
                 htmlFor={`affiliation-name-${affiliation.id}`}
               >
                 <Input
@@ -890,13 +901,13 @@ function GuestAffiliationManager({
                 variant="secondary"
                 disabled={busy === `affiliation:update:${affiliation.id}`}
               >
-                Save
+                {copy.workspace.save}
               </Button>
               <Button
                 className="px-3"
                 type="button"
                 variant="ghost"
-                aria-label={`Move ${affiliation.name} up`}
+                aria-label={copy.workspace.moveUp(affiliation.name)}
                 disabled={index === 0 || busy === "affiliation:order"}
                 onClick={() => void onMove(affiliation.id, -1)}
               >
@@ -906,7 +917,7 @@ function GuestAffiliationManager({
                 className="px-3"
                 type="button"
                 variant="ghost"
-                aria-label={`Move ${affiliation.name} down`}
+                aria-label={copy.workspace.moveDown(affiliation.name)}
                 disabled={
                   index === affiliations.length - 1 ||
                   busy === "affiliation:order"
@@ -919,7 +930,7 @@ function GuestAffiliationManager({
                 className="px-3 text-[#8a3544]"
                 type="button"
                 variant="ghost"
-                aria-label={`Delete ${affiliation.name}`}
+                aria-label={copy.workspace.delete(affiliation.name)}
                 disabled={busy === `affiliation:delete:${affiliation.id}`}
                 onClick={() => void onDelete(affiliation)}
               >
@@ -980,6 +991,7 @@ function WeddingWorkspace({
   onRefresh(): Promise<void>;
   onImportedAffiliation(affiliation: GuestAffiliation): void;
 }) {
+  const copy = useUiCopy();
   if (api.getGuest && api.updateGuest && api.archiveGuest && api.restoreGuest) {
     return (
       <div className="space-y-6">
@@ -1017,13 +1029,14 @@ function WeddingWorkspace({
       <Card className="overflow-hidden">
         <div className="border-b border-[#eadbd3] bg-[linear-gradient(120deg,rgba(113,56,75,0.96),rgba(137,79,88,0.9))] px-6 py-7 text-white sm:px-8">
           <p className="mb-1 text-xs font-bold tracking-[0.2em] text-[#f4dfe0] uppercase">
-            Currently planning
+            {copy.workspace.current}
           </p>
           <h2 className="font-serif text-3xl font-semibold sm:text-4xl">
             {wedding.name}
           </h2>
           <p className="mt-2 text-sm text-white/75">
-            {wedding.weddingDate ?? "Date to be announced"} · {wedding.timeZone}
+            {wedding.weddingDate ?? copy.workspace.datePending} ·{" "}
+            {wedding.timeZone}
           </p>
         </div>
         <div className="p-5 sm:p-7">
@@ -1033,10 +1046,10 @@ function WeddingWorkspace({
             </span>
             <div>
               <h3 className="font-serif text-2xl font-semibold text-[#432f35]">
-                Add a guest
+                {copy.workspace.addGuestTitle}
               </h3>
               <p className="text-sm text-[#806d70]">
-                Each guest receives a private invitation link.
+                {copy.workspace.addGuestDescription}
               </p>
             </div>
           </div>
@@ -1044,7 +1057,7 @@ function WeddingWorkspace({
             onSubmit={onAddGuest}
             className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[1.2fr_1.2fr_0.9fr_0.7fr_auto] xl:items-end"
           >
-            <Field label="Guest name" htmlFor="guest-name">
+            <Field label={copy.workspace.guestName} htmlFor="guest-name">
               <Input
                 id="guest-name"
                 name="guestName"
@@ -1052,7 +1065,7 @@ function WeddingWorkspace({
                 maxLength={120}
               />
             </Field>
-            <Field label="Email (optional)" htmlFor="guest-email">
+            <Field label={copy.workspace.emailOptional} htmlFor="guest-email">
               <Input
                 id="guest-email"
                 name="email"
@@ -1060,9 +1073,12 @@ function WeddingWorkspace({
                 maxLength={320}
               />
             </Field>
-            <Field label="Guest affiliation" htmlFor="guest-affiliation">
+            <Field
+              label={copy.workspace.guestAffiliation}
+              htmlFor="guest-affiliation"
+            >
               <Select id="guest-affiliation" name="affiliationId">
-                <option value="">No affiliation</option>
+                <option value="">{copy.workspace.noAffiliation}</option>
                 {affiliations.map((affiliation) => (
                   <option key={affiliation.id} value={affiliation.id}>
                     {affiliation.name}
@@ -1070,7 +1086,10 @@ function WeddingWorkspace({
                 ))}
               </Select>
             </Field>
-            <Field label="Party allowance" htmlFor="party-allowance">
+            <Field
+              label={copy.workspace.partyAllowance}
+              htmlFor="party-allowance"
+            >
               <Input
                 id="party-allowance"
                 name="allowedPartySize"
@@ -1082,7 +1101,9 @@ function WeddingWorkspace({
               />
             </Field>
             <Button type="submit" disabled={busy === "guest"}>
-              {busy === "guest" ? "Adding…" : "Add guest"}
+              {busy === "guest"
+                ? copy.workspace.adding
+                : copy.workspace.addGuest}
             </Button>
           </form>
         </div>
@@ -1092,32 +1113,36 @@ function WeddingWorkspace({
         <div className="mb-3 flex flex-wrap items-end justify-between gap-4 px-1">
           <div>
             <p className="text-xs font-bold tracking-[0.18em] text-[#925c68] uppercase">
-              Responses
+              {copy.workspace.responses}
             </p>
             <h3
               id="guest-list-title"
               className="font-serif text-2xl font-semibold text-[#432f35]"
             >
-              Guest list
+              {copy.workspace.guestList}
             </h3>
           </div>
           <div className="flex items-center gap-2">
-            <Badge>{guests.length} loaded</Badge>
+            <Badge>{copy.workspace.loaded(guests.length)}</Badge>
             <Button
               variant="ghost"
               disabled={busy === "refresh-guests"}
               onClick={() => void onRefresh()}
             >
-              {busy === "refresh-guests" ? "Refreshing…" : "Refresh responses"}
+              {busy === "refresh-guests"
+                ? copy.workspace.refreshing
+                : copy.workspace.refreshResponses}
             </Button>
           </div>
         </div>
         {guests.length === 0 ? (
           <Card className="p-7 text-center">
             <Users className="mx-auto mb-3 size-7 text-[#a2737e]" />
-            <p className="font-medium text-[#655156]">No guests yet</p>
+            <p className="font-medium text-[#655156]">
+              {copy.workspace.noGuests}
+            </p>
             <p className="mt-1 text-sm text-[#8a7679]">
-              Add your first guest above when you are ready.
+              {copy.workspace.noGuestsDescription}
             </p>
           </Card>
         ) : (
@@ -1145,12 +1170,14 @@ function WeddingWorkspace({
                         ) : null}
                       </div>
                       <p className="mt-1 text-sm text-[#806d70]">
-                        Up to {guest.allowedPartySize} attending
+                        {copy.workspace.upTo(guest.allowedPartySize)}
                         {guest.email ? ` · ${guest.email}` : ""}
                       </p>
                       <Select
                         className="mt-3 max-w-xs"
-                        aria-label={`${guest.name} affiliation`}
+                        aria-label={copy.workspace.guestAffiliationLabel(
+                          guest.name,
+                        )}
                         value={guest.affiliation?.id ?? ""}
                         disabled={busy === `guest:affiliation:${guest.id}`}
                         onChange={(event) =>
@@ -1160,7 +1187,7 @@ function WeddingWorkspace({
                           )
                         }
                       >
-                        <option value="">No affiliation</option>
+                        <option value="">{copy.workspace.noAffiliation}</option>
                         {affiliations.map((affiliation) => (
                           <option key={affiliation.id} value={affiliation.id}>
                             {affiliation.name}
@@ -1175,8 +1202,8 @@ function WeddingWorkspace({
                     >
                       <Link2 aria-hidden="true" className="mr-2 size-4" />
                       {busy === `invitation:${guest.id}`
-                        ? "Creating…"
-                        : "Create invitation"}
+                        ? copy.workspace.creating
+                        : copy.workspace.createInvitation}
                     </Button>
                   </div>
                   {invitation ? (
@@ -1188,13 +1215,14 @@ function WeddingWorkspace({
                             target="_blank"
                             rel="noreferrer"
                             className="text-sm font-semibold break-all text-[#71384b] underline decoration-[#c49aa2] underline-offset-4 hover:text-[#4f2634]"
-                            aria-label={`Open ${guest.name}'s invitation`}
+                            aria-label={copy.workspace.openInvitation(
+                              guest.name,
+                            )}
                           >
                             {invitation.publicUrl}
                           </a>
                           <p className="mt-1 text-xs leading-5 text-[#8b7477]">
-                            This secure link is shown only for this session.
-                            Copy it before leaving.
+                            {copy.workspace.invitationNotice}
                           </p>
                           <Button
                             className="mt-2 px-3 py-1.5"
@@ -1202,14 +1230,14 @@ function WeddingWorkspace({
                             onClick={() => void onCopyInvitation(guest)}
                           >
                             <Copy aria-hidden="true" className="mr-2 size-4" />
-                            Copy invitation link
+                            {copy.workspace.copyInvitation}
                           </Button>
                           {copiedGuestId === guest.id ? (
                             <span
                               role="status"
                               className="ml-2 text-xs text-[#456648]"
                             >
-                              Copied
+                              {copy.workspace.copied}
                             </span>
                           ) : null}
                         </div>
@@ -1226,7 +1254,9 @@ function WeddingWorkspace({
                 disabled={busy === "more-guests"}
                 onClick={() => void onLoadMore()}
               >
-                {busy === "more-guests" ? "Loading…" : "Load more guests"}
+                {busy === "more-guests"
+                  ? copy.workspace.loading
+                  : copy.workspace.loadMoreGuests}
               </Button>
             ) : null}
           </div>
@@ -1237,13 +1267,16 @@ function WeddingWorkspace({
 }
 
 function ResponseBadge({ guest }: { guest: GuestSummary }) {
-  if (!guest.rsvp) return <Badge>Awaiting response</Badge>;
+  const copy = useUiCopy();
+  if (!guest.rsvp) return <Badge>{copy.workspace.awaiting}</Badge>;
   return guest.rsvp.attendance === "attending" ? (
     <Badge className="bg-[#dcebdc] text-[#355b3a]">
-      Attending · {guest.rsvp.partySize}
+      {copy.workspace.attending(guest.rsvp.partySize)}
     </Badge>
   ) : (
-    <Badge className="bg-[#eee8e5] text-[#685b5b]">Declined</Badge>
+    <Badge className="bg-[#eee8e5] text-[#685b5b]">
+      {copy.workspace.declined}
+    </Badge>
   );
 }
 
@@ -1266,10 +1299,6 @@ function Field({
 
 function stringValue(data: FormData, name: string): string {
   return String(data.get(name) ?? "").trim();
-}
-
-function readableError(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
 }
 
 function appendUnique<T extends { id: string }>(

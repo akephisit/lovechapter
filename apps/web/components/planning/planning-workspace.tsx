@@ -10,12 +10,14 @@ import type {
 } from "@lovechapter/contracts";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
+import { safeUiError } from "../../lib/ui-error";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select } from "../ui/select";
 import { Textarea } from "../ui/textarea";
+import { useUiCopy } from "../ui-language-provider";
 
 export interface PlanningWorkspaceApi {
   listPlanningTasks(
@@ -39,6 +41,9 @@ type Wedding = { id: string; name: string; locale: string; timeZone: string };
 type Props = { wedding: Wedding; api: PlanningWorkspaceApi };
 
 export function PlanningWorkspace({ wedding, api }: Props) {
+  const copy = useUiCopy();
+  const copyRef = useRef(copy);
+  copyRef.current = copy;
   const [tasks, setTasks] = useState<PlanningTask[]>([]);
   const [overview, setOverview] = useState<PlanningOverview | null>(null);
   const [filter, setFilter] = useState<PlanningTaskFilter>("all");
@@ -69,7 +74,11 @@ export function PlanningWorkspace({ wedding, api }: Props) {
       .catch((caught: unknown) => {
         if (current === generation.current)
           setError(
-            readableError(caught, "Could not load the planning checklist."),
+            safeUiError(
+              caught,
+              copyRef.current,
+              copyRef.current.planning.loadError,
+            ),
           );
       })
       .finally(() => {
@@ -120,7 +129,7 @@ export function PlanningWorkspace({ wedding, api }: Props) {
       form.reset();
       setReload((value) => value + 1);
     } catch (caught) {
-      setError(readableError(caught, "Could not save this task."));
+      setError(safeUiError(caught, copy, copy.planning.saveError));
     } finally {
       setBusy(false);
     }
@@ -135,15 +144,14 @@ export function PlanningWorkspace({ wedding, api }: Props) {
       });
       setReload((value) => value + 1);
     } catch (caught) {
-      setError(readableError(caught, "Could not update this task."));
+      setError(safeUiError(caught, copy, copy.planning.updateError));
     } finally {
       setBusy(false);
     }
   }
 
   async function remove(task: PlanningTask) {
-    if (!window.confirm(`Delete “${task.title}”? This cannot be undone.`))
-      return;
+    if (!window.confirm(copy.planning.deleteConfirm(task.title))) return;
     setBusy(true);
     setError(null);
     try {
@@ -151,7 +159,7 @@ export function PlanningWorkspace({ wedding, api }: Props) {
       if (editing?.id === task.id) setEditing(null);
       setReload((value) => value + 1);
     } catch (caught) {
-      setError(readableError(caught, "Could not delete this task."));
+      setError(safeUiError(caught, copy, copy.planning.deleteError));
     } finally {
       setBusy(false);
     }
@@ -173,7 +181,7 @@ export function PlanningWorkspace({ wedding, api }: Props) {
       setCursor(page.nextCursor);
     } catch (caught) {
       if (current === generation.current)
-        setError(readableError(caught, "Could not load more tasks."));
+        setError(safeUiError(caught, copy, copy.planning.moreError));
     } finally {
       if (current === generation.current) setBusy(false);
     }
@@ -183,27 +191,27 @@ export function PlanningWorkspace({ wedding, api }: Props) {
     <section aria-labelledby="planning-title" className="space-y-5">
       <Card className="p-5 sm:p-7">
         <p className="text-xs font-bold tracking-[0.18em] text-[#925c68] uppercase">
-          Preparation
+          {copy.planning.eyebrow}
         </p>
         <h2
           id="planning-title"
           className="font-serif text-2xl font-semibold text-[#432f35]"
         >
-          Planning checklist
+          {copy.planning.title}
         </h2>
         <p className="mt-1 text-sm text-[#725f62]">
-          Keep your tasks and deadlines together for {wedding.name}.
+          {copy.planning.description(wedding.name)}
         </p>
         {overview ? (
-          <div className="mt-5 space-y-2" aria-label="Planning progress">
+          <div className="mt-5 space-y-2" aria-label={copy.planning.progress}>
             <p className="text-sm font-semibold text-[#71384b]">
-              {overview.completed} of {overview.total} complete
+              {copy.planning.completedCount(overview.completed, overview.total)}
             </p>
             <progress
               className="h-2 w-full accent-[#71384b]"
               value={overview.completed}
               max={overview.total || 1}
-              aria-label="Tasks completed"
+              aria-label={copy.planning.tasksCompleted}
             />
           </div>
         ) : null}
@@ -218,11 +226,13 @@ export function PlanningWorkspace({ wedding, api }: Props) {
           className="mt-6 space-y-3"
         >
           <h3 className="font-semibold text-[#432f35]">
-            {editing ? "Edit task" : "Add a task"}
+            {editing ? copy.planning.editTask : copy.planning.addTaskTitle}
           </h3>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="sm:col-span-2">
-              <Label htmlFor="planning-title-input">Task title</Label>
+              <Label htmlFor="planning-title-input">
+                {copy.planning.taskTitle}
+              </Label>
               <Input
                 id="planning-title-input"
                 name="title"
@@ -232,7 +242,9 @@ export function PlanningWorkspace({ wedding, api }: Props) {
               />
             </div>
             <div>
-              <Label htmlFor="planning-category">Category (optional)</Label>
+              <Label htmlFor="planning-category">
+                {copy.planning.category}
+              </Label>
               <Input
                 id="planning-category"
                 name="category"
@@ -241,7 +253,7 @@ export function PlanningWorkspace({ wedding, api }: Props) {
               />
             </div>
             <div>
-              <Label htmlFor="planning-due-date">Due date (optional)</Label>
+              <Label htmlFor="planning-due-date">{copy.planning.dueDate}</Label>
               <Input
                 id="planning-due-date"
                 name="dueDate"
@@ -250,7 +262,7 @@ export function PlanningWorkspace({ wedding, api }: Props) {
               />
             </div>
             <div className="sm:col-span-2">
-              <Label htmlFor="planning-note">Private note (optional)</Label>
+              <Label htmlFor="planning-note">{copy.planning.note}</Label>
               <Textarea
                 id="planning-note"
                 name="note"
@@ -261,7 +273,7 @@ export function PlanningWorkspace({ wedding, api }: Props) {
           </div>
           <div className="flex gap-2">
             <Button type="submit" disabled={busy}>
-              {editing ? "Save task" : "Add task"}
+              {editing ? copy.planning.saveTask : copy.planning.addTask}
             </Button>
             {editing ? (
               <Button
@@ -269,7 +281,7 @@ export function PlanningWorkspace({ wedding, api }: Props) {
                 disabled={busy}
                 onClick={() => setEditing(null)}
               >
-                Cancel edit
+                {copy.planning.cancelEdit}
               </Button>
             ) : null}
           </div>
@@ -279,7 +291,7 @@ export function PlanningWorkspace({ wedding, api }: Props) {
       {overview?.upcoming.length ? (
         <Card className="p-5 sm:p-6">
           <h3 className="font-serif text-xl font-semibold text-[#432f35]">
-            Coming up
+            {copy.planning.comingUp}
           </h3>
           <ol className="mt-3 space-y-2">
             {overview.upcoming.map((item) => (
@@ -291,7 +303,7 @@ export function PlanningWorkspace({ wedding, api }: Props) {
                 <span>
                   {formatDate(item.dueDate!, wedding.locale)}
                   {isOverdue(item.dueDate!, wedding.timeZone)
-                    ? " · Overdue"
+                    ? ` · ${copy.planning.overdue}`
                     : ""}
                 </span>
               </li>
@@ -303,10 +315,10 @@ export function PlanningWorkspace({ wedding, api }: Props) {
       <Card className="p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="font-serif text-xl font-semibold text-[#432f35]">
-            All tasks
+            {copy.planning.allTasks}
           </h3>
           <div>
-            <Label htmlFor="planning-filter">Show tasks</Label>
+            <Label htmlFor="planning-filter">{copy.planning.showTasks}</Label>
             <Select
               id="planning-filter"
               value={filter}
@@ -314,16 +326,16 @@ export function PlanningWorkspace({ wedding, api }: Props) {
                 setFilter(event.target.value as PlanningTaskFilter)
               }
             >
-              <option value="all">All</option>
-              <option value="open">To do</option>
-              <option value="completed">Completed</option>
+              <option value="all">{copy.planning.all}</option>
+              <option value="open">{copy.planning.toDo}</option>
+              <option value="completed">{copy.planning.completed}</option>
             </Select>
           </div>
         </div>
         {loading ? (
-          <p className="mt-4 text-sm text-[#725f62]">Loading tasks…</p>
+          <p className="mt-4 text-sm text-[#725f62]">{copy.planning.loading}</p>
         ) : tasks.length === 0 ? (
-          <p className="mt-4 text-sm text-[#725f62]">No tasks yet.</p>
+          <p className="mt-4 text-sm text-[#725f62]">{copy.planning.empty}</p>
         ) : (
           <ul className="mt-4 space-y-3">
             {tasks.map((item) => (
@@ -341,41 +353,58 @@ export function PlanningWorkspace({ wedding, api }: Props) {
                     <p className="text-xs text-[#806d70]">
                       {item.category ? `${item.category} · ` : ""}
                       {item.dueDate
-                        ? `Due ${formatDate(item.dueDate, wedding.locale)}`
-                        : "No due date"}
+                        ? copy.planning.due(
+                            formatDate(item.dueDate, wedding.locale),
+                          )
+                        : copy.planning.noDueDate}
                     </p>
                     {item.note ? (
                       <p className="mt-1 text-sm text-[#725f62]">{item.note}</p>
                     ) : null}
                   </div>
                   <span className="text-xs text-[#806d70]">
-                    {item.completedAt ? "Complete" : "To do"}
+                    {item.completedAt
+                      ? copy.planning.complete
+                      : copy.planning.toDo}
                   </span>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1">
                   <Button
                     variant="ghost"
                     disabled={busy}
-                    aria-label={`${item.completedAt ? "Reopen" : "Complete"} ${item.title}`}
+                    aria-label={copy.planning.actionLabel(
+                      item.completedAt
+                        ? copy.planning.reopen
+                        : copy.planning.complete,
+                      item.title,
+                    )}
                     onClick={() => void changeCompletion(item)}
                   >
-                    {item.completedAt ? "Reopen" : "Complete"}
+                    {item.completedAt
+                      ? copy.planning.reopen
+                      : copy.planning.complete}
                   </Button>
                   <Button
                     variant="ghost"
                     disabled={busy}
-                    aria-label={`Edit ${item.title}`}
+                    aria-label={copy.planning.actionLabel(
+                      copy.planning.edit,
+                      item.title,
+                    )}
                     onClick={() => setEditing(item)}
                   >
-                    Edit
+                    {copy.planning.edit}
                   </Button>
                   <Button
                     variant="ghost"
                     disabled={busy}
-                    aria-label={`Delete ${item.title}`}
+                    aria-label={copy.planning.actionLabel(
+                      copy.planning.delete,
+                      item.title,
+                    )}
                     onClick={() => void remove(item)}
                   >
-                    Delete
+                    {copy.planning.delete}
                   </Button>
                 </div>
               </li>
@@ -389,7 +418,7 @@ export function PlanningWorkspace({ wedding, api }: Props) {
             disabled={busy}
             onClick={() => void loadMore()}
           >
-            Load more tasks
+            {copy.planning.loadMore}
           </Button>
         ) : null}
       </Card>
@@ -414,8 +443,4 @@ function isOverdue(value: string, timeZone: string): boolean {
   const part = (type: string) =>
     parts.find((item) => item.type === type)?.value ?? "";
   return value < `${part("year")}-${part("month")}-${part("day")}`;
-}
-
-function readableError(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
 }

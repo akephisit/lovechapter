@@ -1,5 +1,6 @@
-import { ApiError, createLoveChapterApi } from "../lib/api-client";
+import { createLoveChapterApi } from "../lib/api-client";
 import type { UiCopy } from "../lib/ui-copy";
+import { safeUiError } from "../lib/ui-error";
 
 export function createAnonymousApi() {
   return createLoveChapterApi(() => undefined);
@@ -10,21 +11,7 @@ export function authErrorMessage(
   copy: UiCopy,
   fallbackKey: keyof UiCopy["errors"],
 ): string {
-  if (error instanceof ApiError) {
-    switch (error.code) {
-      case "invalid_credentials":
-        return copy.errors.invalidCredentials;
-      case "invalid_token":
-        return copy.errors.invalidToken;
-      case "invalid_input":
-      case "validation_error":
-      case "invalid_request":
-        return copy.errors.invalidInput;
-      case "rate_limited":
-        return copy.errors.rateLimited;
-    }
-  }
-  return copy.errors[fallbackKey];
+  return safeUiError(error, copy, copy.errors[fallbackKey]);
 }
 
 export function passwordLengthError(
