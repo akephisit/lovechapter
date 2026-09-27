@@ -18,12 +18,14 @@ tests and local CI passed (101 files / 660 tests, Bun API/jobs builds and
 smoke, Worker dry-run, Next/vinext builds/check). The gate role cannot read
 the migration ledger, so this one-time schema check uses the already
 configured migration credential after checking it targets the same endpoint.
-The first manual run passed its CI and disposable PostgreSQL jobs but failed
-inside publication before any gate retarget or Worker version upload. Readback
-confirmed maintenance still targets the old SHA, has zero leases and null
-version baseline, and both active Worker versions are unchanged. A follow-up
-adds fixed, non-secret phase markers to identify the failing preflight; it
-does not relax any release guard or claim a public release.
+Two manual runs passed CI and disposable PostgreSQL jobs but stopped inside
+publication before gate retarget or Worker version upload. Readback confirmed
+maintenance still targets the old SHA, has zero leases and null version
+baseline, and both active Worker versions are unchanged. Fixed, non-secret
+phase markers show that context, exact main SHA, gate baseline, and migration
+ledger checks passed; the failure is within Worker preparation. More granular
+fixed Worker phase markers are now being added to isolate that failure without
+logging arguments or relaxing any release guard. No public release is claimed.
 
 The direct-production Worker release implementation was fast-forwarded from
 the isolated `codex/automatic-worker-release-implementation` worktree to

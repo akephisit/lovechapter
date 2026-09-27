@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   assertBootstrapLedgerCurrent,
+  instrumentWorkerRunner,
   retargetClosedBootstrap,
   runFirstProductionPublication,
 } from "./first-production-publication.mjs";
@@ -127,6 +128,23 @@ function fixture(overrides = {}) {
 }
 
 describe("one-time production publication", () => {
+  it("reports only fixed Worker preparation phase names", async () => {
+    const phases = [];
+    const runner = instrumentWorkerRunner(
+      {
+        readPreviewSettings: vi.fn(async () => ({ previewsEnabled: false })),
+        buildWeb: vi.fn(async () => undefined),
+      },
+      (phase) => phases.push(phase),
+    );
+    await runner.readPreviewSettings("api", "production");
+    await runner.buildWeb("production", sha);
+    expect(phases).toEqual([
+      "worker_readPreviewSettings_api",
+      "worker_buildWeb",
+    ]);
+  });
+
   it("builds both Workers before retargeting the closed gate, then smokes and records", async () => {
     const { env, adapters, events } = fixture();
     await expect(runFirstProductionPublication(env, adapters)).resolves.toBe(1);

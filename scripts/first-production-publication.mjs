@@ -56,6 +56,36 @@ function configured(value) {
   );
 }
 
+/** Emit fixed, non-sensitive Worker phases without logging command arguments. */
+export function instrumentWorkerRunner(runner, reportPhase) {
+  const instrumented = { ...runner };
+  for (const method of [
+    "validateTarget",
+    "readPreviewSettings",
+    "readDeployment",
+    "buildWeb",
+    "dryRunWeb",
+    "scanWebClientBundle",
+    "buildApi",
+    "dryRunApi",
+    "uploadApi",
+    "promoteWeb",
+    "promoteApi",
+  ]) {
+    if (typeof runner[method] !== "function") continue;
+    instrumented[method] = (...args) => {
+      const component =
+        (method === "readPreviewSettings" || method === "readDeployment") &&
+        (args[0] === "web" || args[0] === "api")
+          ? `_${args[0]}`
+          : "";
+      reportPhase(`worker_${method}${component}`);
+      return runner[method](...args);
+    };
+  }
+  return instrumented;
+}
+
 function matchingMigrationTarget(env) {
   try {
     // Match the direct-URL restrictions in release-target.ts. pg accepts
@@ -254,6 +284,9 @@ export async function runFirstProductionPublication(env, adapters = {}) {
       cloudflareAccountId: env.RELEASE_CLOUDFLARE_ACCOUNT_ID,
       cloudflareApiToken: env.RELEASE_CLOUDFLARE_API_TOKEN,
     });
+  const reportedRunner = adapters.reportPhase
+    ? instrumentWorkerRunner(workerRunner, reportPhase)
+    : workerRunner;
   const prepare = adapters.prepare ?? prepareWorkerVersions;
   const deploy = adapters.deploy ?? deployPreparedVersions;
   const assertLedgerCurrent =
@@ -288,7 +321,7 @@ export async function runFirstProductionPublication(env, adapters = {}) {
       previous,
       hyperdriveId: env.RELEASE_HYPERDRIVE_ID,
     },
-    workerRunner,
+    reportedRunner,
   );
   if ((await githubRead.readMainHead()) !== sha) {
     throw new Error("First publication SHA was superseded after preparation");
@@ -307,7 +340,7 @@ export async function runFirstProductionPublication(env, adapters = {}) {
     throw new Error("First publication gate did not drain at candidate SHA");
   }
   reportPhase("worker_deployment");
-  const deployed = await deploy(prepared, workerRunner);
+  const deployed = await deploy(prepared, reportedRunner);
   reportPhase("private_smoke");
   const smoke = await privateSmoke({
     sha,
