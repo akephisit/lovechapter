@@ -1,3 +1,15 @@
+import { randomUUID } from "node:crypto";
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Client, Pool } from "pg";
@@ -5,6 +17,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import * as database from "./index";
 import { createPostgresRuntime, type PostgresRuntime } from "./client";
+import { PostgresStagingBootstrapGate } from "./staging-bootstrap-gate";
 
 const connectionString = process.env.TEST_DATABASE_URL;
 const restrictedConnectionString = process.env.TEST_GATE_APP_DATABASE_URL;
@@ -15,6 +28,10 @@ if (
 ) {
   throw new Error("Release gate integration requires a disposable database");
 }
+const disposableUrl = new URL(connectionString);
+const localDisposable =
+  ["127.0.0.1", "localhost"].includes(disposableUrl.hostname) &&
+  disposableUrl.pathname === "/lovechapter_test";
 
 type GateStore = {
   readMode(): Promise<"open" | "maintenance">;
@@ -150,6 +167,79 @@ async function waitForLock(pid: number): Promise<void> {
 }
 
 describe("PostgreSQL release gate", () => {
+  it.skipIf(!localDisposable)(
+    "operates against an isolated database migrated only through 0010",
+    async () => {
+      const fixtureName = `lovechapter_gate_0010_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
+      const fixtureDirectory = await mkdtemp(
+        join(tmpdir(), "lovechapter-0010-"),
+      );
+      const admin = new Client({ connectionString });
+      const fixtureUrl = new URL(connectionString);
+      fixtureUrl.pathname = `/${fixtureName}`;
+      let fixture: Client | undefined;
+      let created = false;
+      await admin.connect();
+      try {
+        await admin.query(`create database ${fixtureName}`);
+        created = true;
+        await mkdir(join(fixtureDirectory, "meta"));
+        const source = new URL("../drizzle/", import.meta.url);
+        const journal = JSON.parse(
+          await readFile(new URL("meta/_journal.json", source), "utf8"),
+        ) as { entries: { tag: string }[] };
+        const entries = journal.entries.filter((entry) =>
+          /^00(?:0[0-9]|10)_/u.test(entry.tag),
+        );
+        expect(entries).toHaveLength(11);
+        await writeFile(
+          join(fixtureDirectory, "meta/_journal.json"),
+          JSON.stringify({ ...journal, entries }),
+        );
+        for (const entry of entries) {
+          await copyFile(
+            new URL(`${entry.tag}.sql`, source),
+            join(fixtureDirectory, `${entry.tag}.sql`),
+          );
+        }
+        fixture = new Client({ connectionString: fixtureUrl.toString() });
+        await fixture.connect();
+        await migrate(drizzle({ client: fixture }), {
+          migrationsFolder: fixtureDirectory,
+        });
+        const columns = await fixture.query<{ column_name: string }>(
+          `select column_name from information_schema.columns
+           where table_schema = 'ops' and table_name = 'release_control'`,
+        );
+        expect(columns.rows.map((row) => row.column_name)).not.toContain(
+          "web_version_id",
+        );
+        const gate = new PostgresStagingBootstrapGate(fixture);
+        expect((await gate.status()).mode).toBe("open");
+        await fixture.query(
+          "insert into ops.release_leases (id, kind) values (gen_random_uuid(), 'email')",
+        );
+        const closure = await gate.closeOnce("9".repeat(40));
+        expect(closure.activeCount).toBe(1);
+        await expect(gate.closeOnce("9".repeat(40))).rejects.toThrow();
+        expect((await gate.status()).changedAt).toBe(closure.changedAt);
+        await fixture.query("delete from ops.release_leases");
+        expect(
+          await gate.drain("9".repeat(40), closure.changedAt, {
+            deadlineMs: Date.now() + 2_000,
+          }),
+        ).toMatchObject({ mode: "maintenance", activeCount: 0 });
+      } finally {
+        await fixture?.end();
+        if (created)
+          await admin.query(`drop database ${fixtureName} with (force)`);
+        await admin.end();
+        await rm(fixtureDirectory, { recursive: true, force: true });
+      }
+    },
+    30_000,
+  );
+
   it.skipIf(!restrictedConnectionString)(
     "admits through a role with no control UPDATE privilege",
     async () => {

@@ -1,5 +1,14 @@
 # LoveChapter — Progress
 
+## One-time staging baseline implementation (2026-09-27)
+
+Task 1 adds a pre-`0011` staging gate reader, open-only closure, and bounded
+lease drain. A disposable PostgreSQL fixture migrated only through `0010`
+exercises the old schema without version columns. This is local implementation
+only: active staging and production have not been changed, and the one-time
+cutover still requires a separate exact-SHA go/no-go. The remaining CLI,
+recovery, coordinator, and workflow tasks are not yet complete.
+
 ## Current phase
 
 The backend can be packaged either for Bun/VPS or for a Cloudflare API Worker;
