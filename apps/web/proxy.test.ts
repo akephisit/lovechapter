@@ -160,4 +160,17 @@ describe("web release proxy", () => {
       response.headers.get("x-middleware-request-x-lovechapter-published-sha"),
     ).toBe("a".repeat(40));
   });
+
+  it("allows only the exact preference route while maintenance stays closed", async () => {
+    const upstream = vi.fn(async () =>
+      Response.json({ mode: "maintenance", publishedSha: null }),
+    );
+    vi.stubGlobal("fetch", upstream);
+    expect((await proxy(request("/ui-language", "POST"))).status).toBe(200);
+    expect((await proxy(request("/ui-language/other", "POST"))).status).toBe(
+      503,
+    );
+    expect((await proxy(request("/api/v1/me"))).status).toBe(503);
+    expect(upstream).toHaveBeenCalledTimes(2);
+  });
 });

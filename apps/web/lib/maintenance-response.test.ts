@@ -31,4 +31,21 @@ describe("web maintenance response", () => {
     expect(head.status).toBe(503);
     expect(head.body).toBeNull();
   });
+
+  it("renders Thai maintenance without opening a business route", async () => {
+    const page = maintenanceResponse("/i/private-token", "GET", "th");
+    expect(page.status).toBe(503);
+    expect(page.headers.get("cache-control")).toBe("no-store");
+    const html = await page.text();
+    expect(html).toContain('<html lang="th">');
+    expect(html).toContain("ไม่สามารถใช้งานได้ชั่วคราว");
+    expect(html).toContain('action="/ui-language"');
+    expect(html).not.toContain("private-token");
+
+    const api = maintenanceResponse("/api/v1/me", "GET", "th");
+    expect(api.status).toBe(503);
+    await expect(api.json()).resolves.toMatchObject({
+      error: { code: "maintenance" },
+    });
+  });
 });

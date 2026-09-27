@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { maintenanceResponse } from "./lib/maintenance-response";
 import { fetchReleaseState, type ReleaseState } from "./lib/release-state";
+import { resolveUiLanguage, UI_LANGUAGE_COOKIE } from "./lib/ui-language";
 
 const probeHeader = "x-lovechapter-release-probe";
 const publishedHeader = "x-lovechapter-published-sha";
@@ -36,6 +37,9 @@ export async function proxy(
   if (pathname.startsWith("/_next/static/") || safePaths.has(pathname)) {
     return continueResponse();
   }
+  if (pathname === "/ui-language" && request.method === "POST") {
+    return continueResponse();
+  }
   let state: ReleaseState;
   try {
     state = await fetchReleaseState(request.url, {
@@ -49,7 +53,14 @@ export async function proxy(
   if (state.mode === "open" || isPresentationProbe(request)) {
     return continueResponse(state.mode === "open" ? state.publishedSha : null);
   }
-  return maintenanceResponse(pathname, request.method);
+  return maintenanceResponse(
+    pathname,
+    request.method,
+    resolveUiLanguage(
+      request.cookies.get(UI_LANGUAGE_COOKIE)?.value,
+      request.headers.get("accept-language"),
+    ),
+  );
 }
 
 function isPresentationProbe(request: NextRequest): boolean {
