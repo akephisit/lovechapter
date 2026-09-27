@@ -66,6 +66,7 @@ export function instrumentWorkerRunner(runner, reportPhase) {
     "buildWeb",
     "dryRunWeb",
     "scanWebClientBundle",
+    "uploadWeb",
     "buildApi",
     "dryRunApi",
     "uploadApi",
@@ -453,7 +454,7 @@ if (
   } catch (error) {
     const uploadDiagnosis =
       error instanceof Error
-        ? /^API upload failed: (?:authorization|strict bindings|binding|limit|unknown)(?: \(code [0-9]{4,6}\))?$/u.exec(
+        ? /^(?:API|Web) upload failed: (?:authorization|strict bindings|binding|limit|unknown)(?: \(code [0-9]{4,6}\))?$/u.exec(
             error.message,
           )
         : null;
@@ -461,7 +462,9 @@ if (
       console.error(`first_production_${uploadDiagnosis[0]}`);
     } else if (
       error instanceof Error &&
-      error.message === "API upload receipt does not match Worker name"
+      /^(?:API|Web) upload receipt does not match Worker name$/u.test(
+        error.message,
+      )
     ) {
       console.error("first_production_upload_receipt_mismatch");
     } else if (

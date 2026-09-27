@@ -63,6 +63,10 @@ function runner(overrides = {}) {
     buildWeb: vi.fn(async () => calls.push("build-web")),
     dryRunWeb: vi.fn(async () => calls.push("dry-run-web")),
     scanWebClientBundle: vi.fn(async () => calls.push("scan-web")),
+    uploadWeb: vi.fn(async () => {
+      calls.push("upload-web");
+      return "web-new";
+    }),
     buildApi: vi.fn(async () => calls.push("build-api")),
     dryRunApi: vi.fn(async () => calls.push("dry-run-api")),
     uploadApi: vi.fn(async () => {
@@ -105,6 +109,21 @@ describe("selected Worker versions", () => {
     expect(error).toBeUndefined();
     expect(apiConfig.vars.RESEND_FROM_EMAIL).toBe(
       "notifications@lovechapter.net",
+    );
+  });
+
+  it("keeps the production API origin in checked-in web Wrangler vars", () => {
+    const path = resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      "../apps/web/wrangler.jsonc",
+    );
+    const { config: webConfig, error } = ts.parseConfigFileTextToJson(
+      path,
+      readFileSync(path, "utf8"),
+    );
+    expect(error).toBeUndefined();
+    expect(webConfig.vars.API_UPSTREAM_ORIGIN).toBe(
+      "https://lovechapter-api.kruakemaths.workers.dev",
     );
   });
 
@@ -204,8 +223,10 @@ describe("selected Worker versions", () => {
       commands,
     );
     expect(prepared.webBuilt).toBe(true);
+    expect(prepared.webUploadedVersionId).toBe("web-new");
     expect(prepared.apiUploadedVersionId).toBeUndefined();
     expect(commands.calls).toContain("build-web");
+    expect(commands.calls).toContain("upload-web");
     expect(commands.calls).not.toContain("build-api");
     expect(commands.calls).not.toContain("upload-api");
     const versions = await deployPreparedVersions(prepared, commands);
@@ -214,6 +235,11 @@ describe("selected Worker versions", () => {
       api: previous.api,
     });
     expect(commands.calls).toContain("promote-web");
+    expect(commands.promoteWeb).toHaveBeenCalledWith(
+      "staging",
+      "lovechapter-web-staging",
+      "web-new",
+    );
     expect(commands.calls).not.toContain("promote-api");
   });
 
@@ -245,7 +271,12 @@ describe("selected Worker versions", () => {
     expect(commands.calls).not.toContain("promote-web");
     expect(commands.calls).not.toContain("promote-api");
     await deployPreparedVersions(prepared, commands);
-    for (const build of ["build-web", "build-api", "upload-api"]) {
+    for (const build of [
+      "build-web",
+      "upload-web",
+      "build-api",
+      "upload-api",
+    ]) {
       expect(commands.calls.indexOf(build)).toBeLessThan(
         commands.calls.indexOf("promote-web"),
       );

@@ -15,10 +15,10 @@ fast-forward push to protected `main` runs `.github/workflows/release.yml`:
 ```text
 exact main SHA -> CI + disposable PostgreSQL tests
                -> compare with last successful production deployment
-               -> build selected Worker artifacts
+               -> build and upload inactive selected Worker versions
                -> whole-site maintenance + lease drain
                -> pending migration (verified recovery point first if breaking)
-               -> deploy selected Worker(s) -> private smoke
+               -> promote selected Worker version(s) -> private smoke
                -> atomic gate reopen -> public check -> GitHub deployment record
 ```
 
@@ -36,7 +36,7 @@ Their configuration remains only to avoid changing that live installation
 incidentally; no staging acceptance job runs. Do not delete those external
 resources through this runbook.
 
-## One-time first production publication — not yet executed
+## One-time first production publication — in progress
 
 Normal selective releases require an open PostgreSQL gate and a matching
 successful GitHub production deployment record. Neither exists for the first
@@ -107,15 +107,15 @@ retention check, or recovery method is unknown:
    closure timestamp from the final status. Do not start production cron
    outside the closed gate.
 
-7. Deploy both prechecked Workers from this SHA while the gate remains
+7. Upload both prechecked Worker versions while Preview URLs are disabled,
+   then promote both exact uploaded version IDs while the gate remains
    closed. The first deployment is explicitly both Workers; later releases
-   can be selective. Record their actual active Cloudflare version IDs and
-   verify Preview URLs remain off. Never infer IDs from build output alone.
-
-   ```bash
-   npm run deploy:worker --workspace @lovechapter/api
-   npm run deploy --workspace @lovechapter/web -- --skip-build
-   ```
+   can be selective. The web upload uses Vinext's generated
+   `dist/server/wrangler.json` so the version includes its static assets.
+   Use `wrangler versions deploy <version-id>@100%` for each Worker; do not
+   rerun a general `wrangler deploy` that also mutates route settings. Read
+   back both active Cloudflare version IDs and confirm Preview URLs remain
+   off. Never infer IDs from build output alone.
 
 8. Run `runPrivateReleaseSmoke` from `scripts/release-smoke.mjs` against
    the generated web/API origins using the actual closed-gate status, Worker

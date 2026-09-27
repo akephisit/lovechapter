@@ -148,10 +148,15 @@ export async function prepareWorkerVersions(input, runner) {
       throw new Error("Active Worker version differs from release baseline");
     }
   }
+  let webUploadedVersionId;
   if (impact.web) {
     await runner.buildWeb(environment, sha);
     await runner.dryRunWeb(environment);
     await runner.scanWebClientBundle();
+    webUploadedVersionId = await runner.uploadWeb(environment, sha);
+    if (!webUploadedVersionId) {
+      throw new Error("Web version upload did not return a version ID");
+    }
   }
   let apiUploadedVersionId;
   if (impact.backend) {
@@ -170,6 +175,7 @@ export async function prepareWorkerVersions(input, runner) {
     names,
     hyperdriveId,
     webBuilt: impact.web,
+    ...(webUploadedVersionId ? { webUploadedVersionId } : {}),
     ...(apiUploadedVersionId ? { apiUploadedVersionId } : {}),
   };
 }
@@ -178,13 +184,18 @@ export async function prepareWorkerVersions(input, runner) {
 export async function deployPreparedVersions(prepared, runner) {
   if (
     !shaPattern.test(prepared?.sha ?? "") ||
-    (prepared.impact?.web && !prepared.webBuilt) ||
+    (prepared.impact?.web &&
+      (!prepared.webBuilt || !prepared.webUploadedVersionId)) ||
     (prepared.impact?.backend && !prepared.apiUploadedVersionId)
   ) {
     throw new Error("Worker deployment has no complete prepared artifacts");
   }
   if (prepared.impact.web) {
-    await runner.promoteWeb(prepared.environment, prepared.names.web);
+    await runner.promoteWeb(
+      prepared.environment,
+      prepared.names.web,
+      prepared.webUploadedVersionId,
+    );
   }
   if (prepared.impact.backend) {
     await runner.promoteApi(
@@ -202,7 +213,8 @@ export async function deployPreparedVersions(prepared, runner) {
     if (prepared.impact[component === "web" ? "web" : "backend"]) {
       if (
         versionId === prepared.previous?.[component]?.versionId ||
-        (component === "api" && versionId !== prepared.apiUploadedVersionId)
+        (component === "api" && versionId !== prepared.apiUploadedVersionId) ||
+        (component === "web" && versionId !== prepared.webUploadedVersionId)
       ) {
         throw new Error(
           "Changed Worker deployment did not reach the prepared version",
@@ -329,7 +341,11 @@ async function readWranglerEvents(path) {
   }
 }
 
-async function uploadVersion(environment, name, sha) {
+async function uploadVersion(environment, name, sha, component) {
+  const isWeb = component === "web";
+  const directory = isWeb ? webDirectory : apiDirectory;
+  const config = isWeb ? "dist/server/wrangler.json" : "wrangler.jsonc";
+  const label = isWeb ? "Web" : "API";
   const temporaryDirectory = await mkdtemp(
     join(tmpdir(), "lc-wrangler-output-"),
   );
@@ -343,7 +359,7 @@ async function uploadVersion(environment, name, sha) {
           "versions",
           "upload",
           "--config",
-          "wrangler.jsonc",
+          config,
           ...(environment === "staging" ? ["--env", "staging"] : []),
           "--name",
           name,
@@ -353,7 +369,7 @@ async function uploadVersion(environment, name, sha) {
           sha,
         ],
         {
-          cwd: apiDirectory,
+          cwd: directory,
           env: { ...process.env, WRANGLER_OUTPUT_FILE_PATH: outputPath },
         },
       );
@@ -361,7 +377,9 @@ async function uploadVersion(environment, name, sha) {
       const failure = (await readWranglerEvents(outputPath)).find(
         (event) => event.type === "command-failed",
       );
-      throw new Error(`API upload failed: ${classifyUploadFailure(failure)}`);
+      throw new Error(
+        `${label} upload failed: ${classifyUploadFailure(failure)}`,
+      );
     }
     const events = await readWranglerEvents(outputPath);
     const upload = events.find((event) => event.type === "version-upload");
@@ -370,7 +388,7 @@ async function uploadVersion(environment, name, sha) {
       typeof upload.version_id !== "string" ||
       !upload.version_id
     ) {
-      throw new Error("API upload receipt does not match Worker name");
+      throw new Error(`${label} upload receipt does not match Worker name`);
     }
     return upload.version_id;
   } finally {
@@ -463,16 +481,21 @@ export function createWorkerCommandRunner({
     },
     async dryRunWeb(environment) {
       await runCommand(
-        "npm",
+        process.execPath,
         [
-          "run",
-          environment === "staging" ? "deploy:staging" : "deploy",
-          "--workspace",
-          "@lovechapter/web",
-          "--",
+          wrangler,
+          "versions",
+          "upload",
+          "--config",
+          "dist/server/wrangler.json",
+          ...(environment === "staging" ? ["--env", "staging"] : []),
+          "--name",
+          workerName("web", environment),
+          "--keep-vars",
+          "--strict",
           "--dry-run",
         ],
-        { cwd: root },
+        { cwd: webDirectory },
       );
     },
     async scanWebClientBundle() {
@@ -519,22 +542,37 @@ export function createWorkerCommandRunner({
       );
     },
     async uploadApi(environment, sha) {
-      return uploadVersion(environment, workerName("api", environment), sha);
+      return uploadVersion(
+        environment,
+        workerName("api", environment),
+        sha,
+        "api",
+      );
     },
-    async promoteWeb(environment, name) {
+    async uploadWeb(environment, sha) {
+      return uploadVersion(
+        environment,
+        workerName("web", environment),
+        sha,
+        "web",
+      );
+    },
+    async promoteWeb(environment, name, versionId) {
       await runCommand(
-        "npm",
+        process.execPath,
         [
-          "run",
-          environment === "staging" ? "deploy:staging" : "deploy",
-          "--workspace",
-          "@lovechapter/web",
-          "--",
-          "--skip-build",
+          wrangler,
+          "versions",
+          "deploy",
+          `${versionId}@100%`,
+          "--config",
+          "dist/server/wrangler.json",
+          ...(environment === "staging" ? ["--env", "staging"] : []),
           "--name",
           name,
+          "--yes",
         ],
-        { cwd: root, failureKind: "web-promotion" },
+        { cwd: webDirectory, failureKind: "web-promotion" },
       );
     },
     async promoteApi(environment, name, versionId) {

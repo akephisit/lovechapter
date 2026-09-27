@@ -34,6 +34,10 @@ function fixture({ driverOverrides = {}, baselineOverrides = {} } = {}) {
     buildWeb: vi.fn(async () => events.push("build_web")),
     dryRunWeb: vi.fn(async () => events.push("dry_run_web")),
     scanWebClientBundle: vi.fn(async () => events.push("scan_web")),
+    uploadWeb: vi.fn(async () => {
+      events.push("upload_web");
+      return "web-new";
+    }),
     promoteWeb: vi.fn(async () => {
       events.push("promote_web");
       versions.web = "web-new";
@@ -200,6 +204,7 @@ describe("concrete release driver composition", () => {
       "build_web",
       "dry_run_web",
       "scan_web",
+      "upload_web",
       "close",
       "drain",
       "promote_web",

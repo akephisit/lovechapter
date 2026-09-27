@@ -22,11 +22,16 @@ production config. A local inactive version upload then succeeded with strict
 mode. The fifth hosted run uploaded its API version, retargeted the gate to
 `a62cc796`, and drained leases. The web deploy command exited nonzero after
 Cloudflare had already activated web version `ae1a0065`; the workflow
-reclosed maintenance and did not deploy the API version. Readback confirmed
-maintenance still has a null version baseline, public web returns 503, and
-the active API Worker version is unchanged. The next retry must expect this
-new closed gate target and active web version. Safe, fixed web-deploy error
-classification is being added; command output and arguments are not logged.
+reclosed maintenance and did not deploy the API version. A sixth hosted run
+repeated that partial web promotion at `c9f0b7c`, activating web version
+`4a146e32`, then reported an authorization failure. Readback confirmed the
+gate remains in maintenance at `c9f0b7c` with null version baseline; public
+web returns 503 and the active API Worker version is unchanged. The next
+retry must expect this closed gate target and active web version. The web
+release path is being changed to upload an inactive version before closure
+and promote that exact version under maintenance, avoiding route-setting
+operations during `wrangler deploy`. The generated web Wrangler config will
+carry the non-secret API origin. Command output and arguments are not logged.
 No release guard was relaxed. The gate role
 cannot read the migration ledger, so the one-time schema check uses the
 configured migration credential after checking it targets the same endpoint.
