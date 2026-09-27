@@ -5,6 +5,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../lib/api-client";
 import { VerifyEmailForm } from "./verify-email-form";
+import { UiLanguageProvider } from "./ui-language-provider";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -53,6 +56,22 @@ describe("VerifyEmailForm", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Invalid or expired token",
+    );
+  });
+
+  it("renders the Thai expired-link message", async () => {
+    window.history.replaceState(null, "", "/verify-email#token=expired");
+    render(
+      <UiLanguageProvider language="th">
+        <VerifyEmailForm
+          verify={async () => {
+            throw new ApiError("raw English detail", 400, "invalid_token");
+          }}
+        />
+      </UiLanguageProvider>,
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "ลิงก์ไม่ถูกต้องหรือหมดอายุแล้ว",
     );
   });
 });

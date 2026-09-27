@@ -5,7 +5,10 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../lib/api-client";
+import { UiLanguageProvider } from "./ui-language-provider";
 import { SignInForm } from "./sign-in-form";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 describe("SignInForm", () => {
   it("uses password-manager semantics and redirects after sign-in", async () => {
@@ -44,5 +47,25 @@ describe("SignInForm", () => {
     await user.click(screen.getByRole("button", { name: "Sign in" }));
 
     expect(await screen.findByText("Invalid email or password")).toBeVisible();
+  });
+
+  it("renders Thai controls and never shows an unknown backend message", async () => {
+    const submit = vi.fn(async () => {
+      throw new ApiError("raw English internal detail", 500, "unknown_code");
+    });
+    render(
+      <UiLanguageProvider language="th">
+        <SignInForm submit={submit} onSignedIn={vi.fn()} />
+      </UiLanguageProvider>,
+    );
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("อีเมล"), "c@example.test");
+    await user.type(screen.getByLabelText("รหัสผ่าน"), "wrong password phrase");
+    await user.click(screen.getByRole("button", { name: "เข้าสู่ระบบ" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "ไม่สามารถเข้าสู่ระบบได้ กรุณาลองอีกครั้ง",
+    );
+    expect(screen.queryByText(/raw English/)).not.toBeInTheDocument();
   });
 });

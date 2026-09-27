@@ -9,6 +9,7 @@ import { AuthFormShell } from "./auth-form-shell";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { useUiCopy } from "./ui-language-provider";
 
 export function SignInForm({
   submit = (input) => createAnonymousApi().signIn(input),
@@ -17,6 +18,7 @@ export function SignInForm({
   submit?: (input: SignInInput) => Promise<{ signedIn: true }>;
   onSignedIn?: () => Promise<void> | void;
 }) {
+  const copy = useUiCopy();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,7 +35,7 @@ export function SignInForm({
       await submit(input);
       await onSignedIn();
     } catch (caught) {
-      setError(authErrorMessage(caught, "We couldn't sign you in."));
+      setError(authErrorMessage(caught, copy, "signIn"));
     } finally {
       setPending(false);
     }
@@ -41,13 +43,13 @@ export function SignInForm({
 
   return (
     <AuthFormShell
-      title="Welcome back"
-      description="Sign in to continue planning your chapter."
-      alternate={{ href: "/sign-up", label: "New here? Create an account" }}
+      title={copy.auth.signInTitle}
+      description={copy.auth.signInDescription}
+      alternate={{ href: "/sign-up", label: copy.auth.signInAlternate }}
     >
       <form className="space-y-5" noValidate onSubmit={handleSubmit} dir="auto">
         <div className="min-w-0">
-          <Label htmlFor="sign-in-email">Email address</Label>
+          <Label htmlFor="sign-in-email">{copy.auth.email}</Label>
           <Input
             id="sign-in-email"
             name="email"
@@ -59,12 +61,12 @@ export function SignInForm({
         </div>
         <div className="min-w-0">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <Label htmlFor="sign-in-password">Password</Label>
+            <Label htmlFor="sign-in-password">{copy.auth.password}</Label>
             <Link
               href="/forgot-password"
               className="text-xs font-semibold text-[#71384b] underline underline-offset-4"
             >
-              Forgot password?
+              {copy.auth.forgotPassword}
             </Link>
           </div>
           <Input
@@ -85,7 +87,7 @@ export function SignInForm({
           </p>
         ) : null}
         <Button className="w-full" type="submit" disabled={pending}>
-          {pending ? "Signing in…" : "Sign in"}
+          {pending ? copy.auth.signingIn : copy.auth.signIn}
         </Button>
       </form>
     </AuthFormShell>

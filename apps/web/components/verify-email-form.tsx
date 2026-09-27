@@ -10,6 +10,7 @@ import {
   readAndScrubFragmentToken,
 } from "./auth-form-utils";
 import { AuthFormShell } from "./auth-form-shell";
+import { useUiCopy } from "./ui-language-provider";
 
 type Verify = (input: VerifyEmailInput) => Promise<{ verified: true }>;
 
@@ -18,10 +19,11 @@ export function VerifyEmailForm({
 }: {
   verify?: Verify;
 }) {
+  const copy = useUiCopy();
   const [state, setState] = useState<"working" | "complete" | "error">(
     "working",
   );
-  const [message, setMessage] = useState("Verifying your email…");
+  const [message, setMessage] = useState<string | null>(null);
   const started = useRef(false);
 
   useEffect(() => {
@@ -30,27 +32,29 @@ export function VerifyEmailForm({
     const token = readAndScrubFragmentToken();
     if (!token) {
       setState("error");
-      setMessage("Invalid or expired token");
+      setMessage(copy.errors.invalidToken);
       return;
     }
     void verify({ token })
       .then(() => {
         setState("complete");
-        setMessage("Verification complete.");
+        setMessage(copy.auth.verified);
       })
       .catch((error: unknown) => {
         setState("error");
-        setMessage(authErrorMessage(error, "Invalid or expired token"));
+        setMessage(authErrorMessage(error, copy, "invalidToken"));
       });
-  }, [verify]);
+  }, [verify, copy]);
 
   return (
     <AuthFormShell
-      title={state === "complete" ? "Email verified" : "Verify your email"}
+      title={
+        state === "complete" ? copy.auth.verifiedTitle : copy.auth.verifyTitle
+      }
       description={
         state === "complete"
-          ? "Your address is verified. You can sign in now."
-          : "We're checking your secure verification link."
+          ? copy.auth.verifiedDescription
+          : copy.auth.verifyDescription
       }
     >
       <p
@@ -61,14 +65,14 @@ export function VerifyEmailForm({
             : "text-center text-sm break-words text-[#725f62]"
         }
       >
-        {message}
+        {message ?? copy.auth.verifying}
       </p>
       {state === "complete" ? (
         <Link
           href="/sign-in"
           className="mt-6 flex min-h-11 items-center justify-center rounded-full bg-[#71384b] px-5 py-2.5 text-sm font-semibold text-white"
         >
-          Continue to sign in
+          {copy.auth.continueSignIn}
         </Link>
       ) : null}
     </AuthFormShell>

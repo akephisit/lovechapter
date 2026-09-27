@@ -14,12 +14,14 @@ import { AuthFormShell } from "./auth-form-shell";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { useUiCopy } from "./ui-language-provider";
 
 export function ResetPasswordForm({
   submit = (input) => createAnonymousApi().resetPassword(input),
 }: {
   submit?: (input: ResetPasswordInput) => Promise<{ reset: true }>;
 }) {
+  const copy = useUiCopy();
   const [token, setToken] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [pending, setPending] = useState(false);
@@ -37,12 +39,12 @@ export function ResetPasswordForm({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!token) {
-      setError("Invalid or expired token");
+      setError(copy.errors.invalidToken);
       return;
     }
     const data = new FormData(event.currentTarget);
     const password = String(data.get("password") ?? "");
-    const passwordError = passwordLengthError(password);
+    const passwordError = passwordLengthError(password, copy);
     if (passwordError) {
       setError(passwordError);
       return;
@@ -53,7 +55,7 @@ export function ResetPasswordForm({
       await submit({ token, password });
       setComplete(true);
     } catch (caught) {
-      setError(authErrorMessage(caught, "Invalid or expired token"));
+      setError(authErrorMessage(caught, copy, "invalidToken"));
     } finally {
       setPending(false);
     }
@@ -61,11 +63,11 @@ export function ResetPasswordForm({
 
   return (
     <AuthFormShell
-      title={complete ? "Password reset" : "Choose a new password"}
+      title={complete ? copy.auth.resetCompleteTitle : copy.auth.resetTitle}
       description={
         complete
-          ? "Your sessions were closed and your new password is ready."
-          : "Use 12–128 characters. Your password is never trimmed."
+          ? copy.auth.resetCompleteDescription
+          : copy.auth.resetDescription
       }
     >
       {complete ? (
@@ -73,7 +75,7 @@ export function ResetPasswordForm({
           href="/sign-in"
           className="flex min-h-11 items-center justify-center rounded-full bg-[#71384b] px-5 py-2.5 text-sm font-semibold text-white"
         >
-          Sign in with your new password
+          {copy.auth.signInNewPassword}
         </Link>
       ) : ready ? (
         <form
@@ -83,7 +85,7 @@ export function ResetPasswordForm({
           dir="auto"
         >
           <div className="min-w-0">
-            <Label htmlFor="reset-password">New password</Label>
+            <Label htmlFor="reset-password">{copy.auth.newPassword}</Label>
             <Input
               id="reset-password"
               name="password"
@@ -102,12 +104,12 @@ export function ResetPasswordForm({
             </p>
           ) : null}
           <Button className="w-full" type="submit" disabled={pending}>
-            {pending ? "Resetting…" : "Reset password"}
+            {pending ? copy.auth.resetting : copy.auth.resetPassword}
           </Button>
         </form>
       ) : (
         <p role="status" className="text-center text-sm text-[#725f62]">
-          Reading your secure reset link…
+          {copy.auth.resetReading}
         </p>
       )}
     </AuthFormShell>

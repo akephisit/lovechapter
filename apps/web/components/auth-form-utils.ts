@@ -1,18 +1,38 @@
 import { ApiError, createLoveChapterApi } from "../lib/api-client";
+import type { UiCopy } from "../lib/ui-copy";
 
 export function createAnonymousApi() {
   return createLoveChapterApi(() => undefined);
 }
 
-export function authErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof ApiError ? error.message : fallback;
+export function authErrorMessage(
+  error: unknown,
+  copy: UiCopy,
+  fallbackKey: keyof UiCopy["errors"],
+): string {
+  if (error instanceof ApiError) {
+    switch (error.code) {
+      case "invalid_credentials":
+        return copy.errors.invalidCredentials;
+      case "invalid_token":
+        return copy.errors.invalidToken;
+      case "invalid_input":
+      case "validation_error":
+      case "invalid_request":
+        return copy.errors.invalidInput;
+      case "rate_limited":
+        return copy.errors.rateLimited;
+    }
+  }
+  return copy.errors[fallbackKey];
 }
 
-export function passwordLengthError(password: string): string | null {
+export function passwordLengthError(
+  password: string,
+  copy: UiCopy,
+): string | null {
   const length = [...password].length;
-  return length < 12 || length > 128
-    ? "Password must contain 12–128 Unicode characters."
-    : null;
+  return length < 12 || length > 128 ? copy.errors.passwordLength : null;
 }
 
 export function readAndScrubFragmentToken(): string | null {

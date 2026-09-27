@@ -6,6 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../lib/api-client";
 import { ResetPasswordForm } from "./reset-password-form";
+import { UiLanguageProvider } from "./ui-language-provider";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -74,6 +77,29 @@ describe("ResetPasswordForm", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Invalid or expired token",
+    );
+  });
+
+  it("renders Thai reset controls and token errors", async () => {
+    window.history.replaceState(null, "", "/reset-password#token=expired");
+    render(
+      <UiLanguageProvider language="th">
+        <ResetPasswordForm
+          submit={async () => {
+            throw new ApiError("raw English detail", 400, "invalid_token");
+          }}
+        />
+      </UiLanguageProvider>,
+    );
+    await userEvent.type(
+      screen.getByLabelText("รหัสผ่านใหม่"),
+      "replacement password",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "ตั้งรหัสผ่านใหม่" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "ลิงก์ไม่ถูกต้องหรือหมดอายุแล้ว",
     );
   });
 });

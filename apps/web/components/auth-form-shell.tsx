@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { Card } from "./ui/card";
+import { LanguageSwitcher } from "./language-switcher";
 
 export function AuthFormShell({
   title,
@@ -21,6 +22,9 @@ export function AuthFormShell({
         className="relative w-full max-w-md min-w-0 overflow-hidden p-6 sm:p-8"
         dir="auto"
       >
+        <div className="mb-4 flex justify-end">
+          <LanguageSwitcher />
+        </div>
         <div className="mb-7 text-center">
           <Link
             href="/"

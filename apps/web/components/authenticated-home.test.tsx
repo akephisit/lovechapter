@@ -12,6 +12,8 @@ import {
 import { AuthenticatedHome } from "./authenticated-home";
 import { ApiError } from "../lib/api-client";
 
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+
 afterEach(() => vi.unstubAllGlobals());
 
 describe("AuthenticatedHome", () => {

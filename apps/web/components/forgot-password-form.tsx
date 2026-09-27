@@ -11,12 +11,14 @@ import { AuthFormShell } from "./auth-form-shell";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { useUiCopy } from "./ui-language-provider";
 
 export function ForgotPasswordForm({
   submit = (input) => createAnonymousApi().forgotPassword(input),
 }: {
   submit?: (input: ForgotPasswordInput) => Promise<AcceptedResponse>;
 }) {
+  const copy = useUiCopy();
   const [pending, setPending] = useState(false);
   const [complete, setComplete] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +32,7 @@ export function ForgotPasswordForm({
       await submit({ email: String(data.get("email") ?? "") });
       setComplete(true);
     } catch (caught) {
-      setError(authErrorMessage(caught, "We couldn't send the reset link."));
+      setError(authErrorMessage(caught, copy, "resetLink"));
     } finally {
       setPending(false);
     }
@@ -38,20 +40,18 @@ export function ForgotPasswordForm({
 
   return (
     <AuthFormShell
-      title={complete ? "Check your email" : "Reset your password"}
+      title={complete ? copy.auth.checkEmail : copy.auth.forgotTitle}
       description={
-        complete
-          ? "If an eligible account exists, a reset link is on its way."
-          : "Enter your email and we'll send a secure reset link."
+        complete ? copy.auth.forgotSent : copy.auth.forgotDescription
       }
-      alternate={{ href: "/sign-in", label: "Return to sign in" }}
+      alternate={{ href: "/sign-in", label: copy.auth.returnSignIn }}
     >
       {complete ? (
         <p
           role="status"
           className="text-center text-sm break-words text-[#725f62]"
         >
-          If an eligible account exists, you will receive an email shortly.
+          {copy.auth.forgotNext}
         </p>
       ) : (
         <form
@@ -61,7 +61,7 @@ export function ForgotPasswordForm({
           dir="auto"
         >
           <div className="min-w-0">
-            <Label htmlFor="forgot-email">Email address</Label>
+            <Label htmlFor="forgot-email">{copy.auth.email}</Label>
             <Input
               id="forgot-email"
               name="email"
@@ -77,7 +77,7 @@ export function ForgotPasswordForm({
             </p>
           ) : null}
           <Button className="w-full" type="submit" disabled={pending}>
-            {pending ? "Sending…" : "Send reset link"}
+            {pending ? copy.auth.sending : copy.auth.sendReset}
           </Button>
         </form>
       )}

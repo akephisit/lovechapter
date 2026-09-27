@@ -12,12 +12,14 @@ import { AuthFormShell } from "./auth-form-shell";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { useUiCopy } from "./ui-language-provider";
 
 export function SignUpForm({
   submit = (input) => createAnonymousApi().signUp(input),
 }: {
   submit?: (input: SignUpInput) => Promise<AcceptedResponse>;
 }) {
+  const copy = useUiCopy();
   const [pending, setPending] = useState(false);
   const [complete, setComplete] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +32,7 @@ export function SignUpForm({
       email: String(data.get("email") ?? ""),
       password: String(data.get("password") ?? ""),
     };
-    const passwordError = passwordLengthError(input.password);
+    const passwordError = passwordLengthError(input.password, copy);
     if (passwordError) {
       setError(passwordError);
       return;
@@ -41,7 +43,7 @@ export function SignUpForm({
       await submit(input);
       setComplete(true);
     } catch (caught) {
-      setError(authErrorMessage(caught, "We couldn't create your account."));
+      setError(authErrorMessage(caught, copy, "signUp"));
     } finally {
       setPending(false);
     }
@@ -49,20 +51,18 @@ export function SignUpForm({
 
   return (
     <AuthFormShell
-      title={complete ? "Check your email" : "Create your account"}
+      title={complete ? copy.auth.checkEmail : copy.auth.signUpTitle}
       description={
-        complete
-          ? "We sent a verification link if the address can receive one."
-          : "Start a private planning space for your celebration."
+        complete ? copy.auth.signUpSent : copy.auth.signUpDescription
       }
-      alternate={{ href: "/sign-in", label: "Already registered? Sign in" }}
+      alternate={{ href: "/sign-in", label: copy.auth.signUpAlternate }}
     >
       {complete ? (
         <p
           role="status"
           className="text-center text-sm break-words text-[#725f62]"
         >
-          Open the link in your email to verify your address before signing in.
+          {copy.auth.signUpNext}
         </p>
       ) : (
         <form
@@ -71,7 +71,7 @@ export function SignUpForm({
           onSubmit={handleSubmit}
           dir="auto"
         >
-          <Field id="sign-up-name" label="Display name">
+          <Field id="sign-up-name" label={copy.auth.displayName}>
             <Input
               id="sign-up-name"
               name="displayName"
@@ -81,7 +81,7 @@ export function SignUpForm({
               dir="auto"
             />
           </Field>
-          <Field id="sign-up-email" label="Email address">
+          <Field id="sign-up-email" label={copy.auth.email}>
             <Input
               id="sign-up-email"
               name="email"
@@ -93,7 +93,7 @@ export function SignUpForm({
               dir="auto"
             />
           </Field>
-          <Field id="sign-up-password" label="Password">
+          <Field id="sign-up-password" label={copy.auth.password}>
             <Input
               id="sign-up-password"
               name="password"
@@ -107,12 +107,12 @@ export function SignUpForm({
               id="sign-up-password-help"
               className="mt-1.5 text-xs text-[#806d70]"
             >
-              Use 12–128 characters. Spaces and Unicode are welcome.
+              {copy.auth.passwordHelp}
             </p>
           </Field>
           {error ? <FormAlert>{error}</FormAlert> : null}
           <Button className="w-full" type="submit" disabled={pending}>
-            {pending ? "Creating account…" : "Create account"}
+            {pending ? copy.auth.creating : copy.auth.createAccount}
           </Button>
         </form>
       )}

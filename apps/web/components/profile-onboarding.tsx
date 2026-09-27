@@ -7,11 +7,13 @@ import type {
 import { Heart } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
-import { ApiError } from "../lib/api-client";
+import { authErrorMessage } from "./auth-form-utils";
+import { LanguageSwitcher } from "./language-switcher";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { useUiCopy } from "./ui-language-provider";
 
 export interface ProfileOnboardingApi {
   updateMyProfile(input: UpdateProfileInput): Promise<AuthenticatedUser>;
@@ -28,6 +30,7 @@ export function ProfileOnboarding({
   api,
   onComplete,
 }: Props) {
+  const copy = useUiCopy();
   const [displayName, setDisplayName] = useState(suggestedDisplayName);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -40,7 +43,7 @@ export function ProfileOnboarding({
       !normalizedDisplayName ||
       Array.from(normalizedDisplayName).length > 120
     ) {
-      setMessage("Display name must be 1–120 characters");
+      setMessage(copy.profile.nameLength);
       return;
     }
     setSaving(true);
@@ -50,11 +53,7 @@ export function ProfileOnboarding({
       });
       onComplete(user);
     } catch (error) {
-      setMessage(
-        error instanceof ApiError
-          ? error.message
-          : "We couldn't save your profile. Please try again.",
-      );
+      setMessage(authErrorMessage(error, copy, "profileSave"));
     } finally {
       setSaving(false);
     }
@@ -63,22 +62,26 @@ export function ProfileOnboarding({
   return (
     <main className="grid min-h-screen place-items-center px-4 py-10">
       <Card className="w-full max-w-lg p-7 sm:p-9">
+        <div className="mb-4 flex justify-end">
+          <LanguageSwitcher />
+        </div>
         <span className="mb-5 grid size-11 place-items-center rounded-full bg-[#71384b] text-white shadow-lg">
           <Heart aria-hidden="true" className="size-5" fill="currentColor" />
         </span>
         <p className="text-sm font-bold tracking-[0.18em] text-[#925c68] uppercase">
-          One last detail
+          {copy.profile.eyebrow}
         </p>
         <h1 className="mt-2 font-serif text-3xl font-semibold text-[#432f35]">
-          How should we welcome you?
+          {copy.profile.title}
         </h1>
         <p className="mt-3 leading-7 text-[#725f62]">
-          This name appears in your private wedding workspace. You can use any
-          language.
+          {copy.profile.description}
         </p>
         <form className="mt-7 space-y-4" onSubmit={submit}>
           <div className="space-y-2">
-            <Label htmlFor="profile-display-name">Display name</Label>
+            <Label htmlFor="profile-display-name">
+              {copy.profile.displayName}
+            </Label>
             <Input
               id="profile-display-name"
               name="displayName"
@@ -98,7 +101,7 @@ export function ProfileOnboarding({
             </p>
           ) : null}
           <Button className="w-full" type="submit" disabled={saving}>
-            {saving ? "Saving…" : "Continue to LoveChapter"}
+            {saving ? copy.profile.saving : copy.profile.continue}
           </Button>
         </form>
       </Card>

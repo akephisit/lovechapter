@@ -10,6 +10,9 @@ import {
   ProfileOnboarding,
   type ProfileOnboardingApi,
 } from "./profile-onboarding";
+import { UiLanguageProvider } from "./ui-language-provider";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 describe("ProfileOnboarding", () => {
   it("submits a trimmed Unicode display name through the accessible form", async () => {
@@ -61,7 +64,7 @@ describe("ProfileOnboarding", () => {
     pending.resolve(userFixture("Mali", true));
   });
 
-  it("shows the server validation message", async () => {
+  it("shows stable validation feedback without exposing backend wording", async () => {
     const api: ProfileOnboardingApi = {
       updateMyProfile: vi.fn(async () => {
         throw new ApiError("Display name is too short", 400, "invalid_input");
@@ -80,7 +83,7 @@ describe("ProfileOnboarding", () => {
     await user.click(screen.getByRole("button", { name: /continue/i }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Display name is too short",
+      "Please check your information and try again.",
     );
   });
 
@@ -152,6 +155,33 @@ describe("ProfileOnboarding", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Display name must be 1–120 characters",
     );
+  });
+
+  it("localizes onboarding and stable validation errors in Thai", async () => {
+    const api: ProfileOnboardingApi = {
+      updateMyProfile: vi.fn(async () => {
+        throw new ApiError("raw English detail", 400, "invalid_input");
+      }),
+    };
+    render(
+      <UiLanguageProvider language="th">
+        <ProfileOnboarding
+          suggestedDisplayName="มะลิ"
+          api={api}
+          onComplete={vi.fn()}
+        />
+      </UiLanguageProvider>,
+    );
+    expect(
+      screen.getByRole("heading", { name: "อยากให้เราเรียกคุณว่าอะไร?" }),
+    ).toBeVisible();
+    await userEvent.click(
+      screen.getByRole("button", { name: "เข้าสู่ LoveChapter" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "กรุณาตรวจสอบข้อมูลแล้วลองอีกครั้ง",
+    );
+    expect(screen.queryByText(/raw English/)).not.toBeInTheDocument();
   });
 });
 

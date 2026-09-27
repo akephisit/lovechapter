@@ -5,6 +5,9 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { SignUpForm } from "./sign-up-form";
+import { UiLanguageProvider } from "./ui-language-provider";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 describe("SignUpForm", () => {
   it("is accessible and preserves email/password input exactly", async () => {
@@ -48,5 +51,22 @@ describe("SignUpForm", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent("12–128");
     expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("keeps registration guidance and validation in Thai", async () => {
+    render(
+      <UiLanguageProvider language="th">
+        <SignUpForm submit={vi.fn()} />
+      </UiLanguageProvider>,
+    );
+    const user = userEvent.setup();
+    expect(screen.getByRole("heading", { name: "สร้างบัญชี" })).toBeVisible();
+    await user.type(screen.getByLabelText("ชื่อที่แสดง"), "มะลิ");
+    await user.type(screen.getByLabelText("อีเมล"), "m@example.test");
+    await user.type(screen.getByLabelText("รหัสผ่าน"), "short");
+    await user.click(screen.getByRole("button", { name: "สร้างบัญชี" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "รหัสผ่านต้องมี 12–128 อักขระยูนิโค้ด",
+    );
   });
 });

@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { AuthSessionProvider } from "../../components/auth-session-provider";
+import { UiLanguageProvider } from "../../components/ui-language-provider";
 import { ApiError } from "../../lib/api-client";
 import WorkspacePage from "./page";
 
@@ -54,5 +55,27 @@ describe("workspace session boundary", () => {
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(getSession).toHaveBeenCalledTimes(2);
     expect(navigation.replace).not.toHaveBeenCalledWith("/sign-in");
+  });
+
+  it("shows session outage guidance in Thai", async () => {
+    render(
+      <UiLanguageProvider language="th">
+        <AuthSessionProvider
+          api={{
+            getSession: async () => {
+              throw new ApiError("Unavailable", 503);
+            },
+            signOut: async () => undefined,
+          }}
+        >
+          <WorkspacePage />
+        </AuthSessionProvider>
+      </UiLanguageProvider>,
+    );
+    expect(
+      await screen.findByRole("heading", {
+        name: "ไม่สามารถคืนค่าการเข้าสู่ระบบได้",
+      }),
+    ).toBeVisible();
   });
 });
