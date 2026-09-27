@@ -1,0 +1,118 @@
+name: Staging test-branch preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lovechapter-worker-release
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  ci:
+    if: ${{ github.repository == 'akephisit/lovechapter' && github.ref == 'refs/heads/main' && github.ref_protected == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+      - run: npm ci
+      - run: npm run ci
+
+  postgres:
+    if: ${{ github.repository == 'akephisit/lovechapter' && github.ref == 'refs/heads/main' && github.ref_protected == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: lovechapter_test
+          POSTGRES_USER: lovechapter_test
+          POSTGRES_PASSWORD: ci_only_disposable
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lovechapter_test -d lovechapter_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: PostgreSQL integration
+        env:
+          TEST_DATABASE_URL: postgres://lovechapter_test:ci_only_disposable@127.0.0.1:5432/lovechapter_test
+          TEST_DATABASE_CONFIRM: lovechapter_test
+          TEST_GATE_APP_DATABASE_URL: postgres://lovechapter_gate_test_app:ci_only_disposable@127.0.0.1:5432/lovechapter_test
+        run: npm run test:postgres --workspace @lovechapter/database
+      - name: Scheduled email retry integration
+        env:
+          TEST_DATABASE_URL: postgres://lovechapter_test:ci_only_disposable@127.0.0.1:5432/lovechapter_test
+          TEST_DATABASE_CONFIRM: lovechapter_test
+        run: npm run test:postgres --workspace @lovechapter/jobs
+
+  preflight:
+    needs: [ci, postgres]
+    if: ${{ github.repository == 'akephisit/lovechapter' && github.ref == 'refs/heads/main' && github.ref_protected == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: staging
+      deployment: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+      - run: npm ci
+      - name: Verify targets and sync reviewed migrations to staging-test only
+        env:
+          RELEASE_ENVIRONMENT: staging
+          RELEASE_NEON_PROJECT_ID: ${{ vars.RELEASE_NEON_PROJECT_ID }}
+          RELEASE_NEON_BRANCH_ID: ${{ vars.RELEASE_NEON_BRANCH_ID }}
+          RELEASE_DATABASE_NAME: ${{ vars.RELEASE_DATABASE_NAME }}
+          RELEASE_DATABASE_ROLE: ${{ vars.RELEASE_DATABASE_ROLE }}
+          RELEASE_APP_DATABASE_ROLE: ${{ vars.RELEASE_APP_DATABASE_ROLE }}
+          RELEASE_CLOUDFLARE_ACCOUNT_ID: ${{ vars.RELEASE_CLOUDFLARE_ACCOUNT_ID }}
+          RELEASE_HYPERDRIVE_ID: ${{ vars.RELEASE_HYPERDRIVE_ID }}
+          RELEASE_DATABASE_URL: ${{ secrets.RELEASE_DATABASE_URL }}
+          RELEASE_NEON_API_KEY: ${{ secrets.RELEASE_NEON_API_KEY }}
+          RELEASE_CLOUDFLARE_API_TOKEN: ${{ secrets.RELEASE_CLOUDFLARE_API_TOKEN }}
+          RELEASE_TEST_DATABASE_URL: ${{ secrets.RELEASE_TEST_DATABASE_URL }}
+          RELEASE_TEST_MIGRATION_DATABASE_URL: ${{ secrets.RELEASE_TEST_MIGRATION_DATABASE_URL }}
+          RELEASE_TEST_MIGRATION_DATABASE_ROLE: ${{ vars.RELEASE_TEST_MIGRATION_DATABASE_ROLE }}
+          RELEASE_TEST_BRANCH_ID: ${{ vars.RELEASE_TEST_BRANCH_ID }}
+          RELEASE_TEST_DATABASE_CONFIRM: lovechapter_test
+          RELEASE_POSTGRES_JOB_RESULT: ${{ needs.postgres.result }}
+        run: bun scripts/staging-acceptance-cli.mjs "$GITHUB_SHA" --preflight

@@ -125,11 +125,6 @@ export async function runStagingAcceptanceCli(
       throw new Error("Same-SHA staging CI evidence is unavailable");
     }
     const target = releaseTargetFromEnvironment(env);
-    const webOrigin = required(env, "RELEASE_WEB_ORIGIN");
-    const testEmail = required(env, "RELEASE_TEST_EMAIL");
-    const testPassword = required(env, "RELEASE_TEST_PASSWORD");
-    const verificationEmail = required(env, "RELEASE_VERIFICATION_EMAIL");
-    const foreignWeddingId = required(env, "RELEASE_FOREIGN_WEDDING_ID");
     const testDatabaseUrl = required(env, "RELEASE_TEST_DATABASE_URL");
     const testMigrationUrl = required(
       env,
@@ -192,6 +187,11 @@ export async function runStagingAcceptanceCli(
       write(JSON.stringify(report));
       return report;
     }
+    const webOrigin = required(env, "RELEASE_WEB_ORIGIN");
+    const testEmail = required(env, "RELEASE_TEST_EMAIL");
+    const testPassword = required(env, "RELEASE_TEST_PASSWORD");
+    const verificationEmail = required(env, "RELEASE_VERIFICATION_EMAIL");
+    const foreignWeddingId = required(env, "RELEASE_FOREIGN_WEDDING_ID");
     const client = createClient(target.directUrl);
     let result;
     try {

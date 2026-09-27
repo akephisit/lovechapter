@@ -425,6 +425,19 @@ also show Editor scoped to the two staging Workers for later upload/deploy.
 This diagnostic does not build, migrate, deploy, change maintenance, or enable
 the release switches.
 
+After the Cloudflare probe passes, dispatch
+`.github/workflows/staging-test-preflight.yml` manually from protected `main`.
+It repeats full CI and disposable PostgreSQL integration on the exact selected
+SHA before reading the `staging` environment. Its preflight verifies the active
+staging target and the provider identity/endpoint of the separate
+`staging-test` branch, then applies only checked-in, reviewed pending SQL to
+`staging-test` and verifies its schema hash. Unlike the credential probe, this
+step **can change the isolated test branch's schema**. It does not use the
+staging test account password, enter maintenance, migrate active staging or
+production, deploy either Worker, or enable an automatic release flag. A
+passing preflight alone is not staging acceptance: active staging still needs
+a guarded one-time Worker-version baseline and the full live acceptance run.
+
 The web Worker needs `API_UPSTREAM_ORIGIN`, `WEB_PROXY_SHARED_SECRET`, and
 `RELEASE_PROBE_SECRET`; the API Worker does not use the probe secret and instead
 needs its ingress, auth-token, rate-limit, public-web-origin, and Resend

@@ -1490,3 +1490,16 @@ with zero leases, but has no accepted Worker-version baseline. The current
 release executor therefore rejects an automatic staging cutover before any
 deployment. A one-time, guarded staging baseline/rehearsal remains required;
 the release flags stay unset.
+
+With owner approval, a manually dispatched protected-`main` preflight was
+added for the separate `staging-test` branch. It reruns CI and disposable
+PostgreSQL integration on the same SHA, then checks the live staging target
+and test-branch identity before applying only reviewed pending migrations to
+that isolated branch. The preflight boundary was changed test-first to avoid
+requiring staging account, email, RSVP, or public-web credentials when no
+post-deployment acceptance is running. The focused test first failed and then
+passed; local `npm run ci` passed 108 files / 675 tests plus format, lint,
+typecheck, builds, migration check, Bun smoke, and Worker dry-runs. This
+workflow has not yet been dispatched; no live branch was migrated by this
+change. Active staging still lacks migration `0011` and a Worker-version
+baseline; both automatic release flags remain off.

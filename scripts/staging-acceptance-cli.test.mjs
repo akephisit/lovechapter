@@ -173,6 +173,28 @@ describe("live staging acceptance CLI boundary", () => {
     expect(context.output).toEqual([JSON.stringify({ targetVerified: true })]);
   });
 
+  it("preflights without credentials reserved for post-deployment acceptance", async () => {
+    const context = fixture();
+    for (const name of [
+      "RELEASE_WEB_ORIGIN",
+      "RELEASE_TEST_EMAIL",
+      "RELEASE_TEST_PASSWORD",
+      "RELEASE_VERIFICATION_EMAIL",
+      "RELEASE_FOREIGN_WEDDING_ID",
+    ]) {
+      delete context.env[name];
+    }
+    await expect(
+      runStagingAcceptanceCli(sha, context.env, {
+        ...context,
+        preflightOnly: true,
+      }),
+    ).resolves.toEqual({ targetVerified: true });
+    expect(context.syncTestSchema).toHaveBeenCalledOnce();
+    expect(context.connect).not.toHaveBeenCalled();
+    expect(context.output).toEqual([JSON.stringify({ targetVerified: true })]);
+  });
+
   it("verifies target and open SHA before probes, then rechecks before output", async () => {
     const context = fixture();
     const result = await runStagingAcceptanceCli(sha, context.env, context);
