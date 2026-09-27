@@ -60,7 +60,9 @@ retention check, or recovery method is unknown:
 3. Provision production-only, cache-disabled Hyperdrive to that Neon branch.
    Replace the placeholder ID in the root API Wrangler config. Provision
    `lovechapter-api` and `lovechapter-web` with Preview URLs disabled.
-   Configure generated `*.workers.dev` origins; no custom domain is assumed.
+   Configure generated `*.workers.dev` origins. The owner has registered
+   `lovechapter.net` and verified Resend Sending, but its web route and TLS are
+   a separate later check.
    Configure the bindings/secrets below in Cloudflare and the release values
    in GitHub's production environment. Check names, never print values.
 4. At the candidate SHA, run the same checks as CI before any production

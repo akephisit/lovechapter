@@ -246,7 +246,7 @@ credential, and email delivery configuration are ready.
 
 ## ADR-018 — Intended domain remains unconfirmed
 
-**Status:** Accepted; supersedes ADR-009's candidate name
+**Status:** Superseded by ADR-030; superseded ADR-009's candidate name
 
 The owner intends to register `lovechapter.net`, but the repository must treat
 it as unowned until registration is verified. Origins and hostnames remain
@@ -497,3 +497,14 @@ private/public checks pass. Existing staging resources are not deleted by this
 release-policy decision. A returning browser tab checks the published SHA and
 reloads when a newer open release is available. Real-inbox receipt is excluded
 from the automatic gate for now, but must not be reported as tested.
+
+## ADR-030 — Registered domain, generated Worker origins until routing is verified
+
+**Status:** Accepted (2026-09-27); supersedes ADR-018's registration status
+
+The owner reports registering `lovechapter.net` and confirming Resend Sending
+verification. This establishes the email-sender domain, not a production web
+route. The first Worker publication continues on generated `workers.dev`
+origins. Keep web and API origins configurable; do not enable custom-domain
+redirects, cookies, or CORS until the Cloudflare route and trusted TLS are
+configured and verified separately.

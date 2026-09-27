@@ -2,6 +2,22 @@
 
 ## Current release status (2026-09-27)
 
+The owner has registered `lovechapter.net` and confirmed Resend Sending
+verification. The initial public site still uses generated Worker URLs; a
+custom-domain web route/TLS is not yet verified. Both production Workers now
+exist with Preview URLs disabled, production origins/secrets have been
+configured, and the release gate remains in maintenance with no accepted
+Worker-version baseline or active leases. The automatic release flag remains
+`false`. A one-time, manually dispatched protected-main workflow has been
+prepared to rerun CI and disposable PostgreSQL tests, build both Workers,
+retarget only the unpublished drained gate to its exact SHA, privately smoke,
+open, check public behavior, and record the first deployment. It has not yet
+been pushed or run; no public production release is claimed. Its focused
+tests and local CI passed (101 files / 660 tests, Bun API/jobs builds and
+smoke, Worker dry-run, Next/vinext builds/check). The gate role cannot read
+the migration ledger, so this one-time schema check uses the already
+configured migration credential after checking it targets the same endpoint.
+
 The direct-production Worker release implementation was fast-forwarded from
 the isolated `codex/automatic-worker-release-implementation` worktree to
 protected `main` at `fa3d7bd`; hosted CI and disposable PostgreSQL tests
@@ -17,15 +33,17 @@ the repository. Existing live staging resources were not deleted.
 
 The intended Neon `production` root branch was empty before first
 publication; all 12 checked-in migrations were applied and verified there.
-It now has 27 application tables, a 12-entry migration ledger, an open release
-gate, and no user or wedding rows. Separate production application and release
+At that earlier provisioning checkpoint it had 27 application tables, a
+12-entry migration ledger, an open release gate, and no user or wedding rows.
+Separate production application and release
 roles were created and their limited grants tested. A production-only
 cache-disabled Hyperdrive was created and read back against the exact Neon
 endpoint and application role. GitHub production has target variables, direct
 database secrets, and a project-scoped Neon API key; the automatic release flag
-remains `false`. Both production Workers, Cloudflare release token, Worker
-secrets/origins, first two-Worker publication, and deployment ledger remain
-incomplete. No public production release is claimed.
+remains `false`. The Worker, token, and origin provisioning described as
+incomplete at that checkpoint has since been completed as noted above; the
+first two-Worker publication and deployment ledger remain incomplete. No
+public production release is claimed.
 
 Local verification after the cleanup: format, lint, typecheck, 650 unit tests,
 the full `npm run ci` build/dry-run chain, 42 disposable database integration

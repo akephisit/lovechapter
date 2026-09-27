@@ -22,15 +22,13 @@ Status:
 
 ### Domain status — LOCKED
 
-No custom domain has been registered yet.
-
-The owner intends to register `lovechapter.net`, but it must **not** be treated as owned or configured until registration is verified.
-
-Until a domain is actually registered:
+The owner reports registering `lovechapter.net`; its Resend sending domain is
+verified. The production web custom-domain route and TLS are not yet verified.
+Until that routing is explicitly configured and checked:
 
 - use available generated deployment URLs;
 - keep public origins configurable through environment variables;
-- do not hardcode future custom-domain URLs;
+- do not hardcode the custom domain as the web or API origin;
 - do not configure redirects to `lovechapter.net`.
 
 Suggested frontend Worker name:
@@ -669,7 +667,7 @@ Do not over-engineer hypothetical scale, but do not write obviously inefficient 
 
 ## 17. Open decisions
 
-- Final custom domain and verification of `lovechapter.net` ownership
+- Custom web routing and trusted TLS for the registered `lovechapter.net`
 - Future login methods beyond verified email/password
 - Internationalized-email acceptance and Resend delivery support
 - Payment provider(s)

@@ -8,17 +8,17 @@ cannot supply by itself.
 
 ## Branding/domain
 
-- Will ownership, DNS, and publicly trusted TLS for `lovechapter.net` be
-  confirmed?
-- If not, what will the final custom domain be?
+- When will the registered `lovechapter.net` receive a verified production web
+  route and publicly trusted TLS? Its Resend Sending domain is verified, but
+  this does not prove the web route.
 - If the VPS option is selected, which stable HTTPS hostname will expose its
   API to the frontend Worker? On the Worker option, use the generated API
   `workers.dev` HTTPS origin until a domain is registered.
 - Final logo/visual identity
 
-Until ownership is verified, keep every origin and hostname configurable. The
-frontend may use its generated `*.workers.dev` URL; do not hardcode or claim the
-intended custom domain.
+Until web routing and TLS are verified, keep every origin and hostname
+configurable. The frontend may use its generated `*.workers.dev` URL; do not
+hardcode or claim a working custom-domain web route.
 
 ## Authentication
 
@@ -46,7 +46,8 @@ weaken the approved security gates to answer the remaining questions.
 
 ## Notifications
 
-- Resend sender/domain verification and production reputation controls
+- Production email deliverability/reputation controls beyond the verified
+  Resend Sending domain
 - Web Push implementation
 - SMS provider
 - WhatsApp provider

@@ -52,16 +52,15 @@ global.
 
 Product name: **LoveChapter**
 
-No custom domain is registered yet.
-
-The owner intends to register `lovechapter.net`, but ownership is unconfirmed.
-
-Until registration is confirmed:
+The owner reports that `lovechapter.net` is registered and its Resend sending
+domain is verified. The production web custom-domain route and TLS have not
+been verified. Until they are:
 
 - use available generated deployment URLs;
 - keep origins configurable;
-- never hardcode `lovechapter.net`;
-- do not create redirects/cookies/CORS rules that assume ownership of that domain.
+- do not hardcode `lovechapter.net` as the web or API origin;
+- do not create redirects/cookies/CORS rules for the custom domain before its
+  route and TLS are verified.
 
 ---
 
