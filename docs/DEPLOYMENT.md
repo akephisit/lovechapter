@@ -411,6 +411,18 @@ authenticates to production. Give release automation a staging-branch-only
 credential (or rotate the staging owner password separately) and verify it
 cannot connect to production before populating the staging URL secrets.
 
+Before enabling either release flag, the optional
+`staging-cloudflare-credential-probe.yml` workflow can be dispatched manually
+on protected `main`. It uses the `staging` environment secret to make only
+GET requests for the selected staging Hyperdrive configuration, both staging
+Worker deployment inventories, and their Version URL settings. It rejects
+an unexpected target, enabled Hyperdrive cache or Version URLs, and provider
+read failures without printing the token or provider response. A passing
+probe verifies read access only; the Cloudflare token permission summary must
+also show Editor scoped to the two staging Workers for later upload/deploy.
+This diagnostic does not build, migrate, deploy, change maintenance, or enable
+the release switches.
+
 The web Worker needs `API_UPSTREAM_ORIGIN`, `WEB_PROXY_SHARED_SECRET`, and
 `RELEASE_PROBE_SECRET`; the API Worker does not use the probe secret and instead
 needs its ingress, auth-token, rate-limit, public-web-origin, and Resend
