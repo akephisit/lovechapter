@@ -32,8 +32,8 @@ selected state. The content area mounts one major section at a time:
 | Seating  | tables and guest-party assignments                                                      |
 
 The overview links to the relevant section; it does not create a second copy
-of each editor. Wedding creation/settings move behind a prominent but compact
-action, not a permanently open form. One wedding auto-opens. With no weddings,
+of each editor. Wedding creation and settings move behind prominent but compact
+actions, not permanently open forms. One wedding auto-opens. With no weddings,
 show a focused creation empty state. With multiple weddings, display a compact
 accessible wedding picker and bounded “load more”; preserve server pagination
 and never assume the first page contains every wedding. Switching wedding
@@ -46,6 +46,32 @@ this release; avoid new URL structures or invitation-path changes. After a
 full reload the section may return to Overview, but account/guest flows must
 remain navigable. If unsaved forms would be unmounted by switching section or
 wedding, provide a clear confirmation rather than silently discarding input.
+
+## Wedding settings
+
+The selected wedding has a compact Settings action near its identity, opening
+an accessible form for its name, optional wedding date, IANA time zone, and
+locale. Use the existing controlled locale/time-zone inputs rather than asking
+the user to type opaque codes. The wedding's locale describes wedding data and
+formatting; it does not silently change the account's Thai/English UI language
+preference. The form starts from the selected wedding's current server values.
+Clearing the date is supported. Saving updates the wedding picker and overview
+without losing the selected wedding or showing a different wedding's data.
+Failed saves keep the draft and show a localized retryable error; navigation
+away from a dirty form asks before discarding changes.
+
+Use one current shared contract and an authenticated, wedding-scoped endpoint,
+for example `PATCH /v1/weddings/:weddingId`, with required `name`, `timeZone`,
+and `locale`, plus `weddingDate: string | null` (null clears the date). Return
+the updated `WeddingSummary`. Apply the same trim, length, ISO calendar-date,
+IANA time-zone, and locale validation as creation. The server must verify both
+membership and role for the target wedding on every write: Owner, Couple, and
+Planner may edit these fields; Collaborator may view but not edit. Do not trust
+a client-supplied role or owner flag. A missing wedding or unauthorized account
+must not expose another tenant's values. The UI may hide the edit control for
+Collaborator, but backend authorization is definitive. Keep this behavior in
+the shared domain/repository path so Bun/VPS and Worker stay equivalent.
+The existing schema already stores these fields; no migration is expected.
 
 ## Accurate overview data
 
@@ -124,11 +150,13 @@ seating behavior should survive navigation and be regression-tested.
 
 - UI tests cover zero/one/multiple weddings, load-more, section navigation,
   small viewport, both languages, wedding-switch race, unsaved-form guard,
-  no fake data, loading/error/empty, and reduced motion.
+  no fake data, loading/error/empty, reduced motion, wedding-settings save,
+  date clearing, and Collaborator read-only UI.
 - Contract/repository/API tests cover empty wedding, active awaiting,
   attending, declined, response update, archived responder, authorization,
-  and cross-tenant isolation. Run a representative `EXPLAIN` for the exact
-  aggregate and check no unbounded/N+1 access.
+  cross-tenant isolation, settings validation, and role-based settings edits.
+  Run a representative `EXPLAIN` for the exact aggregate and check no
+  unbounded/N+1 access.
 - Verify shared tests and both backend paths: Bun API/job build and smoke,
   Worker Wrangler bundle dry-run, and affected HTTP behavior on both where
   locally possible. Run frontend format, lint, type-check, tests, and
