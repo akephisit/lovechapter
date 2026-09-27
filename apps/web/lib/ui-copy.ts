@@ -168,6 +168,19 @@ const en = {
     error: "The overview couldn't be loaded. Your data has not been changed.",
     retry: "Try again",
   },
+  weddingSettings: {
+    action: "Wedding settings",
+    title: "Wedding settings",
+    description: "Keep the celebration details up to date.",
+    readOnly:
+      "You can view these details, but only an owner, couple, or planner can edit them.",
+    save: "Save settings",
+    saving: "Saving…",
+    saved: "Wedding settings saved.",
+    error: "Couldn't save wedding settings. Please try again.",
+    discardConfirm: "Discard your unsaved changes?",
+    close: "Close settings",
+  },
   workspace: {
     label: "Wedding workspace",
     signOut: "Sign out",
@@ -795,6 +808,19 @@ const th: UiCopy = {
     loading: "กำลังโหลดภาพรวม…",
     error: "ไม่สามารถโหลดภาพรวมได้ ข้อมูลของคุณยังไม่เปลี่ยนแปลง",
     retry: "ลองอีกครั้ง",
+  },
+  weddingSettings: {
+    action: "ตั้งค่างานแต่ง",
+    title: "ตั้งค่างานแต่ง",
+    description: "ปรับข้อมูลสำหรับวันสำคัญของคุณ",
+    readOnly:
+      "คุณดูข้อมูลนี้ได้ แต่เจ้าของ คู่บ่าวสาว หรือผู้วางแผนเท่านั้นที่แก้ไขได้",
+    save: "บันทึกการตั้งค่า",
+    saving: "กำลังบันทึก…",
+    saved: "บันทึกการตั้งค่างานแต่งแล้ว",
+    error: "ไม่สามารถบันทึกการตั้งค่างานแต่งได้ กรุณาลองอีกครั้ง",
+    discardConfirm: "ทิ้งการเปลี่ยนแปลงที่ยังไม่ได้บันทึกหรือไม่?",
+    close: "ปิดการตั้งค่า",
   },
   workspace: {
     label: "พื้นที่งานแต่ง",

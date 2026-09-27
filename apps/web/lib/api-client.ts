@@ -33,6 +33,7 @@ import type {
   SubmitRsvpInput,
   UpdateGuestAffiliationInput,
   UpdateGuestInput,
+  UpdateWeddingInput,
   UpdateProfileInput,
   VerifyEmailInput,
   WeddingSummary,
@@ -161,6 +162,11 @@ export function createLoveChapterApi(
     createWedding: (input: CreateWeddingInput) =>
       request<WeddingSummary>("/v1/weddings", {
         method: "POST",
+        body: JSON.stringify(input),
+      }),
+    updateWedding: (weddingId: string, input: UpdateWeddingInput) =>
+      request<WeddingSummary>(`/v1/weddings/${encodeURIComponent(weddingId)}`, {
+        method: "PATCH",
         body: JSON.stringify(input),
       }),
     getPlanningOverview: (weddingId: string) =>

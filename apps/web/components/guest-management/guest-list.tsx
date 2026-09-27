@@ -27,6 +27,7 @@ export function GuestList({
   onRestore,
   onLoadMore,
   onBulkAffiliation,
+  onSetAffiliation,
   onBulkArchive,
   invitations,
   onCreateInvitation,
@@ -47,6 +48,7 @@ export function GuestList({
   onRestore(guest: GuestSummary): void;
   onLoadMore(): void;
   onBulkAffiliation(affiliationId: string | null): void;
+  onSetAffiliation(guest: GuestSummary, affiliationId: string | null): void;
   onBulkArchive(): void;
   invitations: Record<string, InvitationCreated>;
   onCreateInvitation(guest: GuestSummary): void;
@@ -157,6 +159,29 @@ export function GuestList({
                     {guest.email ? ` · ${guest.email}` : ""}
                     {guest.phone ? ` · ${guest.phone}` : ""}
                   </p>
+                  {view === "active" ? (
+                    <Select
+                      className="mt-3 max-w-xs"
+                      aria-label={copy.workspace.guestAffiliationLabel(
+                        guest.name,
+                      )}
+                      value={guest.affiliation?.id ?? ""}
+                      disabled={busy}
+                      onChange={(event) =>
+                        onSetAffiliation(
+                          guest,
+                          event.currentTarget.value || null,
+                        )
+                      }
+                    >
+                      <option value="">{copy.workspace.noAffiliation}</option>
+                      {affiliations.map((affiliation) => (
+                        <option key={affiliation.id} value={affiliation.id}>
+                          {affiliation.name}
+                        </option>
+                      ))}
+                    </Select>
+                  ) : null}
                 </div>
               </div>
               <div className="flex gap-2">

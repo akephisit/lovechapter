@@ -373,6 +373,27 @@ function WeddingGuestWorkspace({
     }
   }
 
+  async function setAffiliation(
+    guest: GuestSummary,
+    affiliationId: string | null,
+  ) {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const updated = await api.setGuestAffiliation(weddingId, guest.id, {
+        affiliationId,
+      });
+      mutationVersion.current += 1;
+      setGuests((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+    } catch (error) {
+      setMessage(safeUiError(error, copy, copy.workspace.setAffiliationError));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function bulkArchive() {
     if (!api.bulkArchiveGuests || selection.size === 0) return;
     if (!window.confirm(copy.guest.bulkArchiveConfirm(selection.size))) return;
@@ -576,6 +597,9 @@ function WeddingGuestWorkspace({
         }
         onBulkAffiliation={(affiliationId) =>
           void bulkAffiliation(affiliationId)
+        }
+        onSetAffiliation={(guest, affiliationId) =>
+          void setAffiliation(guest, affiliationId)
         }
         onBulkArchive={() => void bulkArchive()}
         invitations={invitations}

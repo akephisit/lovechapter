@@ -110,6 +110,40 @@ describe("OverviewPanel", () => {
     expect(screen.queryByText(/99 guest parties/)).not.toBeInTheDocument();
   });
 
+  it("hides the previous wedding's already-loaded counts immediately on switch", async () => {
+    const nextWedding = {
+      ...wedding,
+      id: crypto.randomUUID(),
+      name: "Dao & Lin",
+    };
+    let resolveNext!: (value: RsvpSummary) => void;
+    const next = new Promise<RsvpSummary>((resolve) => {
+      resolveNext = resolve;
+    });
+    const api = {
+      getPlanningOverview: vi.fn(async () => emptyPlanning),
+      getRsvpSummary: vi.fn((id: string) =>
+        id === wedding.id
+          ? Promise.resolve({ ...emptyRsvp, totalActive: 99, awaiting: 99 })
+          : next,
+      ),
+    };
+    const view = (active: WeddingSummary) => (
+      <UiLanguageProvider language="en">
+        <OverviewPanel wedding={active} api={api} onNavigate={vi.fn()} />
+      </UiLanguageProvider>
+    );
+    const { rerender } = render(view(wedding));
+    expect(await screen.findByText(/99 guest parties/)).toBeVisible();
+    rerender(view(nextWedding));
+    expect(screen.queryByText(/99 guest parties/)).not.toBeInTheDocument();
+    await act(async () => {
+      resolveNext(emptyRsvp);
+      await next;
+    });
+    expect(await screen.findByText(/0 guest parties/)).toBeVisible();
+  });
+
   it("shows a retryable error instead of empty counts when a summary fails", async () => {
     const getRsvpSummary = vi
       .fn()

@@ -53,6 +53,20 @@ function fixture() {
 }
 
 describe("OperationsWorkspace", () => {
+  it("opens only the requested section without a second tab row", async () => {
+    const api = fixture();
+    render(
+      <OperationsWorkspace api={api} wedding={wedding} section="schedule" />,
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Day schedule" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("group", { name: "Operations sections" }),
+    ).not.toBeInTheDocument();
+    expect(api.getBudgetOverview).not.toHaveBeenCalled();
+    expect(api.listRunSheet).toHaveBeenCalledWith("wed");
+  });
   it("keeps wedding money formatting separate from the Thai UI language", async () => {
     const api = fixture();
     vi.mocked(api.getBudgetOverview).mockResolvedValue({

@@ -15,6 +15,27 @@ afterEach(() => {
 });
 
 describe("LoveChapter API client", () => {
+  it("sends a full wedding settings replacement through the scoped same-origin route", async () => {
+    const input = {
+      name: "Mali & Arun",
+      weddingDate: null,
+      timeZone: "Asia/Bangkok",
+      locale: "th-TH",
+    };
+    const clientFetch = vi.fn<typeof fetch>(async () =>
+      jsonResponse({ id: "wed", ...input }),
+    );
+    vi.stubGlobal("fetch", clientFetch);
+    await createLoveChapterApi(vi.fn()).updateWedding("wed/one", input);
+    expect(clientFetch.mock.calls[0]?.[0]).toBe("/api/v1/weddings/wed%2Fone");
+    expect(clientFetch.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify(input),
+        credentials: "same-origin",
+      }),
+    );
+  });
   it("reads the RSVP summary through the same-origin wedding route", async () => {
     const response = {
       totalActive: 2,

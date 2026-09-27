@@ -11,17 +11,15 @@ import type {
   PlanningOverview,
   RsvpSummary,
   UpdateGuestAffiliationInput,
+  UpdateWeddingInput,
   WeddingSummary,
 } from "@lovechapter/contracts";
 import {
   CalendarDays,
   ChevronDown,
   ChevronUp,
-  Copy,
   Heart,
-  Link2,
   Trash2,
-  Users,
 } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
@@ -38,12 +36,10 @@ import {
   OperationsWorkspace,
   type OperationsWorkspaceApi,
 } from "./operations/operations-workspace";
-import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Select } from "./ui/select";
 import { useUiCopy, useUiLanguage } from "./ui-language-provider";
 import { localizeStoredUiMessage } from "../lib/ui-copy";
 import { StandardCodeCombobox } from "./ui/standard-code-combobox";
@@ -53,6 +49,7 @@ import {
   type WorkspaceSection,
 } from "./workspace/workspace-navigation";
 import { OverviewPanel } from "./workspace/overview-panel";
+import { WeddingSettingsForm } from "./workspace/wedding-settings-form";
 
 export interface CoupleWorkspaceApi
   extends
@@ -61,6 +58,10 @@ export interface CoupleWorkspaceApi
     Partial<Omit<OperationsWorkspaceApi, "listGuests">> {
   listWeddings(cursor?: string): Promise<Page<WeddingSummary>>;
   createWedding(input: CreateWeddingInput): Promise<WeddingSummary>;
+  updateWedding(
+    weddingId: string,
+    input: UpdateWeddingInput,
+  ): Promise<WeddingSummary>;
   getPlanningOverview(weddingId: string): Promise<PlanningOverview>;
   getRsvpSummary(weddingId: string): Promise<RsvpSummary>;
   listGuestAffiliations(weddingId: string): Promise<GuestAffiliation[]>;
@@ -104,20 +105,22 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
   const [activeSection, setActiveSection] =
     useState<WorkspaceSection>("overview");
   const [showCreate, setShowCreate] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsDirty, setSettingsDirty] = useState(false);
+  const dirtyForms = useRef(new Set<HTMLFormElement>());
   const [pickerOpen, setPickerOpen] = useState(false);
   const [guestsLoaded, setGuestsLoaded] = useState(false);
+  const [guestLoadError, setGuestLoadError] = useState(false);
+  const [guestLoadMessage, setGuestLoadMessage] = useState<string | null>(null);
+  const [guestRetry, setGuestRetry] = useState(0);
   const [guests, setGuests] = useState<GuestSummary[]>([]);
   const [affiliations, setAffiliations] = useState<GuestAffiliation[]>([]);
   const [guestCursor, setGuestCursor] = useState<string | null>(null);
-  const [invitations, setInvitations] = useState<
-    Record<string, InvitationCreated>
-  >({});
   const [loading, setLoading] = useState(true);
   const [weddingListError, setWeddingListError] = useState(false);
   const [weddingListRetry, setWeddingListRetry] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [copiedGuestId, setCopiedGuestId] = useState<string | null>(null);
   const guestRequestId = useRef(0);
   const weddingGeneration = useRef(0);
   const workspaceMutationVersion = useRef(0);
@@ -162,6 +165,8 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
     const requestId = ++guestRequestId.current;
     const mutationVersion = workspaceMutationVersion.current;
     setGuestsLoaded(false);
+    setGuestLoadError(false);
+    setGuestLoadMessage(null);
     setGuests([]);
     setAffiliations([]);
     void Promise.all([
@@ -178,11 +183,13 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
           setGuests(page.items);
           setGuestCursor(page.nextCursor);
           setAffiliations(loadedAffiliations);
+          setMessage(null);
         }
       })
       .catch((error: unknown) => {
         if (current && weddingGeneration.current === generation) {
-          setMessage(
+          setGuestLoadError(true);
+          setGuestLoadMessage(
             safeUiError(
               error,
               copyRef.current,
@@ -200,7 +207,29 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
       current = false;
       guestRequestId.current += 1;
     };
-  }, [api, selected?.id, activeSection]);
+  }, [api, selected?.id, activeSection, guestRetry]);
+
+  function confirmDiscard(): boolean {
+    for (const form of dirtyForms.current) {
+      if (!form.isConnected) dirtyForms.current.delete(form);
+    }
+    if (!settingsDirty && dirtyForms.current.size === 0) return true;
+    if (!window.confirm(copy.weddingSettings.discardConfirm)) return false;
+    setSettingsDirty(false);
+    dirtyForms.current.clear();
+    return true;
+  }
+
+  function markFormDirty(target: EventTarget) {
+    const form = (target as HTMLElement).closest("form");
+    if (form instanceof HTMLFormElement) dirtyForms.current.add(form);
+  }
+
+  function changeSection(next: WorkspaceSection) {
+    if (next === activeSection || !confirmDiscard()) return;
+    setSettingsOpen(false);
+    setActiveSection(next);
+  }
 
   async function createWedding(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -227,7 +256,6 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
       setGuests([]);
       setAffiliations([]);
       setGuestCursor(null);
-      setInvitations({});
       form.reset();
     } catch (error) {
       setMessage(safeUiError(error, copy, copy.workspace.createError));
@@ -237,51 +265,20 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
   }
 
   function chooseWedding(wedding: WeddingSummary) {
+    if (!confirmDiscard()) return;
     weddingGeneration.current += 1;
     guestRequestId.current += 1;
     setSelected(wedding);
     setActiveSection("overview");
+    setSettingsOpen(false);
     setShowCreate(false);
     setPickerOpen(false);
     setGuestsLoaded(false);
     setGuests([]);
     setAffiliations([]);
     setGuestCursor(null);
-    setInvitations({});
     setBusy(null);
     setMessage(null);
-  }
-
-  async function addGuest(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selected) return;
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    const weddingId = selected.id;
-    const generation = weddingGeneration.current;
-    setBusy("guest");
-    setMessage(null);
-    try {
-      const email = stringValue(data, "email");
-      const affiliationId = stringValue(data, "affiliationId");
-      const created = await api.addGuest(weddingId, {
-        name: stringValue(data, "guestName"),
-        ...(email ? { email } : {}),
-        ...(affiliationId ? { affiliationId } : {}),
-        allowedPartySize: Number(data.get("allowedPartySize")),
-      });
-      if (weddingGeneration.current === generation) {
-        workspaceMutationVersion.current += 1;
-        setGuests((current) => [created, ...current]);
-        form.reset();
-      }
-    } catch (error) {
-      if (weddingGeneration.current === generation) {
-        setMessage(safeUiError(error, copy, copy.workspace.addGuestError));
-      }
-    } finally {
-      if (weddingGeneration.current === generation) setBusy(null);
-    }
   }
 
   async function createGuestAffiliation(event: FormEvent<HTMLFormElement>) {
@@ -430,59 +427,6 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
     }
   }
 
-  async function setGuestAffiliation(
-    guest: GuestSummary,
-    affiliationId: string | null,
-  ) {
-    if (!selected) return;
-    const weddingId = selected.id;
-    const generation = weddingGeneration.current;
-    setBusy(`guest:affiliation:${guest.id}`);
-    setMessage(null);
-    try {
-      const updated = await api.setGuestAffiliation(weddingId, guest.id, {
-        affiliationId,
-      });
-      if (weddingGeneration.current === generation) {
-        workspaceMutationVersion.current += 1;
-        setGuests((current) =>
-          current.map((item) => (item.id === updated.id ? updated : item)),
-        );
-      }
-    } catch (error) {
-      if (weddingGeneration.current === generation) {
-        setMessage(
-          safeUiError(error, copy, copy.workspace.setAffiliationError),
-        );
-      }
-    } finally {
-      if (weddingGeneration.current === generation) setBusy(null);
-    }
-  }
-
-  async function createInvitation(guest: GuestSummary) {
-    if (!selected) return;
-    const weddingId = selected.id;
-    const generation = weddingGeneration.current;
-    setBusy(`invitation:${guest.id}`);
-    setMessage(null);
-    try {
-      const invitation = await api.createInvitation(weddingId, guest.id);
-      if (weddingGeneration.current === generation) {
-        setInvitations((current) => ({
-          ...current,
-          [guest.id]: invitation,
-        }));
-      }
-    } catch (error) {
-      if (weddingGeneration.current === generation) {
-        setMessage(safeUiError(error, copy, copy.workspace.invitationError));
-      }
-    } finally {
-      if (weddingGeneration.current === generation) setBusy(null);
-    }
-  }
-
   async function loadMoreWeddings() {
     if (!weddingCursor) return;
     setBusy("more-weddings");
@@ -495,89 +439,6 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
       setMessage(safeUiError(error, copy, copy.workspace.moreWeddingsError));
     } finally {
       setBusy(null);
-    }
-  }
-
-  async function loadMoreGuests() {
-    if (!selected || !guestCursor) return;
-    const weddingId = selected.id;
-    const generation = weddingGeneration.current;
-    const mutationVersion = workspaceMutationVersion.current;
-    const requestId = ++guestRequestId.current;
-    setBusy("more-guests");
-    setMessage(null);
-    try {
-      const page = await api.listGuests(weddingId, guestCursor);
-      if (
-        weddingGeneration.current === generation &&
-        guestRequestId.current === requestId &&
-        workspaceMutationVersion.current === mutationVersion
-      ) {
-        setGuests((current) => appendUnique(current, page.items));
-        setGuestCursor(page.nextCursor);
-      }
-    } catch (error) {
-      if (
-        weddingGeneration.current === generation &&
-        guestRequestId.current === requestId &&
-        workspaceMutationVersion.current === mutationVersion
-      ) {
-        setMessage(safeUiError(error, copy, copy.workspace.moreGuestsError));
-      }
-    } finally {
-      if (
-        weddingGeneration.current === generation &&
-        guestRequestId.current === requestId
-      ) {
-        setBusy(null);
-      }
-    }
-  }
-
-  async function refreshGuests() {
-    if (!selected) return;
-    const weddingId = selected.id;
-    const generation = weddingGeneration.current;
-    const mutationVersion = workspaceMutationVersion.current;
-    const requestId = ++guestRequestId.current;
-    setBusy("refresh-guests");
-    setMessage(null);
-    try {
-      const page = await api.listGuests(weddingId);
-      if (
-        weddingGeneration.current === generation &&
-        guestRequestId.current === requestId &&
-        workspaceMutationVersion.current === mutationVersion
-      ) {
-        setGuests(page.items);
-        setGuestCursor(page.nextCursor);
-      }
-    } catch (error) {
-      if (
-        weddingGeneration.current === generation &&
-        guestRequestId.current === requestId &&
-        workspaceMutationVersion.current === mutationVersion
-      ) {
-        setMessage(safeUiError(error, copy, copy.workspace.refreshError));
-      }
-    } finally {
-      if (
-        weddingGeneration.current === generation &&
-        guestRequestId.current === requestId
-      ) {
-        setBusy(null);
-      }
-    }
-  }
-
-  async function copyInvitation(guest: GuestSummary) {
-    const invitation = invitations[guest.id];
-    if (!invitation) return;
-    try {
-      await navigator.clipboard.writeText(invitation.publicUrl);
-      setCopiedGuestId(guest.id);
-    } catch {
-      setMessage(copy.workspace.copyError);
     }
   }
 
@@ -607,7 +468,12 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
             <span className="max-w-40 truncate text-sm font-medium text-[var(--rose-ink)]">
               {identity.displayName}
             </span>
-            <Button variant="ghost" onClick={onSignOut}>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                if (confirmDiscard()) onSignOut();
+              }}
+            >
               {copy.workspace.signOut}
             </Button>
           </div>
@@ -678,6 +544,18 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="secondary"
+                    aria-expanded={settingsOpen}
+                    onClick={() => {
+                      if (settingsOpen && !confirmDiscard()) return;
+                      setSettingsOpen((open) => !open);
+                    }}
+                  >
+                    {settingsOpen
+                      ? copy.weddingSettings.close
+                      : copy.weddingSettings.action}
+                  </Button>
                   {weddings.length > 1 || weddingCursor ? (
                     <Button
                       variant="secondary"
@@ -689,7 +567,10 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
                   ) : null}
                   <Button
                     variant="ghost"
-                    onClick={() => setShowCreate((shown) => !shown)}
+                    onClick={() => {
+                      if (showCreate && !confirmDiscard()) return;
+                      setShowCreate((shown) => !shown);
+                    }}
                   >
                     {copy.workspaceNavigation.newWedding}
                   </Button>
@@ -728,8 +609,37 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
               ) : null}
             </section>
 
+            {settingsOpen ? (
+              <div className="mb-6 max-w-2xl">
+                <WeddingSettingsForm
+                  key={selected.id}
+                  wedding={selected}
+                  updateWedding={api.updateWedding}
+                  onDirtyChange={setSettingsDirty}
+                  onSaved={(saved) => {
+                    setWeddings((current) =>
+                      current.map((wedding) =>
+                        wedding.id === saved.id ? saved : wedding,
+                      ),
+                    );
+                    setSelected((current) =>
+                      current?.id === saved.id ? saved : current,
+                    );
+                    setSettingsDirty(false);
+                  }}
+                />
+              </div>
+            ) : null}
+
             {showCreate ? (
-              <div className="mb-6 max-w-xl">
+              <div
+                className="mb-6 max-w-xl"
+                onInputCapture={(event) => markFormDirty(event.target)}
+                onChangeCapture={(event) => markFormDirty(event.target)}
+                onResetCapture={(event) =>
+                  dirtyForms.current.delete(event.target as HTMLFormElement)
+                }
+              >
                 <WeddingForm
                   busy={busy === "wedding"}
                   onSubmit={createWedding}
@@ -740,17 +650,23 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
             <div className="grid min-w-0 gap-5 lg:grid-cols-[12rem_minmax(0,1fr)] lg:gap-7">
               <WorkspaceNavigation
                 active={activeSection}
-                onChange={setActiveSection}
+                onChange={changeSection}
               />
               <section
                 aria-label={copy.workspaceNavigation[activeSection]}
                 className="min-w-0 space-y-5"
+                onInputCapture={(event) => markFormDirty(event.target)}
+                onChangeCapture={(event) => markFormDirty(event.target)}
+                onResetCapture={(event) =>
+                  dirtyForms.current.delete(event.target as HTMLFormElement)
+                }
               >
                 {activeSection === "overview" ? (
                   <OverviewPanel
+                    key={selected.id}
                     wedding={selected}
                     api={api}
-                    onNavigate={setActiveSection}
+                    onNavigate={changeSection}
                   />
                 ) : null}
                 {activeSection === "planning" && hasPlanningApi(api) ? (
@@ -761,26 +677,30 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
                   />
                 ) : null}
                 {activeSection === "guests" ? (
-                  guestsLoaded ? (
+                  guestLoadError ? (
+                    <Card
+                      role="alert"
+                      className="space-y-4 p-6 text-[var(--rose-ink)]"
+                    >
+                      <p>{guestLoadMessage ?? copy.workspace.guestListError}</p>
+                      <Button
+                        onClick={() => setGuestRetry((value) => value + 1)}
+                      >
+                        {copy.workspace.retry}
+                      </Button>
+                    </Card>
+                  ) : guestsLoaded ? (
                     <WeddingWorkspace
                       api={api}
                       wedding={selected}
                       guests={guests}
                       affiliations={affiliations}
-                      invitations={invitations}
                       busy={busy}
                       nextCursor={guestCursor}
-                      copiedGuestId={copiedGuestId}
-                      onAddGuest={addGuest}
                       onCreateAffiliation={createGuestAffiliation}
                       onUpdateAffiliation={updateGuestAffiliation}
                       onMoveAffiliation={moveGuestAffiliation}
                       onDeleteAffiliation={deleteGuestAffiliation}
-                      onSetGuestAffiliation={setGuestAffiliation}
-                      onCreateInvitation={createInvitation}
-                      onCopyInvitation={copyInvitation}
-                      onLoadMore={loadMoreGuests}
-                      onRefresh={refreshGuests}
                       onImportedAffiliation={(affiliation) =>
                         setAffiliations((current) => [...current, affiliation])
                       }
@@ -801,6 +721,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
                     key={`operations:${selected.id}:${activeSection}`}
                     wedding={selected}
                     api={api}
+                    section={activeSection as "budget" | "schedule" | "seating"}
                   />
                 ) : null}
               </section>
@@ -1084,31 +1005,20 @@ function WeddingWorkspace({
   wedding,
   guests,
   affiliations,
-  invitations,
   busy,
   nextCursor,
-  copiedGuestId,
-  onAddGuest,
   onCreateAffiliation,
   onUpdateAffiliation,
   onMoveAffiliation,
   onDeleteAffiliation,
-  onSetGuestAffiliation,
-  onCreateInvitation,
-  onCopyInvitation,
-  onLoadMore,
-  onRefresh,
   onImportedAffiliation,
 }: {
   api: CoupleWorkspaceApi;
   wedding: WeddingSummary;
   guests: GuestSummary[];
   affiliations: GuestAffiliation[];
-  invitations: Record<string, InvitationCreated>;
   busy: string | null;
   nextCursor: string | null;
-  copiedGuestId: string | null;
-  onAddGuest(event: FormEvent<HTMLFormElement>): void;
   onCreateAffiliation(event: FormEvent<HTMLFormElement>): void;
   onUpdateAffiliation(
     affiliation: GuestAffiliation,
@@ -1116,40 +1026,8 @@ function WeddingWorkspace({
   ): void;
   onMoveAffiliation(affiliationId: string, direction: -1 | 1): Promise<void>;
   onDeleteAffiliation(affiliation: GuestAffiliation): Promise<void>;
-  onSetGuestAffiliation(
-    guest: GuestSummary,
-    affiliationId: string | null,
-  ): Promise<void>;
-  onCreateInvitation(guest: GuestSummary): Promise<void>;
-  onCopyInvitation(guest: GuestSummary): Promise<void>;
-  onLoadMore(): Promise<void>;
-  onRefresh(): Promise<void>;
   onImportedAffiliation(affiliation: GuestAffiliation): void;
 }) {
-  const copy = useUiCopy();
-  if (api.getGuest && api.updateGuest && api.archiveGuest && api.restoreGuest) {
-    return (
-      <div className="space-y-6">
-        <GuestAffiliationManager
-          affiliations={affiliations}
-          busy={busy}
-          onCreate={onCreateAffiliation}
-          onUpdate={onUpdateAffiliation}
-          onMove={onMoveAffiliation}
-          onDelete={onDeleteAffiliation}
-        />
-        <GuestWorkspace
-          key={wedding.id}
-          weddingId={wedding.id}
-          weddingName={wedding.name}
-          affiliations={affiliations}
-          initialPage={{ items: guests, nextCursor }}
-          api={api}
-          onAffiliationCreated={onImportedAffiliation}
-        />
-      </div>
-    );
-  }
   return (
     <div className="space-y-6">
       <GuestAffiliationManager
@@ -1160,258 +1038,16 @@ function WeddingWorkspace({
         onMove={onMoveAffiliation}
         onDelete={onDeleteAffiliation}
       />
-
-      <Card className="overflow-hidden">
-        <div className="border-b border-[#eadbd3] bg-[linear-gradient(120deg,rgba(113,56,75,0.96),rgba(137,79,88,0.9))] px-6 py-7 text-white sm:px-8">
-          <p className="mb-1 text-xs font-bold tracking-[0.2em] text-[#f4dfe0] uppercase">
-            {copy.workspace.current}
-          </p>
-          <h2 className="font-serif text-3xl font-semibold sm:text-4xl">
-            {wedding.name}
-          </h2>
-          <p className="mt-2 text-sm text-white/75">
-            {wedding.weddingDate ?? copy.workspace.datePending} ·{" "}
-            {wedding.timeZone}
-          </p>
-        </div>
-        <div className="p-5 sm:p-7">
-          <div className="mb-5 flex items-center gap-3">
-            <span className="grid size-9 place-items-center rounded-full bg-[#f0e2db] text-sm font-bold text-[#71384b]">
-              02
-            </span>
-            <div>
-              <h3 className="font-serif text-2xl font-semibold text-[#432f35]">
-                {copy.workspace.addGuestTitle}
-              </h3>
-              <p className="text-sm text-[#806d70]">
-                {copy.workspace.addGuestDescription}
-              </p>
-            </div>
-          </div>
-          <form
-            onSubmit={onAddGuest}
-            className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[1.2fr_1.2fr_0.9fr_0.7fr_auto] xl:items-end"
-          >
-            <Field label={copy.workspace.guestName} htmlFor="guest-name">
-              <Input
-                id="guest-name"
-                name="guestName"
-                required
-                maxLength={120}
-              />
-            </Field>
-            <Field label={copy.workspace.emailOptional} htmlFor="guest-email">
-              <Input
-                id="guest-email"
-                name="email"
-                type="email"
-                maxLength={320}
-              />
-            </Field>
-            <Field
-              label={copy.workspace.guestAffiliation}
-              htmlFor="guest-affiliation"
-            >
-              <Select id="guest-affiliation" name="affiliationId">
-                <option value="">{copy.workspace.noAffiliation}</option>
-                {affiliations.map((affiliation) => (
-                  <option key={affiliation.id} value={affiliation.id}>
-                    {affiliation.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field
-              label={copy.workspace.partyAllowance}
-              htmlFor="party-allowance"
-            >
-              <Input
-                id="party-allowance"
-                name="allowedPartySize"
-                type="number"
-                min={1}
-                max={20}
-                defaultValue={1}
-                required
-              />
-            </Field>
-            <Button type="submit" disabled={busy === "guest"}>
-              {busy === "guest"
-                ? copy.workspace.adding
-                : copy.workspace.addGuest}
-            </Button>
-          </form>
-        </div>
-      </Card>
-
-      <section aria-labelledby="guest-list-title">
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-4 px-1">
-          <div>
-            <p className="text-xs font-bold tracking-[0.18em] text-[#925c68] uppercase">
-              {copy.workspace.responses}
-            </p>
-            <h3
-              id="guest-list-title"
-              className="font-serif text-2xl font-semibold text-[#432f35]"
-            >
-              {copy.workspace.guestList}
-            </h3>
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge>{copy.workspace.loaded(guests.length)}</Badge>
-            <Button
-              variant="ghost"
-              disabled={busy === "refresh-guests"}
-              onClick={() => void onRefresh()}
-            >
-              {busy === "refresh-guests"
-                ? copy.workspace.refreshing
-                : copy.workspace.refreshResponses}
-            </Button>
-          </div>
-        </div>
-        {guests.length === 0 ? (
-          <Card className="p-7 text-center">
-            <Users className="mx-auto mb-3 size-7 text-[#a2737e]" />
-            <p className="font-medium text-[#655156]">
-              {copy.workspace.noGuests}
-            </p>
-            <p className="mt-1 text-sm text-[#8a7679]">
-              {copy.workspace.noGuestsDescription}
-            </p>
-          </Card>
-        ) : (
-          <div className="grid gap-3">
-            {guests.map((guest) => {
-              const invitation = invitations[guest.id];
-              return (
-                <Card key={guest.id} className="p-5 sm:p-6">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-serif text-xl font-semibold text-[#432f35]">
-                          {guest.name}
-                        </p>
-                        <ResponseBadge guest={guest} />
-                        {guest.affiliation ? (
-                          <Badge
-                            style={{
-                              borderColor: guest.affiliation.color,
-                              color: guest.affiliation.color,
-                            }}
-                          >
-                            {guest.affiliation.name}
-                          </Badge>
-                        ) : null}
-                      </div>
-                      <p className="mt-1 text-sm text-[#806d70]">
-                        {copy.workspace.upTo(guest.allowedPartySize)}
-                        {guest.email ? ` · ${guest.email}` : ""}
-                      </p>
-                      <Select
-                        className="mt-3 max-w-xs"
-                        aria-label={copy.workspace.guestAffiliationLabel(
-                          guest.name,
-                        )}
-                        value={guest.affiliation?.id ?? ""}
-                        disabled={busy === `guest:affiliation:${guest.id}`}
-                        onChange={(event) =>
-                          void onSetGuestAffiliation(
-                            guest,
-                            event.currentTarget.value || null,
-                          )
-                        }
-                      >
-                        <option value="">{copy.workspace.noAffiliation}</option>
-                        {affiliations.map((affiliation) => (
-                          <option key={affiliation.id} value={affiliation.id}>
-                            {affiliation.name}
-                          </option>
-                        ))}
-                      </Select>
-                    </div>
-                    <Button
-                      variant="secondary"
-                      disabled={busy === `invitation:${guest.id}`}
-                      onClick={() => void onCreateInvitation(guest)}
-                    >
-                      <Link2 aria-hidden="true" className="mr-2 size-4" />
-                      {busy === `invitation:${guest.id}`
-                        ? copy.workspace.creating
-                        : copy.workspace.createInvitation}
-                    </Button>
-                  </div>
-                  {invitation ? (
-                    <div className="mt-4 rounded-2xl border border-[#dfc8bf] bg-[#fff9f3] p-4">
-                      <div className="flex items-start gap-3">
-                        <div className="min-w-0">
-                          <a
-                            href={invitation.publicUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-sm font-semibold break-all text-[#71384b] underline decoration-[#c49aa2] underline-offset-4 hover:text-[#4f2634]"
-                            aria-label={copy.workspace.openInvitation(
-                              guest.name,
-                            )}
-                          >
-                            {invitation.publicUrl}
-                          </a>
-                          <p className="mt-1 text-xs leading-5 text-[#8b7477]">
-                            {copy.workspace.invitationNotice}
-                          </p>
-                          <Button
-                            className="mt-2 px-3 py-1.5"
-                            variant="ghost"
-                            onClick={() => void onCopyInvitation(guest)}
-                          >
-                            <Copy aria-hidden="true" className="mr-2 size-4" />
-                            {copy.workspace.copyInvitation}
-                          </Button>
-                          {copiedGuestId === guest.id ? (
-                            <span
-                              role="status"
-                              className="ml-2 text-xs text-[#456648]"
-                            >
-                              {copy.workspace.copied}
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-                </Card>
-              );
-            })}
-            {nextCursor ? (
-              <Button
-                className="mx-auto mt-2"
-                variant="secondary"
-                disabled={busy === "more-guests"}
-                onClick={() => void onLoadMore()}
-              >
-                {busy === "more-guests"
-                  ? copy.workspace.loading
-                  : copy.workspace.loadMoreGuests}
-              </Button>
-            ) : null}
-          </div>
-        )}
-      </section>
+      <GuestWorkspace
+        key={wedding.id}
+        weddingId={wedding.id}
+        weddingName={wedding.name}
+        affiliations={affiliations}
+        initialPage={{ items: guests, nextCursor }}
+        api={api}
+        onAffiliationCreated={onImportedAffiliation}
+      />
     </div>
-  );
-}
-
-function ResponseBadge({ guest }: { guest: GuestSummary }) {
-  const copy = useUiCopy();
-  if (!guest.rsvp) return <Badge>{copy.workspace.awaiting}</Badge>;
-  return guest.rsvp.attendance === "attending" ? (
-    <Badge className="bg-[#dcebdc] text-[#355b3a]">
-      {copy.workspace.attending(guest.rsvp.partySize)}
-    </Badge>
-  ) : (
-    <Badge className="bg-[#eee8e5] text-[#685b5b]">
-      {copy.workspace.declined}
-    </Badge>
   );
 }
 

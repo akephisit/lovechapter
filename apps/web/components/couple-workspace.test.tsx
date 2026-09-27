@@ -10,7 +10,7 @@ import type {
   Page,
   WeddingSummary,
 } from "@lovechapter/contracts";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -20,6 +20,101 @@ import { UiLanguageProvider } from "./ui-language-provider";
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 describe("CoupleWorkspace", () => {
+  it("keeps a dirty settings draft when section or wedding navigation is cancelled", async () => {
+    const first = weddingFixture();
+    const second = { ...first, id: crypto.randomUUID(), name: "Dao & Lin" };
+    const api: CoupleWorkspaceApi = {
+      ...affiliationApi(),
+      listWeddings: vi.fn(async () => page([first, second])),
+      createWedding: vi.fn(),
+      updateWedding: vi.fn(),
+      listGuests: vi.fn(async () => page([])),
+      addGuest: vi.fn(),
+      createInvitation: vi.fn(),
+    };
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(
+      <CoupleWorkspace
+        identity={userFixture()}
+        api={api}
+        onSignOut={vi.fn()}
+      />,
+    );
+    await screen.findByRole("heading", { name: first.name });
+    await userEvent.click(
+      screen.getByRole("button", { name: "Wedding settings" }),
+    );
+    await userEvent.type(screen.getByLabelText("Wedding name"), " changed");
+    await userEvent.click(screen.getByRole("button", { name: "Guests" }));
+    expect(confirm).toHaveBeenCalled();
+    expect(screen.getByLabelText("Wedding name")).toHaveValue(
+      "Mali & Arun changed",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Choose wedding" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: second.name }));
+    expect(screen.getByRole("heading", { name: first.name })).toBeVisible();
+    confirm.mockRestore();
+  });
+  it("updates the selected wedding and picker after saving settings", async () => {
+    const first = weddingFixture();
+    const other = { ...first, id: crypto.randomUUID(), name: "Dao & Lin" };
+    const updateWedding = vi.fn(
+      async (
+        _id: string,
+        input: {
+          name: string;
+          weddingDate: string | null;
+          timeZone: string;
+          locale: string;
+        },
+      ) => {
+        const base = { ...first };
+        delete base.weddingDate;
+        return {
+          ...base,
+          name: input.name,
+          timeZone: input.timeZone,
+          locale: input.locale,
+          ...(input.weddingDate ? { weddingDate: input.weddingDate } : {}),
+        };
+      },
+    );
+    const api: CoupleWorkspaceApi = {
+      ...affiliationApi(),
+      updateWedding,
+      listWeddings: vi.fn(async () => page([first, other])),
+      createWedding: vi.fn(),
+      listGuests: vi.fn(async () => page([])),
+      addGuest: vi.fn(),
+      createInvitation: vi.fn(),
+    };
+    render(
+      <UiLanguageProvider language="th">
+        <CoupleWorkspace
+          identity={userFixture()}
+          api={api}
+          onSignOut={vi.fn()}
+        />
+      </UiLanguageProvider>,
+    );
+    await screen.findByRole("heading", { name: first.name });
+    await userEvent.click(
+      screen.getByRole("button", { name: "ตั้งค่างานแต่ง" }),
+    );
+    await userEvent.clear(screen.getByLabelText("ชื่องานแต่ง"));
+    await userEvent.type(screen.getByLabelText("ชื่องานแต่ง"), "วันของเรา");
+    await userEvent.click(
+      screen.getByRole("button", { name: "บันทึกการตั้งค่า" }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "วันของเรา", level: 1 }),
+    ).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "เลือกงานแต่ง" }));
+    expect(screen.getByRole("button", { name: /วันของเรา/ })).toBeVisible();
+    expect(screen.getByRole("button", { name: "ภาพรวม" })).toBeVisible();
+  });
   it("opens one wedding in Overview without preloading the guest editor", async () => {
     const wedding = weddingFixture();
     const listGuests = vi.fn(async () => page([guestFixture()]));
@@ -94,6 +189,38 @@ describe("CoupleWorkspace", () => {
     await userEvent.click(screen.getByRole("button", { name: "Overview" }));
     expect(await screen.findByText(/1 guest party/i)).toBeVisible();
     expect(getRsvpSummary).toHaveBeenCalledTimes(2);
+  });
+
+  it("offers retry instead of an empty guest editor when the guest read fails", async () => {
+    const wedding = weddingFixture();
+    const listGuests = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(page([guestFixture()]));
+    const api: CoupleWorkspaceApi = {
+      ...affiliationApi(),
+      listWeddings: vi.fn(async () => page([wedding])),
+      createWedding: vi.fn(),
+      listGuests,
+      addGuest: vi.fn(),
+      createInvitation: vi.fn(),
+    };
+    render(
+      <CoupleWorkspace
+        identity={userFixture()}
+        api={api}
+        onSignOut={vi.fn()}
+      />,
+    );
+    await openGuests();
+    expect(
+      await within(screen.getByRole("region", { name: "Guests" })).findByRole(
+        "alert",
+      ),
+    ).toBeVisible();
+    expect(screen.queryByLabelText(/guest name/i)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Nok")).toBeVisible();
   });
 
   it("offers a compact wedding picker and bounded load-more", async () => {
@@ -297,6 +424,40 @@ describe("CoupleWorkspace", () => {
       expect(api.getPlanningOverview).toHaveBeenCalledWith(wedding.id);
     });
   });
+  it("keeps a planning draft when section navigation is cancelled", async () => {
+    const wedding = weddingFixture();
+    const api: CoupleWorkspaceApi = {
+      ...affiliationApi(),
+      listWeddings: vi.fn(async () => page([wedding])),
+      createWedding: vi.fn(),
+      listGuests: vi.fn(async () => page([])),
+      addGuest: vi.fn(),
+      createInvitation: vi.fn(),
+      listPlanningTasks: vi.fn(async () => page([])),
+      createPlanningTask: vi.fn(),
+      updatePlanningTask: vi.fn(),
+      deletePlanningTask: vi.fn(),
+    };
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(
+      <CoupleWorkspace
+        identity={userFixture()}
+        api={api}
+        onSignOut={vi.fn()}
+      />,
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Planning" }),
+    );
+    await userEvent.type(
+      await screen.findByLabelText("Task title"),
+      "Choose flowers",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Guests" }));
+    expect(confirm).toHaveBeenCalled();
+    expect(screen.getByLabelText("Task title")).toHaveValue("Choose flowers");
+    confirm.mockRestore();
+  });
   it("opens the full guest management workspace when detail endpoints are available", async () => {
     const wedding = weddingFixture();
     const guest = guestFixture();
@@ -335,6 +496,47 @@ describe("CoupleWorkspace", () => {
     expect(
       await screen.findByRole("link", { name: /open nok's invitation/i }),
     ).toBeVisible();
+  });
+  it("keeps CSV import/export and envelope printing reachable from Guests", async () => {
+    const wedding = weddingFixture();
+    const api: CoupleWorkspaceApi = {
+      ...affiliationApi(),
+      listWeddings: vi.fn(async () => page([wedding])),
+      createWedding: vi.fn(),
+      listGuests: vi.fn(async () => page([])),
+      listGuestManagement: vi.fn(async () => page([])),
+      addGuest: vi.fn(),
+      createInvitation: vi.fn(),
+      getGuest: vi.fn(),
+      updateGuest: vi.fn(),
+      archiveGuest: vi.fn(),
+      restoreGuest: vi.fn(),
+      downloadGuestCsv: vi.fn(),
+      uploadGuestCsv: vi.fn(),
+      getGuestImportPreview: vi.fn(),
+      updateGuestImportMapping: vi.fn(),
+      commitGuestImport: vi.fn(),
+      listEnvelopeTemplates: vi.fn(),
+      createEnvelopeTemplate: vi.fn(),
+      updateEnvelopeTemplate: vi.fn(),
+      deleteEnvelopeTemplate: vi.fn(),
+      getEnvelopePrintData: vi.fn(),
+    };
+    render(
+      <CoupleWorkspace
+        identity={userFixture()}
+        api={api}
+        onSignOut={vi.fn()}
+      />,
+    );
+    await openGuests();
+    expect(
+      await screen.findByRole("button", { name: "Export filtered CSV" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Print envelopes" }),
+    ).toBeVisible();
+    expect(screen.getByText(/import guests/i)).toBeVisible();
   });
   it("creates a wedding and guest, then reveals the one-time invitation URL", async () => {
     const wedding = weddingFixture();
@@ -448,7 +650,7 @@ describe("CoupleWorkspace", () => {
       screen.getByRole("button", { name: /refresh responses/i }),
     );
     expect(await screen.findByText(/attending · 2/i)).toBeVisible();
-    expect(listGuests).toHaveBeenLastCalledWith(wedding.id);
+    expect(listGuests).toHaveBeenLastCalledWith(wedding.id, undefined);
   });
 
   it("removes a one-time invitation URL when the wedding scope changes", async () => {
@@ -613,14 +815,14 @@ describe("CoupleWorkspace", () => {
     expect(
       await screen.findByRole("heading", { name: /guest affiliations/i }),
     ).toBeVisible();
-    expect(screen.getByText("Family")).toBeVisible();
+    expect(screen.getAllByText("Family")).not.toHaveLength(0);
     await user.type(screen.getByLabelText(/new affiliation name/i), "Friends");
     await user.click(screen.getByRole("button", { name: /add affiliation/i }));
     expect(createGuestAffiliation).toHaveBeenCalledWith(wedding.id, {
       name: "Friends",
       color: "#8c5261",
     });
-    expect(await screen.findByText("Friends")).toBeVisible();
+    expect(await screen.findAllByText("Friends")).not.toHaveLength(0);
 
     await user.type(screen.getByLabelText(/guest name/i), "Nok");
     await user.selectOptions(
@@ -723,6 +925,7 @@ describe("CoupleWorkspace", () => {
   });
 
   it("ignores an affiliation create response after switching weddings", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     const firstWedding = weddingFixture();
     const secondWedding = {
       ...weddingFixture(),
@@ -770,6 +973,8 @@ describe("CoupleWorkspace", () => {
       await lateCreate.promise;
     });
     expect(screen.queryByText("Friends")).not.toBeInTheDocument();
+    expect(confirm).toHaveBeenCalled();
+    confirm.mockRestore();
   });
 
   it("keeps a successful assignment when an older same-wedding refresh finishes", async () => {
@@ -875,6 +1080,7 @@ function affiliationFixture(): GuestAffiliation {
 
 function affiliationApi(): Pick<
   CoupleWorkspaceApi,
+  | "updateWedding"
   | "getPlanningOverview"
   | "getRsvpSummary"
   | "listGuestAffiliations"
@@ -885,6 +1091,7 @@ function affiliationApi(): Pick<
   | "setGuestAffiliation"
 > {
   return {
+    updateWedding: vi.fn(),
     getPlanningOverview: vi.fn(async () => ({
       total: 0,
       completed: 0,

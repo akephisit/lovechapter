@@ -59,45 +59,54 @@ export type OperationsWorkspaceApi = Pick<
 >;
 
 type Wedding = Pick<WeddingSummary, "id" | "name" | "locale" | "timeZone">;
-type Props = { wedding: Wedding; api: OperationsWorkspaceApi };
+type Props = {
+  wedding: Wedding;
+  api: OperationsWorkspaceApi;
+  section?: "budget" | "schedule" | "seating";
+};
 
-export function OperationsWorkspace({ wedding, api }: Props) {
+export function OperationsWorkspace({ wedding, api, section }: Props) {
   const copy = useUiCopy();
   const [tab, setTab] = useState<"budget" | "schedule" | "seating">("budget");
+  const active = section ?? tab;
   return (
     <section aria-label={copy.operations.title} className="space-y-4">
-      <div
-        className="flex flex-wrap gap-2"
-        role="group"
-        aria-label={copy.operations.sections}
-      >
-        <Button
-          type="button"
-          variant={tab === "budget" ? "primary" : "ghost"}
-          onClick={() => setTab("budget")}
+      {!section ? (
+        <div
+          className="flex flex-wrap gap-2"
+          role="group"
+          aria-label={copy.operations.sections}
         >
-          {copy.operations.budget}
-        </Button>
-        <Button
-          type="button"
-          variant={tab === "schedule" ? "primary" : "ghost"}
-          onClick={() => setTab("schedule")}
-        >
-          {copy.operations.schedule}
-        </Button>
-        <Button
-          type="button"
-          variant={tab === "seating" ? "primary" : "ghost"}
-          onClick={() => setTab("seating")}
-        >
-          {copy.operations.seating}
-        </Button>
-      </div>
-      {tab === "budget" ? <BudgetPanel wedding={wedding} api={api} /> : null}
-      {tab === "schedule" ? (
+          <Button
+            type="button"
+            variant={tab === "budget" ? "primary" : "ghost"}
+            onClick={() => setTab("budget")}
+          >
+            {copy.operations.budget}
+          </Button>
+          <Button
+            type="button"
+            variant={tab === "schedule" ? "primary" : "ghost"}
+            onClick={() => setTab("schedule")}
+          >
+            {copy.operations.schedule}
+          </Button>
+          <Button
+            type="button"
+            variant={tab === "seating" ? "primary" : "ghost"}
+            onClick={() => setTab("seating")}
+          >
+            {copy.operations.seating}
+          </Button>
+        </div>
+      ) : null}
+      {active === "budget" ? <BudgetPanel wedding={wedding} api={api} /> : null}
+      {active === "schedule" ? (
         <RunSheetPanel wedding={wedding} api={api} />
       ) : null}
-      {tab === "seating" ? <SeatingPanel wedding={wedding} api={api} /> : null}
+      {active === "seating" ? (
+        <SeatingPanel wedding={wedding} api={api} />
+      ) : null}
     </section>
   );
 }
