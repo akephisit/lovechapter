@@ -21,7 +21,10 @@ describe("GuestForm", () => {
     );
     await userEvent.click(screen.getByLabelText("เพิ่มที่อยู่ไปรษณีย์"));
     await userEvent.type(screen.getByLabelText("ที่อยู่บรรทัดที่ 1"), "Tokyo");
-    await userEvent.type(screen.getByLabelText("รหัสประเทศ"), "JP");
+    await userEvent.type(
+      screen.getByLabelText("รหัสประเทศ"),
+      "JP{ArrowDown}{Enter}",
+    );
     await userEvent.click(screen.getByRole("button", { name: "เพิ่มแขก" }));
     expect(onCreate).toHaveBeenCalledWith(
       expect.objectContaining({

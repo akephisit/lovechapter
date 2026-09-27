@@ -529,6 +529,10 @@ describe("LoveChapterService", () => {
       "country code",
       { postalAddress: { addressLine1: "1", countryCode: "THA" } },
     ],
+    [
+      "unknown country code",
+      { postalAddress: { addressLine1: "1", countryCode: "ZZ" } },
+    ],
   ] as const)("rejects an over-limit guest %s", async (_field, invalid) => {
     const repository = new InMemoryLoveChapterRepository();
     const coupleService = service(repository);

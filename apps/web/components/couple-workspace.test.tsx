@@ -49,9 +49,15 @@ describe("CoupleWorkspace", () => {
     ).toBeVisible();
     await userEvent.type(screen.getByLabelText("ชื่องานแต่ง"), "Mali & Arun");
     await userEvent.clear(screen.getByLabelText("เขตเวลา"));
-    await userEvent.type(screen.getByLabelText("เขตเวลา"), "Europe/London");
+    await userEvent.type(
+      screen.getByLabelText("เขตเวลา"),
+      "Europe/London{ArrowDown}{Enter}",
+    );
     await userEvent.clear(screen.getByLabelText("ภาษาของงานแต่ง"));
-    await userEvent.type(screen.getByLabelText("ภาษาของงานแต่ง"), "en-US");
+    await userEvent.type(
+      screen.getByLabelText("ภาษาของงานแต่ง"),
+      "en-US{ArrowDown}{Enter}",
+    );
     await userEvent.click(screen.getByRole("button", { name: "สร้างงานแต่ง" }));
     expect(createWedding).toHaveBeenCalledWith({
       name: "Mali & Arun",

@@ -8,7 +8,8 @@ import { useState, type FormEvent } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { useUiCopy } from "../ui-language-provider";
+import { useUiCopy, useUiLanguage } from "../ui-language-provider";
+import { StandardCodeCombobox } from "../ui/standard-code-combobox";
 import { AddressFields, addressFrom } from "./guest-form";
 
 export function GuestDetailDialog({
@@ -145,6 +146,7 @@ export function GuestDetailDialog({
 
 function AddressDefaults({ address }: { address: PostalAddressInput | null }) {
   const copy = useUiCopy();
+  const uiLanguage = useUiLanguage();
   if (!address) return <AddressFields prefix="edit" />;
   return (
     <>
@@ -193,10 +195,13 @@ function AddressDefaults({ address }: { address: PostalAddressInput | null }) {
       </label>
       <label>
         <Label htmlFor="edit-country-code">{copy.guest.countryCode}</Label>
-        <Input
+        <StandardCodeCombobox
+          kind="country"
+          uiLanguage={uiLanguage}
           id="edit-country-code"
           name="countryCode"
           defaultValue={address.countryCode ?? ""}
+          optional
         />
       </label>
     </>

@@ -9,7 +9,8 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select } from "../ui/select";
-import { useUiCopy } from "../ui-language-provider";
+import { useUiCopy, useUiLanguage } from "../ui-language-provider";
+import { StandardCodeCombobox } from "../ui/standard-code-combobox";
 
 export function GuestForm({
   affiliations,
@@ -125,6 +126,7 @@ export function GuestForm({
 
 export function AddressFields({ prefix }: { prefix: string }) {
   const copy = useUiCopy();
+  const uiLanguage = useUiLanguage();
   return (
     <>
       <Field
@@ -165,11 +167,12 @@ export function AddressFields({ prefix }: { prefix: string }) {
         <Input id={`${prefix}-postal-code`} name="postalCode" maxLength={32} />
       </Field>
       <Field label={copy.guest.countryCode} htmlFor={`${prefix}-country-code`}>
-        <Input
+        <StandardCodeCombobox
+          kind="country"
+          uiLanguage={uiLanguage}
           id={`${prefix}-country-code`}
           name="countryCode"
-          pattern="[A-Za-z]{2}"
-          maxLength={2}
+          optional
         />
       </Field>
     </>

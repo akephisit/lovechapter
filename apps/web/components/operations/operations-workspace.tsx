@@ -23,12 +23,16 @@ import {
 } from "react";
 
 import type { createLoveChapterApi } from "../../lib/api-client";
+import { safeUiError } from "../../lib/ui-error";
+import type { UiCopy } from "../../lib/ui-copy";
+import { useUiCopy, useUiLanguage } from "../ui-language-provider";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select } from "../ui/select";
 import { Textarea } from "../ui/textarea";
+import { StandardCodeCombobox } from "../ui/standard-code-combobox";
 
 export type OperationsWorkspaceApi = Pick<
   ReturnType<typeof createLoveChapterApi>,
@@ -58,34 +62,35 @@ type Wedding = Pick<WeddingSummary, "id" | "name" | "locale" | "timeZone">;
 type Props = { wedding: Wedding; api: OperationsWorkspaceApi };
 
 export function OperationsWorkspace({ wedding, api }: Props) {
+  const copy = useUiCopy();
   const [tab, setTab] = useState<"budget" | "schedule" | "seating">("budget");
   return (
-    <section aria-label="Wedding operations" className="space-y-4">
+    <section aria-label={copy.operations.title} className="space-y-4">
       <div
         className="flex flex-wrap gap-2"
         role="group"
-        aria-label="Operations sections"
+        aria-label={copy.operations.sections}
       >
         <Button
           type="button"
           variant={tab === "budget" ? "primary" : "ghost"}
           onClick={() => setTab("budget")}
         >
-          Budget & vendors
+          {copy.operations.budget}
         </Button>
         <Button
           type="button"
           variant={tab === "schedule" ? "primary" : "ghost"}
           onClick={() => setTab("schedule")}
         >
-          Day schedule
+          {copy.operations.schedule}
         </Button>
         <Button
           type="button"
           variant={tab === "seating" ? "primary" : "ghost"}
           onClick={() => setTab("seating")}
         >
-          Seating
+          {copy.operations.seating}
         </Button>
       </div>
       {tab === "budget" ? <BudgetPanel wedding={wedding} api={api} /> : null}
@@ -97,8 +102,8 @@ export function OperationsWorkspace({ wedding, api }: Props) {
   );
 }
 
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : "Please try again.";
+function errorText(error: unknown, copy: UiCopy): string {
+  return safeUiError(error, copy, copy.operations.error);
 }
 function field(fields: FormData, name: string): string {
   return String(fields.get(name) ?? "").trim();
@@ -135,6 +140,8 @@ function Field({
 const inputClass = "w-full";
 
 function BudgetPanel({ wedding, api }: Props) {
+  const copy = useUiCopy();
+  const uiLanguage = useUiLanguage();
   const [overview, setOverview] = useState<Awaited<
     ReturnType<typeof api.getBudgetOverview>
   > | null>(null);
@@ -171,7 +178,7 @@ function BudgetPanel({ wedding, api }: Props) {
       setExpenseCursor(costPage.nextCursor);
       setError(null);
     } catch (caught) {
-      if (request === generation.current) setError(errorText(caught));
+      if (request === generation.current) setError(errorText(caught, copy));
     } finally {
       if (request === generation.current) setLoading(false);
     }
@@ -190,7 +197,7 @@ function BudgetPanel({ wedding, api }: Props) {
       after?.();
       await reload();
     } catch (caught) {
-      setError(errorText(caught));
+      setError(errorText(caught, copy));
     } finally {
       setBusy(false);
     }
@@ -221,7 +228,7 @@ function BudgetPanel({ wedding, api }: Props) {
         }
       }
     } catch (caught) {
-      if (current === generation.current) setError(errorText(caught));
+      if (current === generation.current) setError(errorText(caught, copy));
     } finally {
       if (current === generation.current) setBusy(false);
     }
@@ -230,11 +237,13 @@ function BudgetPanel({ wedding, api }: Props) {
   return (
     <div className="space-y-4">
       <Card className="space-y-4 p-5 sm:p-6">
-        <h2 className="font-serif text-2xl text-[#432f35]">Budget & vendors</h2>
+        <h2 className="font-serif text-2xl text-[#432f35]">
+          {copy.operations.budget}
+        </h2>
         <p className="text-sm text-[#725f62]">
-          Costs, suppliers, and payments for {wedding.name}.
+          {copy.operations.budgetDescription(wedding.name)}
         </p>
-        {loading ? <p role="status">Loading budget…</p> : null}
+        {loading ? <p role="status">{copy.operations.loadingBudget}</p> : null}
         {error ? (
           <p role="alert" className="text-[#9b3737]">
             {error}
@@ -242,17 +251,15 @@ function BudgetPanel({ wedding, api }: Props) {
         ) : null}
         {currency && overview ? (
           <p className="text-sm">
-            Planned{" "}
-            {moneyLabel(overview.plannedMinor, currency, wedding.locale)} · Paid{" "}
+            {copy.operations.planned}{" "}
+            {moneyLabel(overview.plannedMinor, currency, wedding.locale)} ·{" "}
+            {copy.operations.paid}{" "}
             {moneyLabel(overview.paidMinor, currency, wedding.locale)} ·
-            Remaining{" "}
+            {copy.operations.remaining}{" "}
             {moneyLabel(overview.remainingMinor, currency, wedding.locale)}
           </p>
         ) : (
-          <p className="text-sm">
-            Choose a currency before recording costs. It cannot change after
-            costs exist.
-          </p>
+          <p className="text-sm">{copy.operations.chooseCurrency}</p>
         )}
         <form
           className="grid gap-3 sm:grid-cols-3"
@@ -273,18 +280,16 @@ function BudgetPanel({ wedding, api }: Props) {
             );
           }}
         >
-          <Field label="Currency code" name="currency">
-            <Input
+          <Field label={copy.operations.currency} name="currency">
+            <StandardCodeCombobox
+              kind="currency"
+              uiLanguage={uiLanguage}
               id="currency"
               name="currency"
-              required
-              maxLength={3}
               defaultValue={currency ?? ""}
-              placeholder="USD"
-              className={inputClass}
             />
           </Field>
-          <Field label="Budget target" name="target">
+          <Field label={copy.operations.budgetTarget} name="target">
             <Input
               id="target"
               name="target"
@@ -299,13 +304,13 @@ function BudgetPanel({ wedding, api }: Props) {
           </Field>
           <div className="self-end">
             <Button type="submit" disabled={busy}>
-              Save budget
+              {copy.operations.saveBudget}
             </Button>
           </div>
         </form>
       </Card>
       <Card className="space-y-4 p-5 sm:p-6">
-        <h3 className="font-serif text-xl">Categories</h3>
+        <h3 className="font-serif text-xl">{copy.operations.categories}</h3>
         <form
           key={editingCategory?.id ?? "new"}
           className="flex flex-wrap gap-2"
@@ -325,7 +330,7 @@ function BudgetPanel({ wedding, api }: Props) {
             );
           }}
         >
-          <Field label="Category name" name="categoryName">
+          <Field label={copy.operations.categoryName} name="categoryName">
             <Input
               id="categoryName"
               name="categoryName"
@@ -334,7 +339,9 @@ function BudgetPanel({ wedding, api }: Props) {
             />
           </Field>
           <Button className="self-end" type="submit" disabled={busy}>
-            {editingCategory ? "Save category" : "Add category"}
+            {editingCategory
+              ? copy.operations.saveCategory
+              : copy.operations.addCategory}
           </Button>
           {editingCategory ? (
             <Button
@@ -343,7 +350,7 @@ function BudgetPanel({ wedding, api }: Props) {
               variant="ghost"
               onClick={() => setEditingCategory(null)}
             >
-              Cancel
+              {copy.operations.cancel}
             </Button>
           ) : null}
         </form>
@@ -356,7 +363,7 @@ function BudgetPanel({ wedding, api }: Props) {
                 variant="ghost"
                 onClick={() => setEditingCategory(category)}
               >
-                Edit {category.name}
+                {copy.operations.edit(category.name)}
               </Button>
               <Button
                 type="button"
@@ -365,7 +372,7 @@ function BudgetPanel({ wedding, api }: Props) {
                 onClick={() => {
                   if (
                     window.confirm(
-                      `Delete category “${category.name}”? Expenses remain uncategorized.`,
+                      copy.operations.deleteCategory(category.name),
                     )
                   )
                     void mutate(() =>
@@ -373,14 +380,14 @@ function BudgetPanel({ wedding, api }: Props) {
                     );
                 }}
               >
-                Delete {category.name}
+                {copy.operations.delete(category.name)}
               </Button>
             </li>
           ))}
         </ul>
       </Card>
       <Card className="space-y-4 p-5 sm:p-6">
-        <h3 className="font-serif text-xl">Vendors</h3>
+        <h3 className="font-serif text-xl">{copy.operations.vendors}</h3>
         <form
           key={editingVendor?.id ?? "new"}
           className="grid gap-3 sm:grid-cols-2"
@@ -405,7 +412,7 @@ function BudgetPanel({ wedding, api }: Props) {
             );
           }}
         >
-          <Field label="Vendor name" name="vendorName">
+          <Field label={copy.operations.vendorName} name="vendorName">
             <Input
               id="vendorName"
               name="vendorName"
@@ -413,26 +420,26 @@ function BudgetPanel({ wedding, api }: Props) {
               defaultValue={editingVendor?.name ?? ""}
             />
           </Field>
-          <Field label="Booking status" name="vendorStatus">
+          <Field label={copy.operations.bookingStatus} name="vendorStatus">
             <Select
               id="vendorStatus"
               name="vendorStatus"
               defaultValue={editingVendor?.status ?? "researching"}
             >
-              <option value="researching">Researching</option>
-              <option value="contacted">Contacted</option>
-              <option value="booked">Booked</option>
-              <option value="cancelled">Cancelled</option>
+              <option value="researching">{copy.operations.researching}</option>
+              <option value="contacted">{copy.operations.contacted}</option>
+              <option value="booked">{copy.operations.booked}</option>
+              <option value="cancelled">{copy.operations.cancelled}</option>
             </Select>
           </Field>
-          <Field label="Contact name" name="contactName">
+          <Field label={copy.operations.contactName} name="contactName">
             <Input
               id="contactName"
               name="contactName"
               defaultValue={editingVendor?.contactName ?? ""}
             />
           </Field>
-          <Field label="Contact email" name="vendorEmail">
+          <Field label={copy.operations.contactEmail} name="vendorEmail">
             <Input
               id="vendorEmail"
               name="vendorEmail"
@@ -440,14 +447,14 @@ function BudgetPanel({ wedding, api }: Props) {
               defaultValue={editingVendor?.email ?? ""}
             />
           </Field>
-          <Field label="Contact phone" name="vendorPhone">
+          <Field label={copy.operations.contactPhone} name="vendorPhone">
             <Input
               id="vendorPhone"
               name="vendorPhone"
               defaultValue={editingVendor?.phone ?? ""}
             />
           </Field>
-          <Field label="Quote amount" name="vendorQuote">
+          <Field label={copy.operations.quoteAmount} name="vendorQuote">
             <Input
               id="vendorQuote"
               name="vendorQuote"
@@ -460,7 +467,7 @@ function BudgetPanel({ wedding, api }: Props) {
               }
             />
           </Field>
-          <Field label="Vendor notes" name="vendorNote">
+          <Field label={copy.operations.vendorNotes} name="vendorNote">
             <Textarea
               id="vendorNote"
               name="vendorNote"
@@ -469,7 +476,9 @@ function BudgetPanel({ wedding, api }: Props) {
           </Field>
           <div className="space-x-2 self-end">
             <Button type="submit" disabled={busy}>
-              {editingVendor ? "Save vendor" : "Add vendor"}
+              {editingVendor
+                ? copy.operations.saveVendor
+                : copy.operations.addVendor}
             </Button>
             {editingVendor ? (
               <Button
@@ -477,7 +486,7 @@ function BudgetPanel({ wedding, api }: Props) {
                 variant="ghost"
                 onClick={() => setEditingVendor(null)}
               >
-                Cancel
+                {copy.operations.cancel}
               </Button>
             ) : null}
           </div>
@@ -486,9 +495,10 @@ function BudgetPanel({ wedding, api }: Props) {
           <ul className="space-y-2">
             {vendors.map((vendor) => (
               <li key={vendor.id} className="rounded-xl border p-3 text-sm">
-                <strong>{vendor.name}</strong> · {vendor.status}
+                <strong>{vendor.name}</strong> ·{" "}
+                {copy.operations[vendor.status]}
                 {currency && vendor.quoteMinor != null
-                  ? ` · Quote ${moneyLabel(vendor.quoteMinor, currency, wedding.locale)}`
+                  ? ` · ${copy.operations.quote} ${moneyLabel(vendor.quoteMinor, currency, wedding.locale)}`
                   : ""}
                 <div className="mt-2 flex gap-2">
                   <Button
@@ -496,7 +506,7 @@ function BudgetPanel({ wedding, api }: Props) {
                     variant="ghost"
                     onClick={() => setEditingVendor(vendor)}
                   >
-                    Edit {vendor.name}
+                    {copy.operations.edit(vendor.name)}
                   </Button>
                   <Button
                     type="button"
@@ -505,7 +515,7 @@ function BudgetPanel({ wedding, api }: Props) {
                     onClick={() => {
                       if (
                         window.confirm(
-                          `Delete “${vendor.name}”? Associated costs stay saved.`,
+                          copy.operations.deleteVendor(vendor.name),
                         )
                       )
                         void mutate(() =>
@@ -513,14 +523,14 @@ function BudgetPanel({ wedding, api }: Props) {
                         );
                     }}
                   >
-                    Delete {vendor.name}
+                    {copy.operations.delete(vendor.name)}
                   </Button>
                 </div>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="text-sm">No vendors yet.</p>
+          <p className="text-sm">{copy.operations.noVendors}</p>
         )}
         {vendorCursor ? (
           <Button
@@ -529,12 +539,12 @@ function BudgetPanel({ wedding, api }: Props) {
             disabled={busy}
             onClick={() => void more("vendors")}
           >
-            Load more vendors
+            {copy.operations.moreVendors}
           </Button>
         ) : null}
       </Card>
       <Card className="space-y-4 p-5 sm:p-6">
-        <h3 className="font-serif text-xl">Expenses & payments</h3>
+        <h3 className="font-serif text-xl">{copy.operations.expenses}</h3>
         {currency ? (
           <form
             key={editingExpense?.id ?? "new"}
@@ -560,7 +570,7 @@ function BudgetPanel({ wedding, api }: Props) {
               );
             }}
           >
-            <Field label="Expense title" name="expenseTitle">
+            <Field label={copy.operations.expenseTitle} name="expenseTitle">
               <Input
                 id="expenseTitle"
                 name="expenseTitle"
@@ -568,13 +578,13 @@ function BudgetPanel({ wedding, api }: Props) {
                 defaultValue={editingExpense?.title ?? ""}
               />
             </Field>
-            <Field label="Category" name="expenseCategory">
+            <Field label={copy.operations.category} name="expenseCategory">
               <Select
                 id="expenseCategory"
                 name="expenseCategory"
                 defaultValue={editingExpense?.categoryId ?? ""}
               >
-                <option value="">Uncategorized</option>
+                <option value="">{copy.operations.uncategorized}</option>
                 {categories.map((c) => (
                   <option value={c.id} key={c.id}>
                     {c.name}
@@ -582,7 +592,7 @@ function BudgetPanel({ wedding, api }: Props) {
                 ))}
               </Select>
             </Field>
-            <Field label="Planned amount" name="planned">
+            <Field label={copy.operations.plannedAmount} name="planned">
               <Input
                 id="planned"
                 name="planned"
@@ -594,7 +604,7 @@ function BudgetPanel({ wedding, api }: Props) {
                 )}
               />
             </Field>
-            <Field label="Paid amount" name="paid">
+            <Field label={copy.operations.paidAmount} name="paid">
               <Input
                 id="paid"
                 name="paid"
@@ -606,13 +616,13 @@ function BudgetPanel({ wedding, api }: Props) {
                 )}
               />
             </Field>
-            <Field label="Vendor" name="expenseVendor">
+            <Field label={copy.operations.vendor} name="expenseVendor">
               <Select
                 id="expenseVendor"
                 name="expenseVendor"
                 defaultValue={editingExpense?.vendorId ?? ""}
               >
-                <option value="">No vendor</option>
+                <option value="">{copy.operations.noVendor}</option>
                 {vendors.map((v) => (
                   <option value={v.id} key={v.id}>
                     {v.name}
@@ -623,12 +633,12 @@ function BudgetPanel({ wedding, api }: Props) {
                   (vendor) => vendor.id === editingExpense.vendorId,
                 ) ? (
                   <option value={editingExpense.vendorId}>
-                    Linked vendor (load more vendors to see the name)
+                    {copy.operations.linkedVendor}
                   </option>
                 ) : null}
               </Select>
             </Field>
-            <Field label="Payment due date" name="expenseDue">
+            <Field label={copy.operations.paymentDue} name="expenseDue">
               <Input
                 id="expenseDue"
                 name="expenseDue"
@@ -636,7 +646,7 @@ function BudgetPanel({ wedding, api }: Props) {
                 defaultValue={editingExpense?.dueDate ?? ""}
               />
             </Field>
-            <Field label="Expense notes" name="expenseNote">
+            <Field label={copy.operations.expenseNotes} name="expenseNote">
               <Textarea
                 id="expenseNote"
                 name="expenseNote"
@@ -645,7 +655,9 @@ function BudgetPanel({ wedding, api }: Props) {
             </Field>
             <div className="space-x-2 self-end">
               <Button type="submit" disabled={busy}>
-                {editingExpense ? "Save expense" : "Add expense"}
+                {editingExpense
+                  ? copy.operations.saveExpense
+                  : copy.operations.addExpense}
               </Button>
               {editingExpense ? (
                 <Button
@@ -653,50 +665,57 @@ function BudgetPanel({ wedding, api }: Props) {
                   variant="ghost"
                   onClick={() => setEditingExpense(null)}
                 >
-                  Cancel
+                  {copy.operations.cancel}
                 </Button>
               ) : null}
             </div>
           </form>
         ) : (
-          <p className="text-sm">Set a currency to record expenses.</p>
+          <p className="text-sm">{copy.operations.setCurrency}</p>
         )}
         {expenses.length && currency ? (
           <ul className="space-y-2">
             {expenses.map((expense) => (
               <li key={expense.id} className="rounded-xl border p-3 text-sm">
-                <strong>{expense.title}</strong> · planned{" "}
+                <strong>{expense.title}</strong> · {copy.operations.planned}{" "}
                 {moneyLabel(expense.plannedMinor, currency, wedding.locale)}
-                {" · "}paid{" "}
+                {" · "}
+                {copy.operations.paid}{" "}
                 {moneyLabel(expense.paidMinor, currency, wedding.locale)}
-                {expense.dueDate ? ` · due ${expense.dueDate}` : ""}
+                {expense.dueDate
+                  ? ` · ${copy.operations.due} ${expense.dueDate}`
+                  : ""}
                 <div className="mt-2 flex gap-2">
                   <Button
                     type="button"
                     variant="ghost"
                     onClick={() => setEditingExpense(expense)}
                   >
-                    Edit {expense.title}
+                    {copy.operations.edit(expense.title)}
                   </Button>
                   <Button
                     type="button"
                     variant="ghost"
                     disabled={busy}
                     onClick={() => {
-                      if (window.confirm(`Delete expense “${expense.title}”?`))
+                      if (
+                        window.confirm(
+                          copy.operations.deleteExpense(expense.title),
+                        )
+                      )
                         void mutate(() =>
                           api.deleteExpense(wedding.id, expense.id),
                         );
                     }}
                   >
-                    Delete {expense.title}
+                    {copy.operations.delete(expense.title)}
                   </Button>
                 </div>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="text-sm">No expenses yet.</p>
+          <p className="text-sm">{copy.operations.noExpenses}</p>
         )}
         {expenseCursor ? (
           <Button
@@ -705,7 +724,7 @@ function BudgetPanel({ wedding, api }: Props) {
             disabled={busy}
             onClick={() => void more("expenses")}
           >
-            Load more expenses
+            {copy.operations.moreExpenses}
           </Button>
         ) : null}
       </Card>
@@ -731,6 +750,7 @@ function localValue(instant: string, timeZone: string): string {
 }
 
 function RunSheetPanel({ wedding, api }: Props) {
+  const copy = useUiCopy();
   const [items, setItems] = useState<RunSheetItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [editing, setEditing] = useState<RunSheetItem | null>(null);
@@ -749,7 +769,7 @@ function RunSheetPanel({ wedding, api }: Props) {
         setError(null);
       }
     } catch (caught) {
-      if (current === generation.current) setError(errorText(caught));
+      if (current === generation.current) setError(errorText(caught, copy));
     } finally {
       if (current === generation.current) setLoading(false);
     }
@@ -768,17 +788,16 @@ function RunSheetPanel({ wedding, api }: Props) {
       setEditing(null);
       await reload();
     } catch (caught) {
-      setError(errorText(caught));
+      setError(errorText(caught, copy));
     } finally {
       setBusy(false);
     }
   }
   return (
     <Card className="space-y-4 p-5 sm:p-6">
-      <h2 className="font-serif text-2xl">Day schedule</h2>
+      <h2 className="font-serif text-2xl">{copy.operations.schedule}</h2>
       <p className="text-sm">
-        Private run sheet · times shown in {wedding.timeZone}. Guests do not see
-        this schedule.
+        {copy.operations.scheduleDescription(wedding.timeZone)}
       </p>
       {error ? (
         <p role="alert" className="text-[#9b3737]">
@@ -810,11 +829,11 @@ function RunSheetPanel({ wedding, api }: Props) {
               api.saveRunSheetItem(wedding.id, editing?.id ?? null, input),
             );
           } catch (caught) {
-            setError(errorText(caught));
+            setError(errorText(caught, copy));
           }
         }}
       >
-        <Field label="Schedule title" name="scheduleTitle">
+        <Field label={copy.operations.scheduleTitle} name="scheduleTitle">
           <Input
             id="scheduleTitle"
             name="scheduleTitle"
@@ -822,14 +841,14 @@ function RunSheetPanel({ wedding, api }: Props) {
             defaultValue={editing?.title ?? ""}
           />
         </Field>
-        <Field label="Location" name="location">
+        <Field label={copy.operations.location} name="location">
           <Input
             id="location"
             name="location"
             defaultValue={editing?.location ?? ""}
           />
         </Field>
-        <Field label="Start (wedding time)" name="start">
+        <Field label={copy.operations.start} name="start">
           <Input
             id="start"
             name="start"
@@ -840,7 +859,7 @@ function RunSheetPanel({ wedding, api }: Props) {
             }
           />
         </Field>
-        <Field label="End (wedding time)" name="end">
+        <Field label={copy.operations.end} name="end">
           <Input
             id="end"
             name="end"
@@ -851,14 +870,14 @@ function RunSheetPanel({ wedding, api }: Props) {
             }
           />
         </Field>
-        <Field label="Responsible person" name="responsible">
+        <Field label={copy.operations.responsible} name="responsible">
           <Input
             id="responsible"
             name="responsible"
             defaultValue={editing?.responsible ?? ""}
           />
         </Field>
-        <Field label="Private notes" name="scheduleNote">
+        <Field label={copy.operations.privateNotes} name="scheduleNote">
           <Textarea
             id="scheduleNote"
             name="scheduleNote"
@@ -867,7 +886,9 @@ function RunSheetPanel({ wedding, api }: Props) {
         </Field>
         <div className="space-x-2">
           <Button type="submit" disabled={busy}>
-            {editing ? "Save schedule item" : "Add schedule item"}
+            {editing
+              ? copy.operations.saveSchedule
+              : copy.operations.addSchedule}
           </Button>
           {editing ? (
             <Button
@@ -875,12 +896,12 @@ function RunSheetPanel({ wedding, api }: Props) {
               variant="ghost"
               onClick={() => setEditing(null)}
             >
-              Cancel
+              {copy.operations.cancel}
             </Button>
           ) : null}
         </div>
       </form>
-      {loading ? <p role="status">Loading schedule…</p> : null}
+      {loading ? <p role="status">{copy.operations.loadingSchedule}</p> : null}
       {items.length ? (
         <ol className="space-y-2">
           {items.map((item) => (
@@ -896,7 +917,7 @@ function RunSheetPanel({ wedding, api }: Props) {
                   variant="ghost"
                   onClick={() => setEditing(item)}
                 >
-                  Edit {item.title}
+                  {copy.operations.edit(item.title)}
                 </Button>
                 <Button
                   type="button"
@@ -904,23 +925,21 @@ function RunSheetPanel({ wedding, api }: Props) {
                   disabled={busy}
                   onClick={() => {
                     if (
-                      window.confirm(
-                        `Delete “${item.title}” from the run sheet?`,
-                      )
+                      window.confirm(copy.operations.deleteSchedule(item.title))
                     )
                       void mutate(() =>
                         api.deleteRunSheetItem(wedding.id, item.id),
                       );
                   }}
                 >
-                  Delete {item.title}
+                  {copy.operations.delete(item.title)}
                 </Button>
               </div>
             </li>
           ))}
         </ol>
       ) : (
-        <p className="text-sm">No schedule items yet.</p>
+        <p className="text-sm">{copy.operations.noSchedule}</p>
       )}
       {cursor ? (
         <Button
@@ -940,13 +959,14 @@ function RunSheetPanel({ wedding, api }: Props) {
                 setCursor(page.nextCursor);
               }
             } catch (caught) {
-              if (current === generation.current) setError(errorText(caught));
+              if (current === generation.current)
+                setError(errorText(caught, copy));
             } finally {
               if (current === generation.current) setBusy(false);
             }
           }}
         >
-          Load more schedule items
+          {copy.operations.moreSchedule}
         </Button>
       ) : null}
     </Card>
@@ -954,6 +974,7 @@ function RunSheetPanel({ wedding, api }: Props) {
 }
 
 function SeatingPanel({ wedding, api }: Props) {
+  const copy = useUiCopy();
   const [tables, setTables] = useState<SeatingTable[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [assignments, setAssignments] = useState<
@@ -985,7 +1006,7 @@ function SeatingPanel({ wedding, api }: Props) {
       setAssignments(assigned);
       setError(null);
     } catch (caught) {
-      if (current === generation.current) setError(errorText(caught));
+      if (current === generation.current) setError(errorText(caught, copy));
     } finally {
       if (current === generation.current) setLoading(false);
     }
@@ -1007,7 +1028,7 @@ function SeatingPanel({ wedding, api }: Props) {
       setEditing(null);
       await reload(nextSelection);
     } catch (caught) {
-      setError(errorText(caught));
+      setError(errorText(caught, copy));
     } finally {
       setBusy(false);
     }
@@ -1036,18 +1057,15 @@ function SeatingPanel({ wedding, api }: Props) {
         setCandidateCursor(page.nextCursor);
       }
     } catch (caught) {
-      if (current === generation.current) setError(errorText(caught));
+      if (current === generation.current) setError(errorText(caught, copy));
     } finally {
       if (current === generation.current) setBusy(false);
     }
   }
   return (
     <Card className="space-y-4 p-5 sm:p-6">
-      <h2 className="font-serif text-2xl">Seating</h2>
-      <p className="text-sm">
-        Seat each invited party together. Reserved seats use their allowed party
-        size. Unassign before changing that size.
-      </p>
+      <h2 className="font-serif text-2xl">{copy.operations.seating}</h2>
+      <p className="text-sm">{copy.operations.seatingDescription}</p>
       {error ? (
         <p role="alert" className="text-[#9b3737]">
           {error}
@@ -1069,7 +1087,7 @@ function SeatingPanel({ wedding, api }: Props) {
           );
         }}
       >
-        <Field label="Table name" name="tableName">
+        <Field label={copy.operations.tableName} name="tableName">
           <Input
             id="tableName"
             name="tableName"
@@ -1077,7 +1095,7 @@ function SeatingPanel({ wedding, api }: Props) {
             defaultValue={editing?.name ?? ""}
           />
         </Field>
-        <Field label="Table capacity" name="capacity">
+        <Field label={copy.operations.tableCapacity} name="capacity">
           <Input
             id="capacity"
             name="capacity"
@@ -1089,7 +1107,7 @@ function SeatingPanel({ wedding, api }: Props) {
           />
         </Field>
         <Button className="self-end" type="submit" disabled={busy}>
-          {editing ? "Save table" : "Add table"}
+          {editing ? copy.operations.saveTable : copy.operations.addTable}
         </Button>
         {editing ? (
           <Button
@@ -1098,11 +1116,11 @@ function SeatingPanel({ wedding, api }: Props) {
             variant="ghost"
             onClick={() => setEditing(null)}
           >
-            Cancel
+            {copy.operations.cancel}
           </Button>
         ) : null}
       </form>
-      {loading ? <p role="status">Loading tables…</p> : null}
+      {loading ? <p role="status">{copy.operations.loadingTables}</p> : null}
       {tables.length ? (
         <div className="flex flex-wrap gap-2">
           {tables.map((table) => (
@@ -1117,14 +1135,15 @@ function SeatingPanel({ wedding, api }: Props) {
           ))}
         </div>
       ) : (
-        <p className="text-sm">No tables yet.</p>
+        <p className="text-sm">{copy.operations.noTables}</p>
       )}
       {selected ? (
         <>
           <p className="text-sm">
-            {tables.find((table) => table.id === selected)!.capacity -
-              tables.find((table) => table.id === selected)!.reserved}{" "}
-            seats remaining at this table
+            {copy.operations.seatsRemaining(
+              tables.find((table) => table.id === selected)!.capacity -
+                tables.find((table) => table.id === selected)!.reserved,
+            )}
           </p>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -1134,28 +1153,26 @@ function SeatingPanel({ wedding, api }: Props) {
                 setEditing(tables.find((t) => t.id === selected) ?? null)
               }
             >
-              Edit selected table
+              {copy.operations.editTable}
             </Button>
             <Button
               type="button"
               variant="ghost"
               disabled={busy}
               onClick={() => {
-                if (
-                  window.confirm(
-                    "Delete this table and remove its guest assignments?",
-                  )
-                )
+                if (window.confirm(copy.operations.deleteTableConfirm))
                   void mutate(
                     () => api.deleteSeatingTable(wedding.id, selected),
                     null,
                   );
               }}
             >
-              Delete selected table
+              {copy.operations.deleteTable}
             </Button>
           </div>
-          <h3 className="font-serif text-xl">Assigned parties</h3>
+          <h3 className="font-serif text-xl">
+            {copy.operations.assignedParties}
+          </h3>
           {assignments.length ? (
             <ul className="space-y-2">
               {assignments.map((party) => (
@@ -1163,7 +1180,8 @@ function SeatingPanel({ wedding, api }: Props) {
                   key={party.guestId}
                   className="flex flex-wrap items-center gap-2"
                 >
-                  {party.guestName} · {party.partySize} seats
+                  {party.guestName} ·{" "}
+                  {copy.operations.partySeats(party.partySize)}
                   <Button
                     type="button"
                     variant="ghost"
@@ -1174,13 +1192,13 @@ function SeatingPanel({ wedding, api }: Props) {
                       )
                     }
                   >
-                    Unassign {party.guestName}
+                    {copy.operations.unassign(party.guestName)}
                   </Button>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-sm">No parties at this table.</p>
+            <p className="text-sm">{copy.operations.noParties}</p>
           )}
           <form
             className="flex flex-wrap items-end gap-2"
@@ -1189,7 +1207,7 @@ function SeatingPanel({ wedding, api }: Props) {
               void findGuests(search.trim());
             }}
           >
-            <Field label="Find a guest party" name="seatSearch">
+            <Field label={copy.operations.findParty} name="seatSearch">
               <Input
                 id="seatSearch"
                 name="seatSearch"
@@ -1198,7 +1216,7 @@ function SeatingPanel({ wedding, api }: Props) {
               />
             </Field>
             <Button type="submit" disabled={busy}>
-              Search guests
+              {copy.operations.searchGuests}
             </Button>
           </form>
           {candidates.length ? (
@@ -1208,7 +1226,8 @@ function SeatingPanel({ wedding, api }: Props) {
                   key={guest.id}
                   className="flex flex-wrap items-center gap-2"
                 >
-                  {guest.name} · up to {guest.allowedPartySize} seats
+                  {guest.name} ·{" "}
+                  {copy.operations.upToSeats(guest.allowedPartySize)}
                   <Button
                     type="button"
                     variant="ghost"
@@ -1220,8 +1239,8 @@ function SeatingPanel({ wedding, api }: Props) {
                     }
                   >
                     {guest.rsvp?.attendance === "declined"
-                      ? "Declined"
-                      : `Assign ${guest.name}`}
+                      ? copy.operations.declined
+                      : copy.operations.assign(guest.name)}
                   </Button>
                 </li>
               ))}
@@ -1233,7 +1252,7 @@ function SeatingPanel({ wedding, api }: Props) {
               variant="ghost"
               onClick={() => void findGuests(search.trim(), candidateCursor)}
             >
-              Load more guests
+              {copy.operations.moreGuests}
             </Button>
           ) : null}
         </>

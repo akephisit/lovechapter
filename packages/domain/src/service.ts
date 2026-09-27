@@ -47,6 +47,7 @@ import type {
   SeatingTableInput,
   SeatingAssignment,
 } from "@lovechapter/contracts";
+import { isCountryCode } from "@lovechapter/contracts";
 
 import { decodeCursor } from "./cursor";
 import {
@@ -1128,8 +1129,8 @@ function normalizePostalAddress(input: PostalAddressInput): PostalAddressInput {
   );
   const postalCode = normalizeOptionalText(input.postalCode, 32, "Postal code");
   const countryCode = input.countryCode?.trim().toUpperCase();
-  if (countryCode && !/^[A-Z]{2}$/.test(countryCode)) {
-    throw new DomainValidationError("Country code must be two letters");
+  if (countryCode && !isCountryCode(countryCode)) {
+    throw new DomainValidationError("Invalid country code");
   }
   if (addressLine2) result.addressLine2 = addressLine2;
   if (locality) result.locality = locality;

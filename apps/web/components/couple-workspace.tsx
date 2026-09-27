@@ -42,7 +42,8 @@ import { Card } from "./ui/card";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Select } from "./ui/select";
-import { useUiCopy } from "./ui-language-provider";
+import { useUiCopy, useUiLanguage } from "./ui-language-provider";
+import { StandardCodeCombobox } from "./ui/standard-code-combobox";
 import { LanguageSwitcher } from "./language-switcher";
 
 export interface CoupleWorkspaceApi
@@ -751,6 +752,24 @@ function WeddingForm({
   onSubmit(event: FormEvent<HTMLFormElement>): void;
 }) {
   const copy = useUiCopy();
+  const uiLanguage = useUiLanguage();
+  const [weddingDate, setWeddingDate] = useState("");
+  const [timeZone, setTimeZone] = useState("UTC");
+  const [locale, setLocale] = useState("en");
+  useEffect(() => {
+    const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    try {
+      new Intl.DateTimeFormat("en", { timeZone: browserZone });
+      setTimeZone(browserZone);
+    } catch {
+      /* Keep UTC. */
+    }
+    try {
+      setLocale(new Intl.Locale(navigator.language).toString());
+    } catch {
+      /* Keep English. */
+    }
+  }, []);
   return (
     <Card className="p-5 sm:p-6">
       <div className="mb-5 flex items-center gap-3">
@@ -771,23 +790,34 @@ function WeddingForm({
           <Input id="wedding-name" name="name" required maxLength={120} />
         </Field>
         <Field label={copy.workspace.weddingDate} htmlFor="wedding-date">
-          <Input id="wedding-date" name="weddingDate" type="date" />
+          <Input
+            id="wedding-date"
+            name="weddingDate"
+            type="date"
+            value={weddingDate}
+            onChange={(event) => setWeddingDate(event.target.value)}
+          />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
           <Field label={copy.workspace.timeZone} htmlFor="wedding-time-zone">
-            <Input
+            <StandardCodeCombobox
+              kind="timeZone"
+              uiLanguage={uiLanguage}
               id="wedding-time-zone"
               name="timeZone"
-              defaultValue="Asia/Bangkok"
-              required
+              value={timeZone}
+              onValueChange={setTimeZone}
+              date={weddingDate}
             />
           </Field>
           <Field label={copy.workspace.locale} htmlFor="wedding-locale">
-            <Input
+            <StandardCodeCombobox
+              kind="locale"
+              uiLanguage={uiLanguage}
               id="wedding-locale"
               name="locale"
-              defaultValue="en"
-              required
+              value={locale}
+              onValueChange={setLocale}
             />
           </Field>
         </div>

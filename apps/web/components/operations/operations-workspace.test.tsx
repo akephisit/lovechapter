@@ -7,6 +7,7 @@ import {
   OperationsWorkspace,
   type OperationsWorkspaceApi,
 } from "./operations-workspace";
+import { UiLanguageProvider } from "../ui-language-provider";
 
 const wedding = {
   id: "wed",
@@ -52,6 +53,64 @@ function fixture() {
 }
 
 describe("OperationsWorkspace", () => {
+  it("keeps wedding money formatting separate from the Thai UI language", async () => {
+    const api = fixture();
+    vi.mocked(api.getBudgetOverview).mockResolvedValue({
+      budget: { currency: "USD", targetMinor: 10000 },
+      plannedMinor: 10000,
+      paidMinor: 0,
+      remainingMinor: 10000,
+    });
+    render(
+      <UiLanguageProvider language="th">
+        <OperationsWorkspace
+          api={api}
+          wedding={{ ...wedding, locale: "en-US" }}
+        />
+      </UiLanguageProvider>,
+    );
+    expect(await screen.findByText(/\$100\.00/)).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "งบประมาณและผู้ให้บริการ" }),
+    ).toBeVisible();
+  });
+  it("uses Thai operations labels while keeping USD as the submitted currency", async () => {
+    const api = fixture();
+    render(
+      <UiLanguageProvider language="th">
+        <OperationsWorkspace
+          api={api}
+          wedding={{ ...wedding, locale: "en-US", timeZone: "Europe/London" }}
+        />
+      </UiLanguageProvider>,
+    );
+    expect(
+      screen.getByRole("button", { name: "งบประมาณและผู้ให้บริการ" }),
+    ).toBeVisible();
+    await userEvent.type(
+      await screen.findByRole("combobox", { name: "สกุลเงิน" }),
+      "USD{ArrowDown}{Enter}",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "บันทึกงบประมาณ" }),
+    );
+    await waitFor(() =>
+      expect(api.setBudget).toHaveBeenCalledWith("wed", {
+        currency: "USD",
+        targetMinor: null,
+      }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "กำหนดการวันงาน" }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "กำหนดการวันงาน" }),
+    ).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "ผังที่นั่ง" }));
+    expect(
+      await screen.findByRole("heading", { name: "ผังที่นั่ง" }),
+    ).toBeVisible();
+  });
   it("keeps a linked vendor when editing an expense before loading that vendor's page", async () => {
     const api = fixture();
     const vendorId = "vendor-on-later-page";
@@ -165,7 +224,10 @@ describe("OperationsWorkspace", () => {
     expect(
       await screen.findByRole("heading", { name: "Budget & vendors" }),
     ).toBeVisible();
-    await user.type(screen.getByLabelText("Currency code"), "THB");
+    await user.type(
+      screen.getByLabelText("Currency code"),
+      "THB{ArrowDown}{Enter}",
+    );
     await user.type(screen.getByLabelText("Budget target"), "1000");
     await user.click(screen.getByRole("button", { name: "Save budget" }));
     await waitFor(() =>
