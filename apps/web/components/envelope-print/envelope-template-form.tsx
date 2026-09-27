@@ -2,16 +2,17 @@ import {
   ENVELOPE_PRESETS,
   type EnvelopeTemplateInput,
 } from "@lovechapter/contracts";
+import { useUiCopy } from "../ui-language-provider";
 
 const integerFields = [
-  ["widthMm", "Width (mm)", 90, 330],
-  ["heightMm", "Height (mm)", 55, 480],
-  ["marginTopMm", "Top margin (mm)", 0, 480],
-  ["marginRightMm", "Right margin (mm)", 0, 480],
-  ["marginBottomMm", "Bottom margin (mm)", 0, 480],
-  ["marginLeftMm", "Left margin (mm)", 0, 480],
-  ["fontSizePt", "Font size (pt)", 8, 72],
-  ["lineSpacingPercent", "Line spacing (%)", 80, 250],
+  ["widthMm", 90, 330],
+  ["heightMm", 55, 480],
+  ["marginTopMm", 0, 480],
+  ["marginRightMm", 0, 480],
+  ["marginBottomMm", 0, 480],
+  ["marginLeftMm", 0, 480],
+  ["fontSizePt", 8, 72],
+  ["lineSpacingPercent", 80, 250],
 ] as const;
 
 export function EnvelopeTemplateForm({
@@ -21,10 +22,11 @@ export function EnvelopeTemplateForm({
   value: EnvelopeTemplateInput;
   onChange(value: EnvelopeTemplateInput): void;
 }) {
+  const copy = useUiCopy();
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       <label className="grid gap-1 text-sm">
-        Template name
+        {copy.envelope.templateName}
         <input
           className="rounded border p-2"
           maxLength={80}
@@ -33,7 +35,7 @@ export function EnvelopeTemplateForm({
         />
       </label>
       <label className="grid gap-1 text-sm">
-        Envelope size
+        {copy.envelope.size}
         <select
           className="rounded border p-2"
           value={
@@ -54,12 +56,12 @@ export function EnvelopeTemplateForm({
           <option value="DL">DL · 220 × 110 mm</option>
           <option value="C5">C5 · 229 × 162 mm</option>
           <option value="C6">C6 · 162 × 114 mm</option>
-          <option value="custom">Custom</option>
+          <option value="custom">{copy.envelope.custom}</option>
         </select>
       </label>
-      {integerFields.map(([field, label, min, max]) => (
+      {integerFields.map(([field, min, max]) => (
         <label className="grid gap-1 text-sm" key={field}>
-          {label}
+          {copy.envelope[field]}
           <input
             className="rounded border p-2"
             type="number"
@@ -78,7 +80,7 @@ export function EnvelopeTemplateForm({
         </label>
       ))}
       <label className="grid gap-1 text-sm">
-        Orientation
+        {copy.envelope.orientation}
         <select
           className="rounded border p-2"
           value={value.orientation}
@@ -90,12 +92,12 @@ export function EnvelopeTemplateForm({
             })
           }
         >
-          <option value="landscape">Landscape</option>
-          <option value="portrait">Portrait</option>
+          <option value="landscape">{copy.envelope.landscape}</option>
+          <option value="portrait">{copy.envelope.portrait}</option>
         </select>
       </label>
       <label className="grid gap-1 text-sm">
-        Alignment
+        {copy.envelope.alignment}
         <select
           className="rounded border p-2"
           value={value.alignment}
@@ -107,13 +109,13 @@ export function EnvelopeTemplateForm({
             })
           }
         >
-          <option value="left">Left</option>
-          <option value="center">Center</option>
-          <option value="right">Right</option>
+          <option value="left">{copy.envelope.left}</option>
+          <option value="center">{copy.envelope.center}</option>
+          <option value="right">{copy.envelope.right}</option>
         </select>
       </label>
       <label className="grid gap-1 text-sm">
-        Font
+        {copy.envelope.font}
         <select
           className="rounded border p-2"
           value={value.fontFamily}
@@ -137,7 +139,7 @@ export function EnvelopeTemplateForm({
             onChange({ ...value, showAddress: event.target.checked })
           }
         />
-        Print postal address
+        {copy.envelope.showAddress}
       </label>
     </div>
   );

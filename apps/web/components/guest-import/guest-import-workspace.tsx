@@ -11,8 +11,11 @@ import type {
 } from "@lovechapter/contracts";
 import { useState } from "react";
 
+import { safeUiError } from "../../lib/ui-error";
+import type { UiCopy } from "../../lib/ui-copy";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
+import { useUiCopy } from "../ui-language-provider";
 import { ColumnMapping, isValidColumnMapping } from "./column-mapping";
 import { ImportPreviewTable } from "./import-preview-table";
 
@@ -52,6 +55,7 @@ export function GuestImportWorkspace({
   onImported(): void;
   onAffiliationCreated?(affiliation: GuestAffiliation): void;
 }) {
+  const copy = useUiCopy();
   const [file, setFile] = useState<File | null>(null);
   const [step, setStep] = useState<"select" | "map" | "review" | "done">(
     "select",
@@ -95,11 +99,11 @@ export function GuestImportWorkspace({
 
   async function upload() {
     if (!file || !/\.csv$/i.test(file.name)) {
-      setError("Select a CSV file first.");
+      setError(copy.csv.selectError);
       return;
     }
     if (file.size > 1024 * 1024) {
-      setError("CSV must be at most 1 MiB.");
+      setError(copy.csv.sizeError);
       return;
     }
     setBusy(true);
@@ -113,7 +117,7 @@ export function GuestImportWorkspace({
       setKey(crypto.randomUUID());
       setStep("map");
     } catch (cause) {
-      setError(readError(cause));
+      setError(readError(cause, copy));
     } finally {
       setBusy(false);
     }
@@ -144,7 +148,7 @@ export function GuestImportWorkspace({
       setConfirmed(new Set());
       return true;
     } catch (cause) {
-      setError(readError(cause));
+      setError(readError(cause, copy));
       if (
         typeof cause === "object" &&
         cause &&
@@ -208,7 +212,7 @@ export function GuestImportWorkspace({
       setStep("done");
       onImported();
     } catch (cause) {
-      setError(readError(cause));
+      setError(readError(cause, copy));
     } finally {
       setBusy(false);
     }
@@ -231,7 +235,7 @@ export function GuestImportWorkspace({
       setAffiliationMappings(next);
       await apply(excluded, next);
     } catch (cause) {
-      setError(readError(cause));
+      setError(readError(cause, copy));
     } finally {
       setBusy(false);
     }
@@ -239,13 +243,8 @@ export function GuestImportWorkspace({
 
   return (
     <Card className="space-y-4 p-5 sm:p-6">
-      <h3 className="font-serif text-2xl font-semibold">
-        Import guests from CSV
-      </h3>
-      <p className="text-sm text-[#806d70]">
-        Creates new guests only; it never merges existing records. Postal
-        addresses are optional. Maximum 1 MiB and 5,000 rows.
-      </p>
+      <h3 className="font-serif text-2xl font-semibold">{copy.csv.title}</h3>
+      <p className="text-sm text-[#806d70]">{copy.csv.description}</p>
       {error ? (
         <p role="alert" className="text-sm text-red-700">
           {error}
@@ -254,7 +253,7 @@ export function GuestImportWorkspace({
       {step === "select" ? (
         <div className="space-y-3">
           <label className="block text-sm">
-            Select CSV{" "}
+            {copy.csv.select}{" "}
             <input
               type="file"
               accept=".csv,text/csv"
@@ -262,16 +261,13 @@ export function GuestImportWorkspace({
             />
           </label>
           <Button disabled={busy} onClick={() => void upload()}>
-            {busy ? "Uploading and loading preview…" : "Upload CSV"}
+            {busy ? copy.csv.uploading : copy.csv.upload}
           </Button>
         </div>
       ) : null}
       {step === "map" && preview && mapping ? (
         <div className="space-y-4">
-          <p className="text-sm">
-            Step 2 of 4 · Map columns. Name is required; each CSV column can be
-            used once.
-          </p>
+          <p className="text-sm">{copy.csv.mapStep}</p>
           <ColumnMapping
             headers={preview.headers}
             mapping={mapping}
@@ -290,25 +286,28 @@ export function GuestImportWorkspace({
               })()
             }
           >
-            Review rows
+            {copy.csv.review}
           </Button>
         </div>
       ) : null}
       {step === "review" && preview ? (
         <div className="space-y-4">
           <p className="text-sm">
-            Step 3 of 4 · Valid {preview.totals.valid}, warnings{" "}
-            {preview.totals.warning}, invalid {preview.totals.invalid}, excluded{" "}
-            {preview.totals.excluded}.
+            {copy.csv.reviewStep(
+              preview.totals.valid,
+              preview.totals.warning,
+              preview.totals.invalid,
+              preview.totals.excluded,
+            )}
           </p>
           {unknown.map((name) => (
             <div
               key={name}
               className="space-x-2 rounded-lg bg-[#fff3ed] p-2 text-sm"
             >
-              <span>Unknown guest side: {name}</span>
+              <span>{copy.csv.unknownSide(name)}</span>
               <select
-                aria-label={`Map guest side ${name}`}
+                aria-label={copy.csv.mapSide(name)}
                 className="rounded border p-1"
                 defaultValue=""
                 disabled={busy}
@@ -322,7 +321,7 @@ export function GuestImportWorkspace({
                   void apply(excluded, next);
                 }}
               >
-                <option value="">Choose existing side</option>
+                <option value="">{copy.csv.chooseSide}</option>
                 {knownAffiliations.map((side) => (
                   <option key={side.id} value={side.id}>
                     {side.name}
@@ -334,7 +333,7 @@ export function GuestImportWorkspace({
                 disabled={busy}
                 onClick={() => void createSide(name)}
               >
-                Create side
+                {copy.csv.createSide}
               </Button>
             </div>
           ))}
@@ -364,17 +363,20 @@ export function GuestImportWorkspace({
               disabled={page === 0 || busy}
               onClick={() => setPage(page - 1)}
             >
-              Previous rows
+              {copy.csv.previous}
             </Button>
             <span>
-              Page {page + 1} of {Math.max(1, Math.ceil(rows.length / 50))}
+              {copy.csv.page(
+                page + 1,
+                Math.max(1, Math.ceil(rows.length / 50)),
+              )}
             </span>
             <Button
               variant="secondary"
               disabled={(page + 1) * 50 >= rows.length || busy}
               onClick={() => setPage(page + 1)}
             >
-              Next rows
+              {copy.csv.next}
             </Button>
           </div>
           <Button
@@ -382,21 +384,19 @@ export function GuestImportWorkspace({
             disabled={busy}
             onClick={() => setStep("map")}
           >
-            Edit mapping
+            {copy.csv.editMapping}
           </Button>
           <Button
             disabled={busy || invalid || unconfirmed}
             onClick={() => void commit()}
           >
-            {busy ? "Importing…" : "Import guests"}
+            {busy ? copy.csv.importing : copy.csv.import}
           </Button>
         </div>
       ) : null}
       {step === "done" && result ? (
         <div role="status" className="space-y-2 text-sm">
-          <p>
-            Imported {result.created} guests; excluded {result.excluded} rows.
-          </p>
+          <p>{copy.csv.done(result.created, result.excluded)}</p>
           <Button
             variant="secondary"
             onClick={() => {
@@ -407,7 +407,7 @@ export function GuestImportWorkspace({
               setKey("");
             }}
           >
-            Import another CSV
+            {copy.csv.another}
           </Button>
         </div>
       ) : null}
@@ -415,8 +415,16 @@ export function GuestImportWorkspace({
   );
 }
 
-function readError(error: unknown): string {
-  return error instanceof Error
-    ? error.message
-    : "Guest import failed. Please retry.";
+function readError(error: unknown, copy: UiCopy): string {
+  if (
+    (error &&
+      typeof error === "object" &&
+      "status" in error &&
+      error.status === 409) ||
+    (error instanceof Error &&
+      error.message === "Preview changed. Please reload the import.")
+  ) {
+    return copy.csv.changed;
+  }
+  return safeUiError(error, copy, copy.csv.error);
 }

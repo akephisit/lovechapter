@@ -11,6 +11,7 @@ import {
   GuestImportWorkspace,
   type GuestImportApi,
 } from "./guest-import-workspace";
+import { UiLanguageProvider } from "../ui-language-provider";
 
 const row: GuestImportPreviewRow = {
   id: "018f0000-0000-7000-8000-000000000004",
@@ -49,7 +50,10 @@ function preview(items: GuestImportPreviewRow[] = [row]): GuestImportPreview {
     nextCursor: null,
   };
 }
-function fixture(items?: GuestImportPreviewRow[]) {
+function fixture(
+  items?: GuestImportPreviewRow[],
+  language: "en" | "th" = "en",
+) {
   const api: GuestImportApi = {
     uploadGuestCsv: vi.fn(async () => preview(items)),
     getGuestImportPreview: vi.fn(async () => preview(items)),
@@ -72,17 +76,46 @@ function fixture(items?: GuestImportPreviewRow[]) {
   };
   const onImported = vi.fn();
   render(
-    <GuestImportWorkspace
-      weddingId="wedding"
-      affiliations={[]}
-      api={api}
-      onImported={onImported}
-    />,
+    <UiLanguageProvider language={language}>
+      <GuestImportWorkspace
+        weddingId="wedding"
+        affiliations={[]}
+        api={api}
+        onImported={onImported}
+      />
+    </UiLanguageProvider>,
   );
   return { api, onImported };
 }
 
 describe("GuestImportWorkspace", () => {
+  it("keeps a CSV header and Unicode guest name untouched in Thai UI", async () => {
+    const unicodeRow = {
+      ...row,
+      sourceName: "李 & มะลิ",
+      candidate: { name: "李 & มะลิ", allowedPartySize: 1 },
+    };
+    const { api } = fixture([unicodeRow], "th");
+    vi.mocked(api.uploadGuestCsv).mockResolvedValue({
+      ...preview([unicodeRow]),
+      headers: ["name", "country_code"],
+      mapping: { ...preview([unicodeRow]).mapping, countryCode: 1 },
+    });
+    fireEvent.change(screen.getByLabelText("เลือกไฟล์ CSV"), {
+      target: {
+        files: [new File(["name,country_code\n李 & มะลิ,JP"], "guests.csv")],
+      },
+    });
+    await userEvent.click(screen.getByRole("button", { name: "อัปโหลด CSV" }));
+    expect(
+      (await screen.findAllByRole("option", { name: "country_code" })).length,
+    ).toBeGreaterThan(0);
+    await userEvent.click(screen.getByRole("button", { name: "ตรวจสอบแถว" }));
+    expect(await screen.findByText("李 & มะลิ")).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "นำเข้าแขก" }));
+    expect(api.commitGuestImport).toHaveBeenCalledOnce();
+    expect(await screen.findByRole("status")).toHaveTextContent("นำเข้า");
+  });
   it("keeps the same idempotency key across a failed commit and retry", async () => {
     const { api } = fixture();
     vi.mocked(api.commitGuestImport).mockRejectedValueOnce(
@@ -99,7 +132,9 @@ describe("GuestImportWorkspace", () => {
       await screen.findByRole("button", { name: /review rows/i }),
     );
     await user.click(screen.getByRole("button", { name: /import guests/i }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Network error");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Guest import failed. Please retry.",
+    );
     await user.click(screen.getByRole("button", { name: /import guests/i }));
     const first = vi.mocked(api.commitGuestImport).mock.calls[0]?.[2];
     const second = vi.mocked(api.commitGuestImport).mock.calls[1]?.[2];
@@ -137,7 +172,9 @@ describe("GuestImportWorkspace", () => {
       await screen.findByRole("button", { name: /review rows/i }),
     );
     await user.click(screen.getByRole("checkbox", { name: /exclude row 2/i }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Stale preview");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Preview changed. Please reload the import.",
+    );
     await user.click(screen.getByRole("checkbox", { name: /exclude row 2/i }));
     expect(api.updateGuestImportMapping).toHaveBeenLastCalledWith(
       "wedding",

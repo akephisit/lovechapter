@@ -7,8 +7,10 @@ import {
   buildEnvelopePrintCss,
   envelopePageDimensions,
 } from "../../lib/envelope-print";
+import { useUiCopy } from "../ui-language-provider";
 
 export function EnvelopePages({ data }: { data: EnvelopePrintData }) {
+  const copy = useUiCopy();
   const { widthMm, heightMm } = envelopePageDimensions(data.template);
   return (
     <div className="envelope-print-root space-y-3">
@@ -42,7 +44,7 @@ export function EnvelopePages({ data }: { data: EnvelopePrintData }) {
               </address>
             ) : (
               <p className="envelope-preview-warning text-sm text-red-700">
-                Missing postal address
+                {copy.envelope.missingAddress}
               </p>
             )
           ) : null}

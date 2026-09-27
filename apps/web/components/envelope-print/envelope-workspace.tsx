@@ -11,8 +11,11 @@ import { normalizeEnvelopeTemplateInput } from "@lovechapter/domain";
 import { useEffect, useRef, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
 
+import { safeUiError } from "../../lib/ui-error";
+import type { UiCopy } from "../../lib/ui-copy";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
+import { useUiCopy } from "../ui-language-provider";
 import { EnvelopePages } from "./envelope-pages";
 import { EnvelopeTemplateForm } from "./envelope-template-form";
 
@@ -59,9 +62,14 @@ export function EnvelopeWorkspace({
   guests: GuestSummary[];
   api: EnvelopeApi;
 }) {
+  const copy = useUiCopy();
+  const copyRef = useRef(copy);
+  copyRef.current = copy;
   const [selected, setSelected] = useState<string[]>([]);
-  const [template, setTemplate] =
-    useState<EnvelopeTemplateInput>(defaultTemplate);
+  const [template, setTemplate] = useState<EnvelopeTemplateInput>(() => ({
+    ...defaultTemplate,
+    name: copy.envelope.defaultName,
+  }));
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [saved, setSaved] = useState<EnvelopeTemplate[]>([]);
   const [data, setData] = useState<EnvelopePrintData | null>(null);
@@ -90,7 +98,7 @@ export function EnvelopeWorkspace({
         if (alive) setSaved(items);
       })
       .catch((cause) => {
-        if (alive) setError(readError(cause));
+        if (alive) setError(readError(cause, copyRef.current));
       });
     return () => {
       alive = false;
@@ -103,9 +111,7 @@ export function EnvelopeWorkspace({
     setFontError(null);
     const fonts = document.fonts;
     if (!fonts) {
-      setFontError(
-        "Browser font readiness is unavailable; printing is disabled.",
-      );
+      setFontError(copyRef.current.envelope.fontUnavailable);
       return;
     }
     void fonts.ready
@@ -113,7 +119,7 @@ export function EnvelopeWorkspace({
         if (alive) setFontReady(true);
       })
       .catch(() => {
-        if (alive) setFontError("Fonts did not load. Retry before printing.");
+        if (alive) setFontError(copyRef.current.envelope.fontsFailed);
       });
     return () => {
       alive = false;
@@ -149,7 +155,8 @@ export function EnvelopeWorkspace({
         }
       })
       .catch((cause) => {
-        if (requestId.current === generation) setError(readError(cause));
+        if (requestId.current === generation)
+          setError(readError(cause, copyRef.current));
       })
       .finally(() => {
         if (requestId.current === generation) setLoading(false);
@@ -174,7 +181,7 @@ export function EnvelopeWorkspace({
     try {
       checked = normalizeEnvelopeTemplateInput(template);
     } catch (cause) {
-      setError(readError(cause));
+      setError(readError(cause, copy));
       return;
     }
     setBusy(true);
@@ -189,14 +196,13 @@ export function EnvelopeWorkspace({
       ]);
       setTemplateId(value.id);
     } catch (cause) {
-      setError(readError(cause));
+      setError(readError(cause, copy));
     } finally {
       setBusy(false);
     }
   }
   async function removeTemplate() {
-    if (!templateId || !window.confirm("Delete this envelope template?"))
-      return;
+    if (!templateId || !window.confirm(copy.envelope.deleteConfirm)) return;
     setBusy(true);
     setError(null);
     try {
@@ -204,7 +210,7 @@ export function EnvelopeWorkspace({
       setSaved((current) => current.filter((item) => item.id !== templateId));
       setTemplateId(null);
     } catch (cause) {
-      setError(readError(cause));
+      setError(readError(cause, copy));
     } finally {
       setBusy(false);
     }
@@ -241,10 +247,10 @@ export function EnvelopeWorkspace({
       setPrinting(false);
       setBusy(false);
       if (fontsLoaded) {
-        setError("Could not open the print dialog. Please retry.");
+        setError(copy.envelope.printError);
       } else {
         setFontReady(false);
-        setFontError("Fonts did not load. Retry before printing.");
+        setFontError(copy.envelope.fontsFailed);
       }
     }
   }
@@ -269,11 +275,10 @@ export function EnvelopeWorkspace({
           )
         : null}
       <Card className="space-y-5 p-5 sm:p-6">
-        <h3 className="font-serif text-2xl font-semibold">Print envelopes</h3>
-        <p className="text-sm text-[#806d70]">
-          Check your printer’s non-printable margins and test one physical
-          envelope before the full run. One guest prints per page.
-        </p>
+        <h3 className="font-serif text-2xl font-semibold">
+          {copy.envelope.title}
+        </h3>
+        <p className="text-sm text-[#806d70]">{copy.envelope.description}</p>
         {error || fontError ? (
           <p role="alert" className="text-sm text-red-700">
             {error || fontError}{" "}
@@ -282,14 +287,14 @@ export function EnvelopeWorkspace({
                 variant="secondary"
                 onClick={() => setFontsRetry((n) => n + 1)}
               >
-                Retry fonts
+                {copy.envelope.retryFonts}
               </Button>
             ) : null}
           </p>
         ) : null}
         <fieldset className="space-y-2">
           <legend className="font-semibold">
-            Choose active guests · {selected.length}/500
+            {copy.envelope.select(selected.length)}
           </legend>
           <Button
             variant="secondary"
@@ -305,7 +310,7 @@ export function EnvelopeWorkspace({
               )
             }
           >
-            Select loaded guests
+            {copy.envelope.selectLoaded}
           </Button>
           {available.map((guest) => (
             <label
@@ -314,7 +319,7 @@ export function EnvelopeWorkspace({
             >
               <input
                 type="checkbox"
-                aria-label={`Print ${guest.name}`}
+                aria-label={copy.envelope.printGuest(guest.name)}
                 checked={selected.includes(guest.id)}
                 disabled={
                   !selected.includes(guest.id) && selected.length >= 500
@@ -326,13 +331,13 @@ export function EnvelopeWorkspace({
           ))}
           {selected.length ? (
             <Button variant="ghost" onClick={() => setSelected([])}>
-              Clear print selection
+              {copy.envelope.clear}
             </Button>
           ) : null}
         </fieldset>
         <fieldset className="space-y-3" disabled={busy}>
           <label className="grid gap-1 text-sm">
-            Saved template
+            {copy.envelope.savedTemplate}
             <select
               className="rounded border p-2"
               disabled={busy}
@@ -347,7 +352,7 @@ export function EnvelopeWorkspace({
                 } else setTemplateId(null);
               }}
             >
-              <option value="">Unsaved layout</option>
+              <option value="">{copy.envelope.unsaved}</option>
               {saved.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}
@@ -362,7 +367,9 @@ export function EnvelopeWorkspace({
               disabled={busy || !valid}
               onClick={() => void save()}
             >
-              {templateId ? "Update template" : "Save template"}
+              {templateId
+                ? copy.envelope.updateTemplate
+                : copy.envelope.saveTemplate}
             </Button>
             {templateId ? (
               <Button
@@ -370,15 +377,15 @@ export function EnvelopeWorkspace({
                 disabled={busy}
                 onClick={() => void removeTemplate()}
               >
-                Delete template
+                {copy.envelope.deleteTemplate}
               </Button>
             ) : null}
           </div>
         </fieldset>
-        {loading ? <p role="status">Loading envelope preview…</p> : null}
+        {loading ? <p role="status">{copy.envelope.loading}</p> : null}
         {data ? (
           <div className="space-y-3 overflow-x-auto">
-            <p>{data.guests.length} envelopes ready.</p>
+            <p>{copy.envelope.ready(data.guests.length)}</p>
             <EnvelopePages data={data} />
           </div>
         ) : null}
@@ -387,13 +394,13 @@ export function EnvelopeWorkspace({
           disabled={!data || !fontReady || busy || loading || !valid}
           onClick={() => void printEnvelopes()}
         >
-          {busy ? "Preparing print…" : "Print envelopes"}
+          {busy ? copy.envelope.preparing : copy.envelope.title}
         </Button>
       </Card>
     </>
   );
 }
 
-function readError(cause: unknown): string {
-  return cause instanceof Error ? cause.message : "Envelope request failed.";
+function readError(cause: unknown, copy: UiCopy): string {
+  return safeUiError(cause, copy, copy.envelope.requestError);
 }

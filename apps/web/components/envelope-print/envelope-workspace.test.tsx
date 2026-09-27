@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { envelopeFixture } from "../../lib/envelope-print.test";
+import { UiLanguageProvider } from "../ui-language-provider";
 import { EnvelopeWorkspace, type EnvelopeApi } from "./envelope-workspace";
 
 const guest: GuestSummary = {
@@ -21,6 +22,7 @@ function fixture(
     guests: [{ id: guest.id, envelopeName: "Nok", postalAddress: null }],
   },
   guests: GuestSummary[] = [guest],
+  language: "en" | "th" = "en",
 ) {
   const api: EnvelopeApi = {
     listEnvelopeTemplates: vi.fn(async () => []),
@@ -32,11 +34,42 @@ function fixture(
       template: input.template ?? data.template,
     })),
   };
-  render(<EnvelopeWorkspace weddingId="wedding" guests={guests} api={api} />);
+  render(
+    <UiLanguageProvider language={language}>
+      <EnvelopeWorkspace weddingId="wedding" guests={guests} api={api} />
+    </UiLanguageProvider>,
+  );
   return api;
 }
 afterEach(() => vi.unstubAllGlobals());
 describe("EnvelopeWorkspace", () => {
+  it("sets up Thai printing without changing a Unicode guest name", async () => {
+    const unicodeGuest = { ...guest, name: "李 & มะลิ" };
+    fixture(
+      {
+        template: envelopeFixture,
+        guests: [
+          {
+            id: guest.id,
+            envelopeName: unicodeGuest.name,
+            postalAddress: null,
+          },
+        ],
+      },
+      [unicodeGuest],
+      "th",
+    );
+    expect(screen.getByRole("heading", { name: "พิมพ์ซอง" })).toBeVisible();
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "พิมพ์ซองของ 李 & มะลิ" }),
+    );
+    expect(
+      await screen.findByText("李 & มะลิ", {
+        selector: ".envelope-print-page p",
+      }),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "บันทึกแม่แบบ" })).toBeVisible();
+  });
   it("caps selected loaded active guests at 500 and excludes archived guests", async () => {
     const many: GuestSummary[] = Array.from({ length: 501 }, (_, index) => ({
       ...guest,
