@@ -6,7 +6,9 @@ const accountIdPattern = /^[0-9a-f]{32}$/u;
 const workerNames = ["lovechapter-api-staging", "lovechapter-web-staging"];
 const failure = "Staging Cloudflare credential probe failed";
 
-async function readJson(url, token, fetcher) {
+class ProbeFailure extends Error {}
+
+async function readJson(url, token, fetcher, stage) {
   const response = await fetcher(url, {
     method: "GET",
     redirect: "error",
@@ -16,7 +18,11 @@ async function readJson(url, token, fetcher) {
     },
     signal: globalThis.AbortSignal.timeout(20_000),
   });
-  if (!response.ok) throw new Error(failure);
+  if (!response.ok) {
+    throw new ProbeFailure(
+      `staging_cloudflare_${stage}_http_${response.status}`,
+    );
+  }
   const body = await response.json();
   if (body?.success !== true) throw new Error(failure);
   return body.result;
@@ -51,6 +57,7 @@ export async function probeStagingCloudflareCredential(
       `${base}/hyperdrive/configs/${hyperdriveId}`,
       token,
       fetcher,
+      "hyperdrive",
     );
     if (
       hyperdrive?.id !== hyperdriveId ||
@@ -64,6 +71,7 @@ export async function probeStagingCloudflareCredential(
         `${workerBase}/deployments`,
         token,
         fetcher,
+        `${name}_deployments`,
       );
       if (
         !Array.isArray(deployment?.deployments) ||
@@ -84,12 +92,14 @@ export async function probeStagingCloudflareCredential(
         `${workerBase}/subdomain`,
         token,
         fetcher,
+        `${name}_subdomain`,
       );
       if (subdomain?.previews_enabled !== false) throw new Error(failure);
     }
     return { hyperdriveId, workerNames: [...workerNames] };
-  } catch {
-    throw new Error(failure);
+  } catch (error) {
+    if (error instanceof ProbeFailure) throw error;
+    throw new Error(failure, { cause: error });
   }
 }
 
@@ -100,8 +110,12 @@ if (
   try {
     await probeStagingCloudflareCredential(process.env);
     console.log("staging_cloudflare_credential_probe_ok");
-  } catch {
-    console.error("staging_cloudflare_credential_probe_failed");
+  } catch (error) {
+    console.error(
+      error instanceof ProbeFailure
+        ? error.message
+        : "staging_cloudflare_credential_probe_failed",
+    );
     process.exitCode = 1;
   }
 }

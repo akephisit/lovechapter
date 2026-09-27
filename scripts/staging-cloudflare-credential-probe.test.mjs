@@ -16,6 +16,20 @@ const environment = {
 };
 
 describe("staging Cloudflare credential probe", () => {
+  it("reports a denied Hyperdrive read without exposing provider details", async () => {
+    const { probeStagingCloudflareCredential } =
+      await import("./staging-cloudflare-credential-probe.mjs");
+    const fetcher = async () =>
+      globalThis.Response.json(
+        { errors: [{ message: "private-provider-message" }] },
+        { status: 403 },
+      );
+
+    await expect(
+      probeStagingCloudflareCredential(environment, { fetcher }),
+    ).rejects.toThrow("staging_cloudflare_hyperdrive_http_403");
+  });
+
   it("rejects an unprotected ref before using the credential", async () => {
     const { probeStagingCloudflareCredential } =
       await import("./staging-cloudflare-credential-probe.mjs");
