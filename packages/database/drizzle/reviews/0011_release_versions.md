@@ -16,7 +16,7 @@ PostgreSQL takes a table lock for the four nullable column additions and validat
 
 ## Validation
 
-Run `drizzle-kit check`, release-evidence and gate tests, and the disposable PostgreSQL release-gate integration suite. Confirm the old singleton row has all four new fields null; confirm a valid reopen stores all four atomically, and a partial version pair violates the constraint. Rehearse staging behind maintenance before production migration.
+Run `drizzle-kit check`, release-evidence and gate tests, and the disposable PostgreSQL release-gate integration suite. Confirm the old singleton row has all four new fields null; confirm a valid reopen stores all four atomically, and a partial version pair violates the constraint. First production publication remains closed until both Worker versions are accepted; subsequent direct-production cutovers verify the exact active pair.
 
 ## Recovery
 

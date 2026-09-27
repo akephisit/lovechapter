@@ -271,7 +271,6 @@ describe("concrete release driver composition", () => {
       apiOrigin: "https://lovechapter-api.example.workers.dev",
       proxySecret: Buffer.alloc(32, 1).toString("base64url"),
       probeSecret: Buffer.alloc(32, 2).toString("base64url"),
-      stagingSha: sha,
       verifyProduction: vi.fn(),
       applyMigration: vi.fn(),
     });

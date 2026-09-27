@@ -37,13 +37,7 @@ function fixture(overrides = {}) {
     verifyProduction: method("verifyProduction", {
       releaseEnabled: true,
       protectedMain: true,
-      stagingAcceptance: {
-        commitSha: sha,
-        checks: acceptanceChecks,
-        inboxDelivery: "waived",
-      },
       baseline: { expectedSha: prior, currentSha: prior },
-      recoveryCheckpoint: { branchId: "br-production", lsn: "0/ABC" },
       targetVerified: true,
     }),
     prepare: method("prepare", { sha, artifact: "prepared" }),
@@ -319,23 +313,7 @@ describe("serial Worker cutover", () => {
     for (const preflight of [
       { releaseEnabled: false },
       { protectedMain: false },
-      { stagingAcceptance: null },
-      {
-        stagingAcceptance: {
-          commitSha: prior,
-          checks: acceptanceChecks,
-          inboxDelivery: "waived",
-        },
-      },
-      {
-        stagingAcceptance: {
-          commitSha: sha,
-          checks: ["verified_session"],
-          inboxDelivery: "waived",
-        },
-      },
       { baseline: { expectedSha: prior, currentSha: sha } },
-      { recoveryCheckpoint: null },
       { targetVerified: false },
     ]) {
       const initial = fixture();
@@ -351,6 +329,15 @@ describe("serial Worker cutover", () => {
         "verifyProduction",
       ]);
     }
+  });
+
+  it("accepts a production cutover with no staging or recovery prerequisite for code-only changes", async () => {
+    const { driver, events } = fixture();
+    await expect(
+      runCutover({ ...input, environment: "production" }, driver),
+    ).resolves.toMatchObject({ status: "released", environment: "production" });
+    expect(events.map(([name]) => name)).not.toContain("createRecoveryPoint");
+    expect(events.map(([name]) => name)).not.toContain("verifyStaging");
   });
 
   it("rejects skipped staging acceptance after reopening and recloses", async () => {

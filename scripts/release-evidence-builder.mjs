@@ -21,7 +21,6 @@ export function buildReleaseEvidence(input) {
   const {
     environment,
     sha,
-    stagingSha,
     impact,
     previous,
     deployed,
@@ -32,7 +31,6 @@ export function buildReleaseEvidence(input) {
   if (
     !["staging", "production"].includes(environment) ||
     !shaPattern.test(sha ?? "") ||
-    (environment === "production" && stagingSha !== sha) ||
     !impact ||
     typeof impact.web !== "boolean" ||
     typeof impact.backend !== "boolean" ||
@@ -49,7 +47,6 @@ export function buildReleaseEvidence(input) {
   const evidence = {
     environment,
     commitSha: sha,
-    stagingSha: environment === "production" ? stagingSha : null,
     migration: migrationOutcome,
     privateSmokePassed: true,
     inboxDelivery: "waived",

@@ -13,14 +13,12 @@ const context = {
   sha,
   closedAt: "2026-09-26T06:00:00.000Z",
   previousVersions: prior,
-  stagingSha: sha,
 };
 
 function evidence(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     environment: "production",
     commitSha: sha,
-    stagingSha: sha,
     web: { versionId: "web-new", sourceSha: sha, changed: true },
     api: { ...prior.api, changed: false },
     migration: "not_required",
@@ -41,6 +39,7 @@ describe("exact-SHA release evidence", () => {
       changed: true,
     });
     expect(accepted.api).toEqual({ ...prior.api, changed: false });
+    expect(accepted).not.toHaveProperty("stagingSha");
     expect(JSON.stringify(accepted)).not.toContain("never-serialize-this");
   });
 
@@ -68,7 +67,6 @@ describe("exact-SHA release evidence", () => {
       { acceptedAt: "2026-09-26T05:59:59.000Z" },
       { acceptedAt: "2026" },
       { commitSha: previousSha },
-      { stagingSha: previousSha },
       { environment: "staging" },
       { privateSmokePassed: false },
       { inboxDelivery: "received" },

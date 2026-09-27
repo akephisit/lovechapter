@@ -26,19 +26,16 @@ function assertAcceptedStaging(acceptance, sha) {
   }
 }
 
-function assertProductionPreflight(preflight, sha) {
+function assertProductionPreflight(preflight) {
   if (
     preflight?.releaseEnabled !== true ||
     preflight.protectedMain !== true ||
     preflight.targetVerified !== true ||
     !shaPattern.test(preflight.baseline?.expectedSha ?? "") ||
-    preflight.baseline.expectedSha !== preflight.baseline.currentSha ||
-    !preflight.recoveryCheckpoint?.branchId ||
-    !preflight.recoveryCheckpoint?.lsn
+    preflight.baseline.expectedSha !== preflight.baseline.currentSha
   ) {
     throw new Error("Production release preflight is incomplete");
   }
-  assertAcceptedStaging(preflight.stagingAcceptance, sha);
 }
 
 function assertInput({ environment, sha, impact, migration }) {
@@ -90,7 +87,7 @@ export async function runCutover(input, driver) {
   await assertCurrentMain(sha, driver);
 
   if (environment === "production") {
-    assertProductionPreflight(await driver.verifyProduction(sha, input), sha);
+    assertProductionPreflight(await driver.verifyProduction(sha, input));
   } else if (
     (await driver.verifyStaging(sha, input))?.targetVerified !== true
   ) {

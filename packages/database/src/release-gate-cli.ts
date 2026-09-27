@@ -100,10 +100,6 @@ export async function runReleaseGateCli(
       closedAt: status.changedAt,
       previousVersions:
         status.web && status.api ? { web: status.web, api: status.api } : null,
-      stagingSha:
-        target.environment === "production"
-          ? requiredEnvironment(environment, "RELEASE_STAGING_SHA")
-          : null,
     });
     if (
       !(await controller.openFor(command.sha, status.changedAt, {

@@ -152,6 +152,29 @@ function evidence(overrides: Record<string, unknown> = {}): string {
 }
 
 describe("release gate CLI", () => {
+  it("opens a drained production gate with exact versions and no staging SHA", async () => {
+    const context = fixture({ mode: "maintenance", targetSha: sha });
+    const environment = {
+      ...context.environment,
+      RELEASE_ENVIRONMENT: "production",
+    };
+    await runReleaseGateCli(
+      ["open", "--sha", sha, "--evidence", "acceptance.json"],
+      environment,
+      {
+        createClient: context.createClient,
+        fetcher: context.fetcher,
+        write: context.write,
+        readEvidence: async () => evidence({ environment: "production" }),
+      },
+    );
+    expect(context.state().mode).toBe("open");
+    expect(context.versions()).toEqual({
+      web: { versionId: "web-version-1", sourceSha: sha },
+      api: { versionId: "api-version-1", sourceSha: sha },
+    });
+  });
+
   it("rejects legacy reopen evidence that lacks exact Worker versions", async () => {
     const context = fixture({ mode: "maintenance", targetSha: sha });
     await expect(

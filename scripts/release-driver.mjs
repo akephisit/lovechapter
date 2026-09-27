@@ -37,10 +37,10 @@ export function createReleaseDriver(config) {
     apiOrigin,
     proxySecret,
     probeSecret,
-    stagingSha,
     verifyStaging,
     verifyProduction,
     applyMigration,
+    createRecoveryPoint,
     acceptStaging,
     fetcher = globalThis.fetch,
     now = () => new Date(),
@@ -82,8 +82,7 @@ export function createReleaseDriver(config) {
       (typeof verifyStaging !== "function" ||
         typeof acceptStaging !== "function")) ||
     (environment === "production" &&
-      (stagingSha !== sha ||
-        typeof verifyProduction !== "function" ||
+      (typeof verifyProduction !== "function" ||
         typeof githubDeployment?.createDeployment !== "function" ||
         typeof githubDeployment?.createDeploymentStatus !== "function"))
   ) {
@@ -129,6 +128,12 @@ export function createReleaseDriver(config) {
       return gate.close(candidate);
     },
     drain: (candidate) => gate.drain(candidate),
+    createRecoveryPoint: (candidate, context) => {
+      if (typeof createRecoveryPoint !== "function") {
+        throw new Error("Breaking migration recovery adapter is unavailable");
+      }
+      return createRecoveryPoint(candidate, context);
+    },
     migrate: (candidate, context) => applyMigration(candidate, context),
     deploy: (_candidate, { prepared }) =>
       deployPreparedVersions(prepared, workerRunner),
@@ -151,7 +156,6 @@ export function createReleaseDriver(config) {
         buildReleaseEvidence({
           environment,
           sha: candidate,
-          stagingSha,
           impact,
           previous,
           deployed,

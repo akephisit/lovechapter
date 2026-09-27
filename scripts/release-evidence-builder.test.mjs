@@ -34,7 +34,6 @@ describe("release reopen evidence", () => {
     expect(buildReleaseEvidence(input())).toEqual({
       environment: "staging",
       commitSha: sha,
-      stagingSha: null,
       web: { ...deployed.web, changed: true },
       api: { ...previous.api, changed: false },
       migration: "not_required",
@@ -47,6 +46,7 @@ describe("release reopen evidence", () => {
   it("requires both new Worker versions for a both-component release", () => {
     const evidence = buildReleaseEvidence(
       input({
+        environment: "production",
         impact: { web: true, backend: true, migrate: true },
         deployed,
         migrationOutcome: "applied_and_validated",
@@ -56,19 +56,22 @@ describe("release reopen evidence", () => {
     expect(evidence.api).toEqual({ ...deployed.api, changed: true });
   });
 
-  it("binds production evidence to the exact accepted staging SHA", () => {
+  it("keeps the unchanged web version on an API-only production release", () => {
     const evidence = buildReleaseEvidence(
       input({
         environment: "production",
-        stagingSha: sha,
+        impact: { web: false, backend: true, migrate: false },
+        deployed: { web: previous.web, api: deployed.api },
       }),
     );
-    expect(evidence.stagingSha).toBe(sha);
-    expect(() =>
-      buildReleaseEvidence(
-        input({ environment: "production", stagingSha: oldSha }),
-      ),
-    ).toThrow();
+    expect(evidence.web).toEqual({ ...previous.web, changed: false });
+    expect(evidence.api).toEqual({ ...deployed.api, changed: true });
+  });
+
+  it("builds production evidence without staging acceptance", () => {
+    const evidence = buildReleaseEvidence(input({ environment: "production" }));
+    expect(evidence.environment).toBe("production");
+    expect(evidence).not.toHaveProperty("stagingSha");
   });
 
   it("rejects false smoke, stale closure, and unchanged-component drift", () => {

@@ -6,13 +6,11 @@ export type ReleaseEvidenceContext = {
   sha: string;
   closedAt: string;
   previousVersions: { web: WorkerVersion; api: WorkerVersion } | null;
-  stagingSha: string | null;
 };
 
 export type ReleaseEvidence = {
   environment: "staging" | "production";
   commitSha: string;
-  stagingSha: string | null;
   web: ReleaseWorkerVersion;
   api: ReleaseWorkerVersion;
   migration: "not_required" | "applied_and_validated";
@@ -95,13 +93,7 @@ export function validateReleaseEvidence(
     Date.parse(input.acceptedAt) <= closedAt ||
     input.privateSmokePassed !== true ||
     input.inboxDelivery !== "waived" ||
-    !["not_required", "applied_and_validated"].includes(
-      String(input.migration),
-    ) ||
-    (context.environment === "production" &&
-      (!context.stagingSha ||
-        context.stagingSha !== context.sha ||
-        input.stagingSha !== context.stagingSha))
+    !["not_required", "applied_and_validated"].includes(String(input.migration))
   ) {
     throw new Error(
       "Release evidence is incomplete or targets another closure",
@@ -123,8 +115,6 @@ export function validateReleaseEvidence(
   return {
     environment: context.environment,
     commitSha: context.sha,
-    stagingSha:
-      context.environment === "production" ? context.stagingSha : null,
     web,
     api,
     migration: input.migration as ReleaseEvidence["migration"],
