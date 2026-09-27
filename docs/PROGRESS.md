@@ -1,5 +1,19 @@
 # LoveChapter — Progress
 
+## Bilingual UI and workspace redesign specifications (2026-09-27)
+
+The owner approved two sequential design directions: an English/Thai switch
+across the browser-facing website with controlled selectors for standardized
+locale, time-zone, currency, and country codes; then a compact modern rose
+wedding workspace with one active section and an accurate RSVP aggregate. The
+written designs are in
+`docs/superpowers/specs/2026-09-27-bilingual-web-and-controlled-inputs-design.md`
+and
+`docs/superpowers/specs/2026-09-27-modern-wedding-workspace-design.md`.
+They await written-spec review before implementation planning. No application
+code, database schema, deployment, or production resource changed in this
+design step.
+
 ## Current release status (2026-09-27)
 
 The first public Cloudflare Worker installation is live on the generated
