@@ -1510,3 +1510,19 @@ migration hash, while active `staging` still has none of those columns and
 its gate remains open. No Worker deployment or maintenance transition took
 place. Active staging still needs migration `0011`, a guarded Worker-version
 baseline, and full live acceptance; both automatic release flags remain off.
+
+## One-time staging baseline design (2026-09-27)
+
+The owner approved writing a spec/runbook for a guarded, one-time baseline,
+but has not approved an active staging cutover. The design is in
+`docs/superpowers/specs/2026-09-27-staging-worker-baseline-design.md` pending
+written-spec review. Fresh read-only checks found `origin/main` still at
+`e236c04`, both GitHub `staging` and `production` environments present, and no
+repository-level release-enabled variables. Neon branch metadata reports
+`staging` as a root branch (`parent_id: null`); current Neon documentation
+limits instant restore to root branches, so root status and history-window
+eligibility must be checked again during the cutover. The already migrated
+`staging-test` branch cannot by itself rehearse active `staging`'s `0010` to
+`0011` transition. After the documentation edit, local formatting and
+`npm test` passed (108 files / 675 tests). No staging or production gate,
+database, Worker, secret, or release switch was changed in this design step.
