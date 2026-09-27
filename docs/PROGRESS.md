@@ -1444,3 +1444,16 @@ credential remains sensitive and must not be repurposed outside release
 automation. No Neon branch/database, Worker, maintenance gate, migration,
 or release switch was changed. Hosted CI for the preceding documentation
 commit `1bc9e15` passed CI/PostgreSQL and skipped both release jobs.
+
+The owner created an account-owned Cloudflare token named
+`lovechapter-github-staging-release`. The pre-creation dashboard summary
+showed Individual Workers Editor limited to `lovechapter-api-staging` and
+`lovechapter-web-staging`, plus account-level Hyperdrive Read, with no other
+selected permission. The owner added its value directly to the GitHub
+`staging` environment secret `RELEASE_CLOUDFLARE_API_TOKEN`; GitHub secret
+metadata confirms the name and update time without revealing the value.
+The token's actual Cloudflare API access has not yet been exercised from
+GitHub Actions. The repository-level staging and production release switches
+remain unset; no Worker deploy, maintenance transition, or migration was
+run. Hosted CI for documentation commit `3d57901` passed CI/PostgreSQL and
+skipped both release jobs.
