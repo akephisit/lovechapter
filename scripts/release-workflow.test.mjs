@@ -102,4 +102,14 @@ describe("automatic Worker release workflow policy", () => {
     );
     expect(source).not.toMatch(/RELEASE_TEST_|RELEASE_STAGING_/u);
   });
+
+  it("provides Wrangler its CI authentication aliases during the production release", () => {
+    const source = readFileSync(workflowPath, "utf8");
+    expect(source).toMatch(
+      /^\s*CLOUDFLARE_ACCOUNT_ID: \$\{\{ vars\.RELEASE_CLOUDFLARE_ACCOUNT_ID \}\}$/mu,
+    );
+    expect(source).toMatch(
+      /^\s*CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.RELEASE_CLOUDFLARE_API_TOKEN \}\}$/mu,
+    );
+  });
 });

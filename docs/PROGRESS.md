@@ -1682,3 +1682,15 @@ builds/check, and both Worker dry-runs. The first local CI attempt stopped
 only because Bun was absent from PATH; the full successful rerun injected
 Bun 1.4.2 with `npm exec`. Deployment and password-based sign-in remain to be
 verified by the subsequent production release and owner test.
+
+The activation commit's first GitHub run passed CI/PostgreSQL but skipped the
+production job: the release switch existed only as an environment variable,
+which is unavailable in the job-level condition. Moving that switch to a
+repository variable allowed the same run's retry to start production. The
+retry stopped before closing maintenance or uploading a Worker version. Gate
+and active Worker version readbacks remained at the previous public revision.
+The workflow passed Cloudflare credentials to the release coordinator but
+omitted Wrangler's standard `CLOUDFLARE_ACCOUNT_ID` and
+`CLOUDFLARE_API_TOKEN` aliases for its child process. A regression test now
+requires those aliases, and the workflow provides them. This is a candidate
+fix; the next real release run and sign-in still need verification.

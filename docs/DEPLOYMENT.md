@@ -161,8 +161,11 @@ secrets in Git or chat.
 
 ## Production environment names
 
-GitHub `production` variables: `PRODUCTION_RELEASE_ENABLED`,
-`RELEASE_NEON_PROJECT_ID`, `RELEASE_NEON_BRANCH_ID`,
+GitHub repository variable: `PRODUCTION_RELEASE_ENABLED`. It must be
+repository-scoped because the job-level `if` is evaluated before the
+`production` environment is attached.
+
+GitHub `production` environment variables: `RELEASE_NEON_PROJECT_ID`, `RELEASE_NEON_BRANCH_ID`,
 `RELEASE_DATABASE_NAME`, `RELEASE_DATABASE_ROLE`,
 `RELEASE_APP_DATABASE_ROLE`, `RELEASE_MIGRATION_DATABASE_ROLE`,
 `RELEASE_CLOUDFLARE_ACCOUNT_ID`, `RELEASE_HYPERDRIVE_ID`,
