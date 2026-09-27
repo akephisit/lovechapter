@@ -38,6 +38,8 @@ describe("web maintenance response", () => {
     expect(page.headers.get("cache-control")).toBe("no-store");
     const html = await page.text();
     expect(html).toContain('<html lang="th">');
+    expect(page.headers.get("referrer-policy")).toBe("origin");
+    expect(html).toContain('<meta name="referrer" content="origin">');
     expect(html).toContain("ไม่สามารถใช้งานได้ชั่วคราว");
     expect(html).toContain('action="/ui-language"');
     expect(html).not.toContain("private-token");

@@ -10,6 +10,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { useUiCopy } from "./ui-language-provider";
+import { localizeStoredUiMessage } from "../lib/ui-copy";
 
 export function SignInForm({
   submit = (input) => createAnonymousApi().signIn(input),
@@ -83,7 +84,7 @@ export function SignInForm({
             role="alert"
             className="rounded-xl bg-[#f8e7e4] px-3 py-2 text-sm break-words text-[#7a2f36]"
           >
-            {error}
+            {localizeStoredUiMessage(error, copy)}
           </p>
         ) : null}
         <Button className="w-full" type="submit" disabled={pending}>

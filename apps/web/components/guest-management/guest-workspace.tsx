@@ -29,6 +29,7 @@ import {
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { useUiCopy } from "../ui-language-provider";
+import { localizeStoredUiMessage } from "../../lib/ui-copy";
 import { GuestDetailDialog } from "./guest-detail-dialog";
 import { GuestFiltersForm, type GuestFilters } from "./guest-filters";
 import { GuestForm } from "./guest-form";
@@ -500,7 +501,7 @@ function WeddingGuestWorkspace({
           role="alert"
           className="rounded-xl bg-[#fff3ed] p-3 text-[#743f45]"
         >
-          {message}
+          {localizeStoredUiMessage(message, copy)}
         </div>
       ) : null}
       <GuestFiltersForm

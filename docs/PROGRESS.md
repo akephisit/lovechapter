@@ -18,8 +18,17 @@ country data and country-language locale candidates are checked in from
 unknown country codes such as `ZZ`. Existing valid stored locale values remain
 selectable. No schema migration was introduced.
 
-Local verification passed: format, lint, all workspace typechecks, 113 test
-files / 712 tests, Drizzle migration check, Bun API/jobs builds and Bun runtime
+Final review found and fixed four issues: the no-script maintenance language
+form now sends only the request origin for same-origin validation; stored UI
+errors relocalize when the language changes without clearing forms; known CSV
+row validation errors name the field and constraint; and keyboard-active
+standard-code options scroll into view while options stay out of the Tab order.
+Regression tests reproduced these failures before the fixes. A remaining minor
+copy improvement is to state the reference date used for the time-zone offset
+label; the selected IANA zone identifier and stored value are unaffected.
+
+Local verification passed: format, lint, all workspace typechecks, 114 test
+files / 718 tests, Drizzle migration check, Bun API/jobs builds and Bun runtime
 smoke, API Worker Wrangler dry-run, Next and vinext builds, vinext compatibility
 check, web Worker dry-run, and `git diff --check`. A local production-build
 server returned Thai and English manifest descriptions according to the

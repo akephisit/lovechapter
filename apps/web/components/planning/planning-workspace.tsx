@@ -18,6 +18,7 @@ import { Label } from "../ui/label";
 import { Select } from "../ui/select";
 import { Textarea } from "../ui/textarea";
 import { useUiCopy } from "../ui-language-provider";
+import { localizeStoredUiMessage } from "../../lib/ui-copy";
 
 export interface PlanningWorkspaceApi {
   listPlanningTasks(
@@ -217,7 +218,7 @@ export function PlanningWorkspace({ wedding, api }: Props) {
         ) : null}
         {error ? (
           <p role="alert" className="mt-4 text-sm text-[#a1324e]">
-            {error}
+            {localizeStoredUiMessage(error, copy)}
           </p>
         ) : null}
         <form

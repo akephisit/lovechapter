@@ -12,6 +12,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { useUiCopy } from "./ui-language-provider";
+import { localizeStoredUiMessage } from "../lib/ui-copy";
 
 export function ForgotPasswordForm({
   submit = (input) => createAnonymousApi().forgotPassword(input),
@@ -73,7 +74,7 @@ export function ForgotPasswordForm({
           </div>
           {error ? (
             <p role="alert" className="text-sm break-words text-[#7a2f36]">
-              {error}
+              {localizeStoredUiMessage(error, copy)}
             </p>
           ) : null}
           <Button className="w-full" type="submit" disabled={pending}>

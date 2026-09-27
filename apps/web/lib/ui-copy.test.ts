@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getUiCopy } from "./ui-copy";
+import { getUiCopy, localizeStoredUiMessage } from "./ui-copy";
 
 function shape(value: unknown): unknown {
   if (typeof value === "function") return "function";
@@ -25,5 +25,20 @@ describe("UI copy", () => {
   it("has matching keys and parameterized value shapes", () => {
     expect(shape(getUiCopy("th"))).toEqual(shape(getUiCopy("en")));
     expect(getUiCopy("en").common.itemCount(2)).toBe("2 items");
+  });
+
+  it("relocalizes stored static messages in either direction", () => {
+    expect(
+      localizeStoredUiMessage(
+        getUiCopy("en").errors.invalidCredentials,
+        getUiCopy("th"),
+      ),
+    ).toBe(getUiCopy("th").errors.invalidCredentials);
+    expect(
+      localizeStoredUiMessage(getUiCopy("th").rsvp.loadError, getUiCopy("en")),
+    ).toBe(getUiCopy("en").rsvp.loadError);
+    expect(localizeStoredUiMessage("External message", getUiCopy("th"))).toBe(
+      "External message",
+    );
   });
 });

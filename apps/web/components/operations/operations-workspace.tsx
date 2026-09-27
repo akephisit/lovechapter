@@ -24,7 +24,7 @@ import {
 
 import type { createLoveChapterApi } from "../../lib/api-client";
 import { safeUiError } from "../../lib/ui-error";
-import type { UiCopy } from "../../lib/ui-copy";
+import { localizeStoredUiMessage, type UiCopy } from "../../lib/ui-copy";
 import { useUiCopy, useUiLanguage } from "../ui-language-provider";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
@@ -246,7 +246,7 @@ function BudgetPanel({ wedding, api }: Props) {
         {loading ? <p role="status">{copy.operations.loadingBudget}</p> : null}
         {error ? (
           <p role="alert" className="text-[#9b3737]">
-            {error}
+            {localizeStoredUiMessage(error, copy)}
           </p>
         ) : null}
         {currency && overview ? (
@@ -801,7 +801,7 @@ function RunSheetPanel({ wedding, api }: Props) {
       </p>
       {error ? (
         <p role="alert" className="text-[#9b3737]">
-          {error}
+          {localizeStoredUiMessage(error, copy)}
         </p>
       ) : null}
       <form
@@ -1068,7 +1068,7 @@ function SeatingPanel({ wedding, api }: Props) {
       <p className="text-sm">{copy.operations.seatingDescription}</p>
       {error ? (
         <p role="alert" className="text-[#9b3737]">
-          {error}
+          {localizeStoredUiMessage(error, copy)}
         </p>
       ) : null}
       <form

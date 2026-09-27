@@ -2,9 +2,36 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import { vi } from "vitest";
 import { StandardCodeCombobox } from "./standard-code-combobox";
 
 describe("StandardCodeCombobox", () => {
+  it("scrolls the keyboard-active option into view and keeps list options out of Tab order", async () => {
+    const scroll = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scroll,
+    });
+    render(
+      <StandardCodeCombobox
+        kind="country"
+        uiLanguage="en"
+        id="country"
+        name="countryCode"
+        optional
+      />,
+    );
+    const input = screen.getByRole("combobox");
+    await userEvent.click(input);
+    const openScrollCount = scroll.mock.calls.length;
+    await userEvent.keyboard(
+      "{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}",
+    );
+    expect(scroll.mock.calls.length).toBeGreaterThan(openScrollCount);
+    expect(
+      screen.getAllByRole("option").every((option) => option.tabIndex === -1),
+    ).toBe(true);
+  });
   it("searches and selects a country by keyboard, submitting only the code", async () => {
     const { container } = render(
       <>

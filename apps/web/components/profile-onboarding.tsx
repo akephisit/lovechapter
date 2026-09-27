@@ -14,6 +14,7 @@ import { Card } from "./ui/card";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { useUiCopy } from "./ui-language-provider";
+import { localizeStoredUiMessage } from "../lib/ui-copy";
 
 export interface ProfileOnboardingApi {
   updateMyProfile(input: UpdateProfileInput): Promise<AuthenticatedUser>;
@@ -97,7 +98,7 @@ export function ProfileOnboarding({
               role="alert"
               className="rounded-xl border border-[#d6aaa4] bg-[#fff3ed] px-4 py-3 text-sm text-[#743f45]"
             >
-              {message}
+              {localizeStoredUiMessage(message, copy)}
             </p>
           ) : null}
           <Button className="w-full" type="submit" disabled={saving}>

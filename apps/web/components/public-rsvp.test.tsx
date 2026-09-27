@@ -16,6 +16,67 @@ import { UiLanguageProvider } from "./ui-language-provider";
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 describe("PublicRsvp", () => {
+  it("relocalizes an existing load error when the UI language changes", async () => {
+    const api: PublicRsvpApi = {
+      getInvitation: vi.fn(async () => {
+        throw new Error("offline");
+      }),
+      submitRsvp: vi.fn(),
+    };
+    const { rerender } = render(
+      <UiLanguageProvider language="en">
+        <PublicRsvp token="safe-token" api={api} />
+      </UiLanguageProvider>,
+    );
+    expect(
+      await screen.findByText(
+        "We couldn't load this invitation. Please try again.",
+      ),
+    ).toBeVisible();
+    rerender(
+      <UiLanguageProvider language="th">
+        <PublicRsvp token="safe-token" api={api} />
+      </UiLanguageProvider>,
+    );
+    expect(
+      screen.getByText("ไม่สามารถโหลดคำเชิญได้ กรุณาลองอีกครั้ง"),
+    ).toBeVisible();
+    expect(
+      screen.queryByText("We couldn't load this invitation. Please try again."),
+    ).toBeNull();
+  });
+
+  it("uses the new language when a pending invitation request later fails", async () => {
+    let reject!: (reason: unknown) => void;
+    const pending = new Promise<PublicInvitation>((_resolve, fail) => {
+      reject = fail;
+    });
+    const api: PublicRsvpApi = {
+      getInvitation: vi.fn(() => pending),
+      submitRsvp: vi.fn(),
+    };
+    const { rerender } = render(
+      <UiLanguageProvider language="en">
+        <PublicRsvp token="safe-token" api={api} />
+      </UiLanguageProvider>,
+    );
+    rerender(
+      <UiLanguageProvider language="th">
+        <PublicRsvp token="safe-token" api={api} />
+      </UiLanguageProvider>,
+    );
+    await act(async () => {
+      reject(new Error("offline"));
+      try {
+        await pending;
+      } catch {
+        /* expected */
+      }
+    });
+    expect(
+      await screen.findByText("ไม่สามารถโหลดคำเชิญได้ กรุณาลองอีกครั้ง"),
+    ).toBeVisible();
+  });
   it("shows an unavailable invitation when the link is replaced during RSVP", async () => {
     const api: PublicRsvpApi = {
       getInvitation: vi.fn(async () => invitationFixture()),

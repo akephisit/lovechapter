@@ -108,6 +108,30 @@ export function ImportPreviewTable({
 
 function rowMessage(message: string, copy: UiCopy): string {
   switch (message) {
+    case "Guest name must be 1–120 characters":
+      return copy.csv.validation.guestName;
+    case "Party allowance must be between 1 and 20":
+      return copy.csv.validation.partyAllowance;
+    case "Invalid guest email":
+      return copy.csv.validation.guestEmail;
+    case "Guest phone must be at most 40 characters":
+      return copy.csv.validation.guestPhone;
+    case "Envelope name must be at most 180 characters":
+      return copy.csv.validation.envelopeName;
+    case "Guest note must be at most 2000 characters":
+      return copy.csv.validation.guestNote;
+    case "Address line 1 must be 1–180 characters":
+      return copy.csv.validation.addressLine1;
+    case "Address line 2 must be at most 180 characters":
+      return copy.csv.validation.addressLine2;
+    case "Locality must be at most 120 characters":
+      return copy.csv.validation.locality;
+    case "Administrative area must be at most 120 characters":
+      return copy.csv.validation.administrativeArea;
+    case "Postal code must be at most 32 characters":
+      return copy.csv.validation.postalCode;
+    case "Invalid country code":
+      return copy.csv.validation.countryCode;
     case "Unknown affiliation":
       return copy.csv.unknownAffiliation;
     case "Address line 1 is required when other address fields are present":

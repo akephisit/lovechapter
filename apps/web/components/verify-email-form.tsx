@@ -11,6 +11,7 @@ import {
 } from "./auth-form-utils";
 import { AuthFormShell } from "./auth-form-shell";
 import { useUiCopy } from "./ui-language-provider";
+import { localizeStoredUiMessage } from "../lib/ui-copy";
 
 type Verify = (input: VerifyEmailInput) => Promise<{ verified: true }>;
 
@@ -65,7 +66,7 @@ export function VerifyEmailForm({
             : "text-center text-sm break-words text-[#725f62]"
         }
       >
-        {message ?? copy.auth.verifying}
+        {localizeStoredUiMessage(message, copy) ?? copy.auth.verifying}
       </p>
       {state === "complete" ? (
         <Link

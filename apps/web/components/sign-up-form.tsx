@@ -13,6 +13,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { useUiCopy } from "./ui-language-provider";
+import { localizeStoredUiMessage } from "../lib/ui-copy";
 
 export function SignUpForm({
   submit = (input) => createAnonymousApi().signUp(input),
@@ -110,7 +111,9 @@ export function SignUpForm({
               {copy.auth.passwordHelp}
             </p>
           </Field>
-          {error ? <FormAlert>{error}</FormAlert> : null}
+          {error ? (
+            <FormAlert>{localizeStoredUiMessage(error, copy)}</FormAlert>
+          ) : null}
           <Button className="w-full" type="submit" disabled={pending}>
             {pending ? copy.auth.creating : copy.auth.createAccount}
           </Button>

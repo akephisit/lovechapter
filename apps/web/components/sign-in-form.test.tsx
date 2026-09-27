@@ -11,6 +11,37 @@ import { SignInForm } from "./sign-in-form";
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 describe("SignInForm", () => {
+  it("relocalizes an existing sign-in error without resetting entered fields", async () => {
+    const submit = vi.fn(async () => {
+      throw new ApiError("wrong", 401, "invalid_credentials");
+    });
+    const { rerender } = render(
+      <UiLanguageProvider language="en">
+        <SignInForm submit={submit} onSignedIn={vi.fn()} />
+      </UiLanguageProvider>,
+    );
+    await userEvent.type(
+      screen.getByLabelText("Email address"),
+      "c@example.test",
+    );
+    await userEvent.type(
+      screen.getByLabelText("Password"),
+      "wrong password phrase",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Invalid email or password",
+    );
+    rerender(
+      <UiLanguageProvider language="th">
+        <SignInForm submit={submit} onSignedIn={vi.fn()} />
+      </UiLanguageProvider>,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "อีเมลหรือรหัสผ่านไม่ถูกต้อง",
+    );
+    expect(screen.getByLabelText("อีเมล")).toHaveValue("c@example.test");
+  });
   it("uses password-manager semantics and redirects after sign-in", async () => {
     const submit = vi.fn(async () => ({ signedIn: true as const }));
     const onSignedIn = vi.fn(async () => undefined);

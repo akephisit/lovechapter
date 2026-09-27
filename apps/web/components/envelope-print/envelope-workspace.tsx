@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
 
 import { safeUiError } from "../../lib/ui-error";
-import type { UiCopy } from "../../lib/ui-copy";
+import { localizeStoredUiMessage, type UiCopy } from "../../lib/ui-copy";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { useUiCopy } from "../ui-language-provider";
@@ -281,7 +281,7 @@ export function EnvelopeWorkspace({
         <p className="text-sm text-[#806d70]">{copy.envelope.description}</p>
         {error || fontError ? (
           <p role="alert" className="text-sm text-red-700">
-            {error || fontError}{" "}
+            {localizeStoredUiMessage(error || fontError, copy)}{" "}
             {fontError ? (
               <Button
                 variant="secondary"

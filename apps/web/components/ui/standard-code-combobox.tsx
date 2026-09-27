@@ -88,6 +88,13 @@ export function StandardCodeCombobox({
           : "Please select from the list",
     );
   }, [selected, optional, uiLanguage]);
+  useEffect(() => {
+    if (open) {
+      document
+        .getElementById(`${listId}-${active}`)
+        ?.scrollIntoView?.({ block: "nearest" });
+    }
+  }, [active, listId, open]);
 
   function choose(next: string) {
     if (value === undefined) setInternalValue(next);
@@ -165,6 +172,7 @@ export function StandardCodeCombobox({
               key={item.value}
               type="button"
               role="option"
+              tabIndex={-1}
               aria-selected={item.value === selected}
               className={`block w-full rounded px-3 py-2 text-left text-sm ${index === active ? "bg-[#f8e9ed]" : "hover:bg-[#fff3f5]"}`}
               onMouseDown={(event) => event.preventDefault()}

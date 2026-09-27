@@ -12,7 +12,7 @@ import type {
 import { useState } from "react";
 
 import { safeUiError } from "../../lib/ui-error";
-import type { UiCopy } from "../../lib/ui-copy";
+import { localizeStoredUiMessage, type UiCopy } from "../../lib/ui-copy";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { useUiCopy } from "../ui-language-provider";
@@ -247,7 +247,7 @@ export function GuestImportWorkspace({
       <p className="text-sm text-[#806d70]">{copy.csv.description}</p>
       {error ? (
         <p role="alert" className="text-sm text-red-700">
-          {error}
+          {localizeStoredUiMessage(error, copy)}
         </p>
       ) : null}
       {step === "select" ? (

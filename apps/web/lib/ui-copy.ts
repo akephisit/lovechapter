@@ -421,6 +421,20 @@ const en = {
     createAnywayRow: (number: number) => `Create anyway row ${number}`,
     createAnyway: "Create anyway",
     rowError: "Invalid guest row",
+    validation: {
+      guestName: "Guest name must be 1–120 characters",
+      partyAllowance: "Party allowance must be between 1 and 20",
+      guestEmail: "Invalid guest email",
+      guestPhone: "Guest phone must be at most 40 characters",
+      envelopeName: "Envelope name must be at most 180 characters",
+      guestNote: "Guest note must be at most 2000 characters",
+      addressLine1: "Address line 1 must be 1–180 characters",
+      addressLine2: "Address line 2 must be at most 180 characters",
+      locality: "Locality must be at most 120 characters",
+      administrativeArea: "Administrative area must be at most 120 characters",
+      postalCode: "Postal code must be at most 32 characters",
+      countryCode: "Invalid country code",
+    },
     unknownAffiliation: "Unknown affiliation",
     addressRequired:
       "Address line 1 is required when other address fields are present",
@@ -992,6 +1006,20 @@ const th: UiCopy = {
       `สร้างแม้มีคำเตือน แถว ${new Intl.NumberFormat("th").format(number)}`,
     createAnyway: "สร้างแม้มีคำเตือน",
     rowError: "ข้อมูลแขกในแถวไม่ถูกต้อง",
+    validation: {
+      guestName: "ชื่อแขกต้องมี 1–120 อักขระ",
+      partyAllowance: "จำนวนคนที่เชิญต้องอยู่ระหว่าง 1 ถึง 20",
+      guestEmail: "อีเมลแขกไม่ถูกต้อง",
+      guestPhone: "เบอร์โทรแขกต้องไม่เกิน 40 อักขระ",
+      envelopeName: "ชื่อบนซองต้องไม่เกิน 180 อักขระ",
+      guestNote: "บันทึกเกี่ยวกับแขกต้องไม่เกิน 2,000 อักขระ",
+      addressLine1: "ที่อยู่บรรทัดที่ 1 ต้องมี 1–180 อักขระ",
+      addressLine2: "ที่อยู่บรรทัดที่ 2 ต้องไม่เกิน 180 อักขระ",
+      locality: "เมืองหรือเขตต้องไม่เกิน 120 อักขระ",
+      administrativeArea: "รัฐหรือจังหวัดต้องไม่เกิน 120 อักขระ",
+      postalCode: "รหัสไปรษณีย์ต้องไม่เกิน 32 อักขระ",
+      countryCode: "รหัสประเทศไม่ถูกต้อง",
+    },
     unknownAffiliation: "ไม่พบกลุ่มแขก",
     addressRequired: "ต้องมีที่อยู่บรรทัดที่ 1 เมื่อกรอกข้อมูลที่อยู่อื่น",
     duplicateEmail: "อีเมลซ้ำในไฟล์",
@@ -1164,4 +1192,37 @@ const th: UiCopy = {
 
 export function getUiCopy(language: UiLanguage): UiCopy {
   return language === "th" ? th : en;
+}
+
+const englishToThai = new Map<string, string>();
+const thaiToEnglish = new Map<string, string>();
+
+function collectStaticMessages(english: unknown, thai: unknown): void {
+  if (typeof english === "string" && typeof thai === "string") {
+    englishToThai.set(english, thai);
+    thaiToEnglish.set(thai, english);
+    return;
+  }
+  if (
+    !english ||
+    !thai ||
+    typeof english !== "object" ||
+    typeof thai !== "object"
+  ) {
+    return;
+  }
+  for (const [key, value] of Object.entries(english)) {
+    collectStaticMessages(value, (thai as Record<string, unknown>)[key]);
+  }
+}
+
+collectStaticMessages(en, th);
+
+/** Re-render a previously stored static UI message in the currently selected language. */
+export function localizeStoredUiMessage(
+  message: string | null,
+  copy: UiCopy,
+): string | null {
+  if (message === null) return null;
+  return (copy === th ? englishToThai : thaiToEnglish).get(message) ?? message;
 }

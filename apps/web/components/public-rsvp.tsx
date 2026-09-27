@@ -18,6 +18,7 @@ import { Label } from "./ui/label";
 import { Select } from "./ui/select";
 import { Textarea } from "./ui/textarea";
 import { useUiCopy } from "./ui-language-provider";
+import { localizeStoredUiMessage } from "../lib/ui-copy";
 
 export interface PublicRsvpApi {
   getInvitation(token: string): Promise<PublicInvitation>;
@@ -126,7 +127,9 @@ export function PublicRsvp({
         <h1 className="font-serif text-3xl font-semibold text-[#432f35]">
           {copy.rsvp.loadTitle}
         </h1>
-        <p className="mt-3 leading-7 text-[#786568]">{error}</p>
+        <p className="mt-3 leading-7 text-[#786568]">
+          {localizeStoredUiMessage(error, copy)}
+        </p>
         <Button
           className="mt-6"
           type="button"
@@ -287,7 +290,7 @@ export function PublicRsvp({
                     role="alert"
                     className="rounded-xl border border-[#d6aaa4] bg-[#fff3ed] px-3 py-2 text-sm text-[#743f45]"
                   >
-                    {error}
+                    {localizeStoredUiMessage(error, copy)}
                   </p>
                 ) : null}
 

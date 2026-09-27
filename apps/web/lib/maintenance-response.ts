@@ -11,7 +11,7 @@ function maintenanceHtml(language: UiLanguage): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<meta name="referrer" content="no-referrer">
+<meta name="referrer" content="origin">
 <title>${copy.maintenance.title}</title>
 <style>
   :root { color-scheme: light; font-family: system-ui, sans-serif; }
@@ -45,6 +45,7 @@ export function maintenanceResponse(
       status: 503,
       headers: {
         ...headers,
+        ...(!api && { "referrer-policy": "origin" }),
         "content-type": api
           ? "application/json; charset=utf-8"
           : "text/html; charset=utf-8",
@@ -59,6 +60,10 @@ export function maintenanceResponse(
   }
   return new Response(maintenanceHtml(language), {
     status: 503,
-    headers: { ...headers, "content-type": "text/html; charset=utf-8" },
+    headers: {
+      ...headers,
+      "referrer-policy": "origin",
+      "content-type": "text/html; charset=utf-8",
+    },
   });
 }

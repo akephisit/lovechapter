@@ -43,6 +43,7 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Select } from "./ui/select";
 import { useUiCopy, useUiLanguage } from "./ui-language-provider";
+import { localizeStoredUiMessage } from "../lib/ui-copy";
 import { StandardCodeCombobox } from "./ui/standard-code-combobox";
 import { LanguageSwitcher } from "./language-switcher";
 
@@ -599,7 +600,7 @@ export function CoupleWorkspace({ identity, api, onSignOut }: Props) {
             role="alert"
             className="mb-6 rounded-2xl border border-[#d6aaa4] bg-[#fff3ed] px-4 py-3 text-sm text-[#743f45]"
           >
-            {message}
+            {localizeStoredUiMessage(message, copy)}
           </div>
         ) : null}
 

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import type { UiLanguage } from "../lib/ui-language";
+import { localizeStoredUiMessage } from "../lib/ui-copy";
 import { useUiCopy, useUiLanguage } from "./ui-language-provider";
 
 export function LanguageSwitcher() {
@@ -56,7 +57,9 @@ export function LanguageSwitcher() {
         <option value="en">English</option>
         <option value="th">ไทย</option>
       </select>
-      {error ? <span role="alert">{error}</span> : null}
+      {error ? (
+        <span role="alert">{localizeStoredUiMessage(error, copy)}</span>
+      ) : null}
     </div>
   );
 }
