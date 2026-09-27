@@ -16,6 +16,36 @@ const environment = {
 };
 
 describe("staging Cloudflare credential probe", () => {
+  it("identifies an unexpected Hyperdrive cache setting without logging its response", async () => {
+    const { probeStagingCloudflareCredential } =
+      await import("./staging-cloudflare-credential-probe.mjs");
+    const fetcher = async () =>
+      globalThis.Response.json({
+        success: true,
+        result: {
+          id: hyperdriveId,
+          caching: { disabled: false },
+          origin: { password: "private-provider-value" },
+        },
+      });
+
+    await expect(
+      probeStagingCloudflareCredential(environment, { fetcher }),
+    ).rejects.toThrow("staging_cloudflare_hyperdrive_cache_enabled");
+  });
+
+  it("identifies a Hyperdrive network failure without logging its error", async () => {
+    const { probeStagingCloudflareCredential } =
+      await import("./staging-cloudflare-credential-probe.mjs");
+    const fetcher = async () => {
+      throw new Error("private-network-details");
+    };
+
+    await expect(
+      probeStagingCloudflareCredential(environment, { fetcher }),
+    ).rejects.toThrow("staging_cloudflare_hyperdrive_network_failed");
+  });
+
   it("reports a denied Hyperdrive read without exposing provider details", async () => {
     const { probeStagingCloudflareCredential } =
       await import("./staging-cloudflare-credential-probe.mjs");
@@ -44,7 +74,7 @@ describe("staging Cloudflare credential probe", () => {
         { ...environment, GITHUB_REF_PROTECTED: "false" },
         { fetcher },
       ),
-    ).rejects.toThrow("Staging Cloudflare credential probe failed");
+    ).rejects.toThrow("staging_cloudflare_context_invalid");
     expect(calls).toBe(0);
   });
 

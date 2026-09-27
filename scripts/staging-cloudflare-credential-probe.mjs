@@ -9,22 +9,34 @@ const failure = "Staging Cloudflare credential probe failed";
 class ProbeFailure extends Error {}
 
 async function readJson(url, token, fetcher, stage) {
-  const response = await fetcher(url, {
-    method: "GET",
-    redirect: "error",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/json",
-    },
-    signal: globalThis.AbortSignal.timeout(20_000),
-  });
+  let response;
+  try {
+    response = await fetcher(url, {
+      method: "GET",
+      redirect: "error",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+      signal: globalThis.AbortSignal.timeout(20_000),
+    });
+  } catch {
+    throw new ProbeFailure(`staging_cloudflare_${stage}_network_failed`);
+  }
   if (!response.ok) {
     throw new ProbeFailure(
       `staging_cloudflare_${stage}_http_${response.status}`,
     );
   }
-  const body = await response.json();
-  if (body?.success !== true) throw new Error(failure);
+  let body;
+  try {
+    body = await response.json();
+  } catch {
+    throw new ProbeFailure(`staging_cloudflare_${stage}_invalid_json`);
+  }
+  if (body?.success !== true) {
+    throw new ProbeFailure(`staging_cloudflare_${stage}_api_rejected`);
+  }
   return body.result;
 }
 
@@ -48,7 +60,7 @@ export async function probeStagingCloudflareCredential(
     !token.trim() ||
     token.startsWith("REPLACE_WITH_")
   ) {
-    throw new Error(failure);
+    throw new ProbeFailure("staging_cloudflare_context_invalid");
   }
 
   try {
@@ -59,11 +71,11 @@ export async function probeStagingCloudflareCredential(
       fetcher,
       "hyperdrive",
     );
-    if (
-      hyperdrive?.id !== hyperdriveId ||
-      hyperdrive.caching?.disabled !== true
-    ) {
-      throw new Error(failure);
+    if (hyperdrive?.id !== hyperdriveId) {
+      throw new ProbeFailure("staging_cloudflare_hyperdrive_target_mismatch");
+    }
+    if (hyperdrive.caching?.disabled !== true) {
+      throw new ProbeFailure("staging_cloudflare_hyperdrive_cache_enabled");
     }
     for (const name of workerNames) {
       const workerBase = `${base}/workers/scripts/${name}`;
@@ -86,7 +98,7 @@ export async function probeStagingCloudflareCredential(
             ),
         )
       ) {
-        throw new Error(failure);
+        throw new ProbeFailure(`staging_cloudflare_${name}_deployment_invalid`);
       }
       const subdomain = await readJson(
         `${workerBase}/subdomain`,
@@ -94,7 +106,11 @@ export async function probeStagingCloudflareCredential(
         fetcher,
         `${name}_subdomain`,
       );
-      if (subdomain?.previews_enabled !== false) throw new Error(failure);
+      if (subdomain?.previews_enabled !== false) {
+        throw new ProbeFailure(
+          `staging_cloudflare_${name}_preview_setting_invalid`,
+        );
+      }
     }
     return { hyperdriveId, workerNames: [...workerNames] };
   } catch (error) {
