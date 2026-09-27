@@ -227,6 +227,8 @@ export async function retargetClosedBootstrap(
 
 /** Temporary, manually dispatched bootstrap; normal releases use release-cli.mjs. */
 export async function runFirstProductionPublication(env, adapters = {}) {
+  const reportPhase = adapters.reportPhase ?? (() => {});
+  reportPhase("context");
   assertContext(env);
   const sha = env.GITHUB_SHA;
   const previous = {
@@ -260,9 +262,11 @@ export async function runFirstProductionPublication(env, adapters = {}) {
   const privateSmoke = adapters.privateSmoke ?? runPrivateReleaseSmoke;
   const publicCheck = adapters.publicCheck ?? runPublicReleaseCheck;
   const record = adapters.record ?? recordDeployment;
+  reportPhase("main_head");
   if ((await githubRead.readMainHead()) !== sha) {
     throw new Error("First publication SHA was superseded");
   }
+  reportPhase("gate_baseline");
   const old = await gate.status();
   if (
     old.mode !== "maintenance" ||
@@ -273,7 +277,9 @@ export async function runFirstProductionPublication(env, adapters = {}) {
   ) {
     throw new Error("First publication gate baseline is invalid");
   }
+  reportPhase("migration_ledger");
   await assertLedgerCurrent(env);
+  reportPhase("worker_preparation");
   const prepared = await prepare(
     {
       environment: "production",
@@ -287,7 +293,9 @@ export async function runFirstProductionPublication(env, adapters = {}) {
   if ((await githubRead.readMainHead()) !== sha) {
     throw new Error("First publication SHA was superseded after preparation");
   }
+  reportPhase("gate_retarget");
   await retarget(old, sha, env);
+  reportPhase("gate_drain");
   const closure = await gate.drain(sha);
   if (
     closure.mode !== "maintenance" ||
@@ -298,7 +306,9 @@ export async function runFirstProductionPublication(env, adapters = {}) {
   ) {
     throw new Error("First publication gate did not drain at candidate SHA");
   }
+  reportPhase("worker_deployment");
   const deployed = await deploy(prepared, workerRunner);
+  reportPhase("private_smoke");
   const smoke = await privateSmoke({
     sha,
     closure,
@@ -322,6 +332,7 @@ export async function runFirstProductionPublication(env, adapters = {}) {
     migrationOutcome: "not_required",
   });
   try {
+    reportPhase("gate_open");
     // Opening can commit before its status response is lost; reclose even if
     // the open call itself rejects.
     const opened = await gate.open(sha, evidence);
@@ -335,6 +346,7 @@ export async function runFirstProductionPublication(env, adapters = {}) {
     ) {
       throw new Error("First publication gate opened with unexpected versions");
     }
+    reportPhase("public_check");
     const publicResult = await publicCheck({
       sha,
       opened,
@@ -346,6 +358,7 @@ export async function runFirstProductionPublication(env, adapters = {}) {
     if (publicResult?.passed !== true) {
       throw new Error("First publication public check did not pass");
     }
+    reportPhase("deployment_record");
     const deploymentId = await record(
       {
         environment: "production",
@@ -357,6 +370,7 @@ export async function runFirstProductionPublication(env, adapters = {}) {
       },
       githubDeployment,
     );
+    reportPhase("baseline_readback");
     const current = await gate.status();
     const baseline = await githubDeployment.readProductionBaseline(current);
     if (
@@ -394,7 +408,9 @@ if (
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
   try {
-    await runFirstProductionPublication(process.env);
+    await runFirstProductionPublication(process.env, {
+      reportPhase: (phase) => console.log(`first_production_phase:${phase}`),
+    });
     console.log("first_production_publication_passed");
   } catch (error) {
     console.error(

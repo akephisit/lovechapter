@@ -179,6 +179,7 @@ describe("one-time production publication", () => {
   it("stops before gate retarget if the migration ledger is not current", async () => {
     const { env, adapters } = fixture({
       adapters: {
+        reportPhase: vi.fn(),
         assertLedgerCurrent: vi.fn(async () => {
           throw new Error("drift");
         }),
@@ -188,6 +189,9 @@ describe("one-time production publication", () => {
       runFirstProductionPublication(env, adapters),
     ).rejects.toThrow();
     expect(adapters.retarget).not.toHaveBeenCalled();
+    expect(adapters.reportPhase.mock.calls.at(-1)).toEqual([
+      "migration_ledger",
+    ]);
   });
 
   it("leaves maintenance closed if private smoke fails", async () => {

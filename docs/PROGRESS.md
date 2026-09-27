@@ -11,12 +11,19 @@ Worker-version baseline or active leases. The automatic release flag remains
 `false`. A one-time, manually dispatched protected-main workflow has been
 prepared to rerun CI and disposable PostgreSQL tests, build both Workers,
 retarget only the unpublished drained gate to its exact SHA, privately smoke,
-open, check public behavior, and record the first deployment. It has not yet
-been pushed or run; no public production release is claimed. Its focused
+open, check public behavior, and record the first deployment. Its first run
+stopped before any gate or Worker change; no public production release is
+claimed. Its focused
 tests and local CI passed (101 files / 660 tests, Bun API/jobs builds and
 smoke, Worker dry-run, Next/vinext builds/check). The gate role cannot read
 the migration ledger, so this one-time schema check uses the already
 configured migration credential after checking it targets the same endpoint.
+The first manual run passed its CI and disposable PostgreSQL jobs but failed
+inside publication before any gate retarget or Worker version upload. Readback
+confirmed maintenance still targets the old SHA, has zero leases and null
+version baseline, and both active Worker versions are unchanged. A follow-up
+adds fixed, non-secret phase markers to identify the failing preflight; it
+does not relax any release guard or claim a public release.
 
 The direct-production Worker release implementation was fast-forwarded from
 the isolated `codex/automatic-worker-release-implementation` worktree to
